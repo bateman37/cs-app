@@ -28,6 +28,10 @@ Estado de la regla: **Confirmado** = decidido por Dennis; **Propuesto** = parám
 | Pases a producción | [PAP](importaciones/pap.md) | PAP 01-05 | Confirmado |
 | Arquitectura | [Web y PostgreSQL](arquitectura/propuesta.md) | ARC 01-05 | Propuesto (stack acordado; versiones y rendimiento a verificar) |
 | Entidades, sin esquema implementado | [Modelo lógico](arquitectura/modelo.md) | — | Propuesto |
+| Implementado en CSAPP-01: versiones, setup, acceso | [Base web y setup](arquitectura/base-web-y-setup.md) | — | Implementado |
+| Implementado en CSAPP-01: esquema, vigencias, auditoría | [Modelo físico](arquitectura/modelo-fisico-csapp01.md) | — | Implementado |
+| Guía PowerShell y prueba manual de CSAPP-01 | [Guía](plan/guia-powershell-csapp01.md) | — | Sin probar en Windows |
+| Resultados de validación de CSAPP-01 | [Validación](validacion/csapp-01.md) | — | Registro |
 | DOC-00 y diez entregas | [Roadmap](plan/roadmap.md) | — | Confirmado |
 | Precarga futura y pruebas de Dennis | [Política](plan/precarga-y-pruebas.md) | — | Confirmado |
 | Progreso real | [Estado](plan/estado.md) | — | Registro vivo |
@@ -47,4 +51,4 @@ Estado de la regla: **Confirmado** = decidido por Dennis; **Propuesto** = parám
 
 ## Prompts
 
-[Índice de prompts](../prompts/README.md), [plantilla](../prompts/_plantilla.md) y [CSAPP-DOC-00-v1](../prompts/CSAPP-DOC-00-v1.md).
+[Índice de prompts](../prompts/README.md), [plantilla](../prompts/_plantilla.md), [CSAPP-DOC-00-v1](../prompts/CSAPP-DOC-00-v1.md) y [CSAPP-01-v1](../prompts/CSAPP-01-v1.md).

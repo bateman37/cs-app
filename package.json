@@ -52,6 +52,9 @@
     "db:comprobar": "tsx scripts/check-env.ts",
     "db:migrar": "prisma migrate deploy",
     "cuenta:crear": "tsx scripts/crear-cuenta.ts",
+    "worker:build": "node scripts/build-worker.mjs",
+    "worker:start": "node worker-dist/worker.mjs",
+    "worker": "node scripts/build-worker.mjs && node worker-dist/worker.mjs",
     "benchmark:lectores": "tsx scripts/benchmark-lectores.ts"
   }
 }

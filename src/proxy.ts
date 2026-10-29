@@ -15,5 +15,7 @@ export function proxy(request: NextRequest) {
 }
 
 export const config = {
-  matcher: ["/((?!api/auth|_next/static|_next/image|favicon.ico).*)"],
+  // api/cargas queda fuera: el proxy bufferiza los cuerpos de petición y las subidas deben ir en
+  // streaming. Sus rutas validan origen, sesión real y rol ADMIN por sí mismas antes de leer nada.
+  matcher: ["/((?!api/auth|api/cargas|_next/static|_next/image|favicon.ico).*)"],
 };

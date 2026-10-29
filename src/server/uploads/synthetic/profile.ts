@@ -19,11 +19,7 @@ function toIso(c: Cell): string | null {
     const d = new Date(`${v}T00:00:00Z`);
     return d.toISOString().slice(0, 10) === v ? v : null;
   }
-  if (c.k === "date" && /^\d+(\.\d+)?$/.test(v)) {
-    // Serie de Excel (sistema 1900).
-    const ms = Date.UTC(1899, 11, 30) + Math.floor(Number(v)) * 86400000;
-    return new Date(ms).toISOString().slice(0, 10);
-  }
+  if (c.k === "date" && c.d) return c.d;
   return null;
 }
 

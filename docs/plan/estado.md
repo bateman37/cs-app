@@ -34,7 +34,7 @@ Documentación: [base y setup](../arquitectura/base-web-y-setup.md), [modelo fí
 | Dato | Valor |
 | --- | --- |
 | Rama | claude/new-session-omvsmd (designada por la sesión; el prompt proponía feature/CSAPP-02-personal-usuarios-cargas). La PR 2 estaba fusionada: la rama se reinició desde main (d0a58f3) |
-| PR | Ver la PR de esta rama contra main (sin fusionar) |
+| PR | https://github.com/bateman37/cs-app/pull/3 (base main, sin fusionar) |
 | Implementado | PERSONAL único con alias por sistema, nivel/equipo/PMO/rol con vigencias y resolución temporal; matriz de usuarios contratados por Grupo Cliente, Cliente e implantación con reglas de edición, inicialización 2025 y copia a 2026, servicios de usuarios al mes/corte y exposición; motor común de cargas (lectores XLSX/CSV por bloques, cola en PostgreSQL, trabajador separado con lease y fencing, staging, huellas, procedencias, activación atómica, reversión, reproceso) con interfaz en Administración › Cargas; recorrido de navegador versionado |
 | Probado | Linux: tipos, lint, build, migración sobre base vacía y sobre datos sintéticos de CSAPP-01, 144 pruebas con PostgreSQL real, 78 comprobaciones de navegador, volumen de 1 000 000 filas. Ver [validación](../validacion/csapp-02.md) |
 | No probado | Windows/PowerShell; subida de archivos grandes por el navegador; despliegue |

@@ -281,7 +281,19 @@ export function MilestonesSection({
   );
 }
 
-const ACTION_LABEL = { CREATE: "Alta", UPDATE: "Cambio", DEACTIVATE: "Desactivación", REACTIVATE: "Reactivación" } as const;
+export const ACTION_LABEL: Record<string, string> = {
+  CREATE: "Alta",
+  UPDATE: "Cambio",
+  DEACTIVATE: "Desactivación",
+  REACTIVATE: "Reactivación",
+  INITIALIZE: "Inicialización",
+  UPLOAD: "Carga",
+  CONFIRM: "Confirmación",
+  CANCEL: "Cancelación",
+  ACTIVATE: "Activación",
+  REVERT: "Reversión",
+  REPROCESS: "Reproceso",
+};
 const HIDE = new Set(["id", "createdAt", "updatedAt", "version", "groupId", "clientId", "implementationId", "searchValue"]);
 
 function flat(v: unknown): Record<string, string> {
@@ -302,7 +314,7 @@ export function HistorySection({
   pageCount,
   base,
 }: {
-  events: { id: string; at: Date; actorEmail: string; action: keyof typeof ACTION_LABEL; summary: string; before: unknown; after: unknown }[];
+  events: { id: string; at: Date; actorEmail: string; action: string; summary: string; before: unknown; after: unknown }[];
   total: number;
   page: number;
   pageCount: number;
@@ -321,7 +333,7 @@ export function HistorySection({
             const keys = Array.from(new Set([...Object.keys(b), ...Object.keys(a)])).filter((k) => b[k] !== a[k]);
             return (
               <li key={e.id} style={{ borderBottom: "1px solid var(--border)", padding: "0.5rem 0" }}>
-                <strong>{ACTION_LABEL[e.action]}</strong> · {e.summary}
+                <strong>{ACTION_LABEL[e.action] ?? e.action}</strong> · {e.summary}
                 <div className="muted">{formatDateTime(e.at)} · {e.actorEmail}</div>
                 {keys.length > 0 ? (
                   <details className="edit">

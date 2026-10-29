@@ -1,0 +1,50 @@
+# Índice de documentación
+
+Versión 0.4, incorporada al repositorio mediante [CSAPP-DOC-00-v1](../prompts/CSAPP-DOC-00-v1.md). Para trabajar: AGENTS.md, CLAUDE.md, [estado](plan/estado.md) y prompt activo; después solo las rutas de la tarea. Cada contrato es propietario de su tema. No leer todo el árbol en cada entrega. [Guía documental](plan/guia-documental.md), con la tabla de lecturas mínimas por entrega.
+
+Estado de la regla: **Confirmado** = decidido por Dennis; **Propuesto** = parámetro o método a calibrar/elegir (ver [pendientes](decisiones/pendientes.md)); **Mixto** = el contrato separa ambos y rotula cada regla. Ninguno implica software implementado.
+
+## Contratos vigentes
+
+| Tema | Propietario | IDs de regla | Estado |
+| --- | --- | --- | --- |
+| Funcional sencillo para negocio | [Resumen](producto/funcional-resumen.md) | enlaza, no define | Confirmado |
+| Cuatro vistas, Administración, ámbitos | [Alcance](producto/alcance.md) | — | Confirmado |
+| Grupo Cliente, Cliente, personal, usuarios | [Maestros](producto/maestros.md) | MST 01-08, USR 01-05 | Mixto (aprobar reapertura de años en USR 03; exclusión por arranque en MST 04 pendiente) |
+| Administración, pesos y configuración | [Administración](producto/administracion.md) | ADM 01-11 | Mixto (umbrales de Calidad y backlog propuestos) |
+| Comparativa | [Contrato de vista](producto/comparativa.md) | ECO 01-08 | Mixto (Silver en ECO 08 propuesto) |
+| Análisis Cliente | [Contrato de vista](producto/analisis-cliente.md) | — | Confirmado |
+| Pulse Rent | [Contrato de vista](producto/pulse-rent.md) | PUL 01-05 | Confirmado (bandas del Excel) |
+| Seis indicadores de Calidad | [Calidad](producto/calidad.md) | QLT 01-10, QHL 01 | Mixto (color de Incidentes y problemas propuesto) |
+| Stock y antigüedad | [Backlog](producto/backlog-antiguedad.md) | BACK 01-12 | Mixto (BACK 07-08 propuesta a calibrar) |
+| Origen y actuación | [Diagnóstico](producto/diagnostico-origen.md) | DIA 01-07 | Confirmado; catálogo de causas configurable |
+| Fórmulas y denominadores | [Catálogo](calculos/catalogo.md) | CAL 01-16 | Confirmado; tolerancias de conciliación propuestas (CAL 08) |
+| Importación común y avisos | [Proceso común](importaciones/proceso-comun.md) | IMP 01-07 | Confirmado |
+| Tickets: único perfil de ocho campos | [Tickets](importaciones/zendesk-tickets.md) | ZDT 01-10 | Confirmado |
+| Bugs VFS y VSW separados | [Bugs de producto](importaciones/bugs-producto.md) | BUG 01-08 | Confirmado |
+| Dedicación Zendesk | [Tiempos](importaciones/zendesk-tiempo.md) | ZTM 01-05 | Confirmado |
+| Dedicación PMO | [Wrike](importaciones/wrike.md) | WRK 01-07 | Confirmado |
+| Tres categorías anuales | [Facturación](importaciones/facturacion.md) | FAC 01-08 | Confirmado; vacío monetario como cero (FAC 07) propuesto |
+| Pases a producción | [PAP](importaciones/pap.md) | PAP 01-05 | Confirmado |
+| Arquitectura | [Web y PostgreSQL](arquitectura/propuesta.md) | ARC 01-05 | Propuesto (stack acordado; versiones y rendimiento a verificar) |
+| Entidades, sin esquema implementado | [Modelo lógico](arquitectura/modelo.md) | — | Propuesto |
+| DOC-00 y diez entregas | [Roadmap](plan/roadmap.md) | — | Confirmado |
+| Precarga futura y pruebas de Dennis | [Política](plan/precarga-y-pruebas.md) | — | Confirmado |
+| Progreso real | [Estado](plan/estado.md) | — | Registro vivo |
+| Casos definidos, sin afirmar ejecución | [Aceptación](validacion/aceptacion.md) | VAL 01-60, V04-01 a V04-16 | Definidos, no ejecutados |
+| Formatos comprobados actuales | [Evidencia v0.4](evidencia/fuentes-v04.md) | — | Evidencia (muestras, no reglas) |
+
+## Decisiones
+
+| Registro | Contenido |
+| --- | --- |
+| [DEC-003](decisiones/DEC-003-status-backlog-y-arranque-documental-v04.md) | Últimas decisiones confirmadas; prevalece donde cambia DEC-002 y DEC-001 |
+| [Pendientes](decisiones/pendientes.md) | Parámetros por calibrar, datos opcionales futuros y decisiones técnicas diferidas |
+
+## Historia: solo cuando la tarea lo requiera
+
+[Acuerdos v0.2](decisiones/DEC-001-acuerdos-v02.md), [diagnóstico v0.3](decisiones/DEC-002-diagnostico-y-bugs-v03.md), [primera inspección](evidencia/inspeccion.md) e [inspección v0.3](evidencia/fuentes-v03.md) explican el proceso. Sus perfiles antiguos, preguntas resueltas y reglas sustituidas no están vigentes. No utilizarlos como contratos alternativos ni leerlos por defecto.
+
+## Prompts
+
+[Índice de prompts](../prompts/README.md), [plantilla](../prompts/_plantilla.md) y [CSAPP-DOC-00-v1](../prompts/CSAPP-DOC-00-v1.md).

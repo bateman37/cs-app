@@ -1,6 +1,6 @@
 # Recorrido de navegador reproducible (CSAPP-01 y base para nuevas pantallas)
 
-El informe de CSAPP-01 declaró 41 comprobaciones con Chromium cuyo guion no se versionó y no se ha podido recuperar del entorno. Este recorrido es una **reimplementación nueva** de los casos esenciales: no equivale a «las 41 originales». Ejecutado en Linux (Node 22.22, PostgreSQL 16.15, Chromium preinstalado): 40 comprobaciones, todas correctas. **No probado en Windows/PowerShell.**
+El informe de CSAPP-01 declaró 41 comprobaciones con Chromium cuyo guion no se versionó y no se ha podido recuperar del entorno. Este recorrido es una **reimplementación nueva** de los casos esenciales: no equivale a «las 41 originales». Ejecutado en Linux (Node 22.22, PostgreSQL 16.15, Chromium preinstalado): 40 comprobaciones de CSAPP-01 más 27 de Administración › Cargas (CSAPP-02), 67 en total, todas correctas en dos ejecuciones seguidas. **No probado en Windows/PowerShell.**
 
 ## Qué hace
 
@@ -19,6 +19,7 @@ El informe de CSAPP-01 declaró 41 comprobaciones con Chromium cuyo guion no se 
 | `04-consulta` | Control positivo: la petición forjada de Server Action con sesión de Administrador **sí** crea; la misma con sesión de Consulta y sin sesión **no** crea ni audita; Consulta lee pero no ve controles de edición ni historial; no llega al formulario de alta; cierre de sesión borra la sesión en base y la cookie anterior deja de valer |
 | `05-persistencia` | Tras reiniciar `next start`, la sesión (en base de datos) y los datos siguen |
 | `06-limite-intentos` | Los intentos de acceso fallidos se limitan (429) y, bloqueado el origen, ni la contraseña correcta entra |
+| `07-cargas` (CSAPP-02) | Con el motor real: Consulta sin acceso (pantalla, pestaña y subida forjada 403 sin lote); Administrador ve fuentes y pendientes; subida por la interfaz (queda «En cola» sin trabajador); con el trabajador construido la ficha pasa sola a «Listo para revisar» (sondeo), contadores, previsualización y filtro; confirmar y activar; repetir el archivo avisa del checksum y no duplica; cabeceras equivocadas → rechazado; historial y filtros |
 | `99-extensiones` | Punto de extensión vacío para Personal, Usuarios y Cargas |
 
 La mutación forjada reproduce los campos ocultos reales del formulario (`$ACTION_REF_1`, `$ACTION_1:0`, `$ACTION_1:1`, `$ACTION_KEY`) leídos de una página de Administrador y los envía con la cookie del perfil probado y la cabecera `Origin` de la aplicación; el resultado se verifica en la base. El cupo de acceso (5 por minuto y origen) se vacía antes de cada login para no falsear resultados; solo el caso del límite lo agota, y va el último.
@@ -27,9 +28,11 @@ La mutación forjada reproduce los campos ocultos reales del formulario (`$ACTIO
 
 ```bash
 npm ci
-npm run e2e:build
+npm run e2e:build   # build de Next y del trabajador (worker-dist)
 npm run e2e
 ```
+
+El recorrido habilita los perfiles sintéticos **solo** porque `TEST_DATABASE_URL` es una base `_test` comprobada: crea el esquema `csapp_synthetic` en ella, usa un directorio temporal como almacén (`CSAPP_UPLOAD_DIR`, borrado al terminar) y arranca/detiene el trabajador desde el propio caso (`ctx.startWorker()`).
 
 Variables opcionales: `E2E_PORT` (3101), `E2E_CHROMIUM` (ruta a un Chromium; si no se indica se usa el de Playwright; en este entorno ya está en `/opt/pw-browsers`, no ejecutar `playwright install`).
 

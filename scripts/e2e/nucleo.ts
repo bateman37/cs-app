@@ -1,6 +1,8 @@
 import "dotenv/config";
 import { spawn, execFileSync, type ChildProcess } from "node:child_process";
 import { randomBytes } from "node:crypto";
+import { mkdtemp, rm } from "node:fs/promises";
+import { tmpdir } from "node:os";
 import path from "node:path";
 import { chromium, type Browser } from "playwright";
 import { databaseNameOf } from "../../src/lib/env";
@@ -38,9 +40,39 @@ export type Ctx = {
   /** Registra una comprobación numerada; nunca lanza. */
   check(label: string, ok: boolean, detail?: string): void;
   restartServer(): Promise<void>;
+  /** Directorio temporal de subida de Cargas (privado, borrado al terminar). */
+  uploadDir: string;
+  /** Arranca/detiene el trabajador de cargas construido (`npm run worker:build`) contra la base de test. */
+  startWorker(): Promise<void>;
+  stopWorker(): Promise<void>;
 };
 
 let server: ChildProcess | null = null;
+let worker: ChildProcess | null = null;
+
+async function startWorkerProcess(dbUrl: string): Promise<void> {
+  if (worker) return;
+  const bundle = path.join(ROOT, "worker-dist/worker.mjs");
+  worker = spawn(process.execPath, [bundle], {
+    cwd: ROOT,
+    env: { ...serverEnv(dbUrl), CSAPP_WORKER_POLL_MS: "300" },
+    stdio: "ignore",
+  });
+}
+
+async function stopWorkerProcess(): Promise<void> {
+  if (!worker) return;
+  const w = worker;
+  worker = null;
+  await new Promise<void>((resolve) => {
+    w.once("exit", () => resolve());
+    w.kill("SIGTERM");
+    setTimeout(() => {
+      w.kill("SIGKILL");
+      resolve();
+    }, 8000);
+  });
+}
 
 function serverEnv(dbUrl: string): NodeJS.ProcessEnv {
   return {
@@ -110,6 +142,14 @@ export async function runAll(casos: ((ctx: Ctx) => Promise<void>)[]): Promise<nu
   const { prisma } = await import("../../src/lib/db");
   const { provisionAccount } = await import("../../src/server/accounts");
   await prepareDatabase(dbUrl, prisma);
+  // Cargas: almacén temporal propio y perfiles sintéticos, SOLO porque este destino es una base de test
+  // comprobada (las tres condiciones del registro: variable = nombre de la base, sufijo _test, esquema marcador).
+  const uploadDir = await mkdtemp(path.join(tmpdir(), "csapp-e2e-cargas-"));
+  process.env.CSAPP_UPLOAD_DIR = uploadDir;
+  process.env.CSAPP_ENABLE_SYNTHETIC_PROFILES = databaseNameOf(dbUrl);
+  const { setupSyntheticSchema, resetSynthetic } = await import("../../tests/synthetic/schema");
+  await setupSyntheticSchema();
+  await resetSynthetic();
   // Cuentas sintéticas con contraseñas al azar en cada ejecución: no se versionan ni se imprimen.
   const accounts: Accounts = {
     adminEmail: "admin.e2e@test.local",
@@ -137,6 +177,9 @@ export async function runAll(casos: ((ctx: Ctx) => Promise<void>)[]): Promise<nu
       await stopServer();
       await startServer(dbUrl);
     },
+    uploadDir,
+    startWorker: () => startWorkerProcess(dbUrl),
+    stopWorker: stopWorkerProcess,
   };
   let browser: Browser | null = null;
   try {
@@ -152,7 +195,9 @@ export async function runAll(casos: ((ctx: Ctx) => Promise<void>)[]): Promise<nu
     }
   } finally {
     await browser?.close();
+    await stopWorkerProcess();
     await stopServer();
+    await rm(uploadDir, { recursive: true, force: true });
     await prisma.$disconnect();
   }
   const failed = results.filter((r) => !r.ok).length;

@@ -46,7 +46,7 @@
     "lint": "eslint .",
     "typecheck": "prisma generate && tsc --noEmit",
     "test": "vitest run --exclude tests/cargas-trabajador.test.ts --exclude tests/cargas-volumen.test.ts",
-    "e2e:build": "prisma generate && next build",
+    "e2e:build": "prisma generate && next build && node scripts/build-worker.mjs",
     "e2e": "tsx scripts/e2e/recorrido.ts",
     "postinstall": "prisma generate",
     "db:comprobar": "tsx scripts/check-env.ts",

@@ -8,6 +8,8 @@ export type AuditInput = {
   entityId: string;
   groupId?: string | null;
   clientId?: string | null;
+  personId?: string | null;
+  batchId?: string | null;
   summary: string;
   before?: unknown;
   after?: unknown;
@@ -30,6 +32,8 @@ export async function recordAudit(tx: Prisma.TransactionClient, actor: Actor, e:
       entityId: e.entityId,
       groupId: e.groupId ?? null,
       clientId: e.clientId ?? null,
+      personId: e.personId ?? null,
+      batchId: e.batchId ?? null,
       summary: e.summary,
       before: snapshot(e.before),
       after: snapshot(e.after),

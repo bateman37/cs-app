@@ -11,7 +11,7 @@ export async function personalUsuarios(ctx: Ctx): Promise<void> {
   await page.goto(`${ctx.base}/administracion/personal/nuevo`);
   await page.getByLabel("Nombre canónico").fill("Persona E2E Uno");
   await page.getByRole("button", { name: "Crear persona" }).click();
-  await page.waitForURL(/\/administracion\/personal\/[^/]+/, { timeout: 10000 }).catch(() => undefined);
+  await page.waitForURL(/\/administracion\/personal\/(?!nuevo)[^/?]+/, { timeout: 10000 }).catch(() => undefined);
   const p = await ctx.prisma.person.findFirst({ where: { name: "Persona E2E Uno" } });
   ctx.check("El Administrador crea una persona del maestro PERSONAL", Boolean(p));
   await page.goto(`${ctx.base}/administracion/personal/nuevo`);
@@ -29,7 +29,8 @@ export async function personalUsuarios(ctx: Ctx): Promise<void> {
   await page.getByLabel("Usuarios contratados").fill("65");
   await page.getByRole("button", { name: "Ver vista previa" }).click();
   await page.getByRole("button", { name: "Confirmar inicialización" }).click();
-  await page.waitForSelector(".notice-ok, h1", { timeout: 10000 }).catch(() => undefined);
+  await page.waitForURL(/\/administracion\/usuarios\/cliente\/[^/]+(?!\/revisar)\?/, { timeout: 10000 }).catch(() => undefined);
+  await page.waitForTimeout(1000);
   const m25 = await ctx.prisma.userMatrix.findFirst({ where: { clientId: client.id, year: 2025 }, include: { months: true } });
   ctx.check("Inicializar 2025 crea doce valores iguales y bloqueados", m25?.months.length === 12 && m25.months.every((x) => x.value === 65 && x.isLocked));
   ctx.check("El histórico de grupo no se copia al Cliente (el grupo sigue sin matriz)", (await ctx.prisma.userMatrix.count({ where: { groupId: group.id } })) === 0);

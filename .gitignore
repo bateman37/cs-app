@@ -12,3 +12,5 @@ fuentes-privadas/
 *.xlsx
 *.csv
 .DS_Store
+worker-dist/
+almacen-cargas/

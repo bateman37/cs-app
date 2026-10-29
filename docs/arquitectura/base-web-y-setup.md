@@ -15,7 +15,7 @@ Resultado de [CSAPP-01-v1](../../prompts/CSAPP-01-v1.md). Complementa la [propue
 | PostgreSQL | probado 16.15; se requiere ≥13 (extensión `btree_gist`, de confianza desde 13) | |
 | Pruebas / lint | Vitest 5.0.5, ESLint 9.39.5 (ESLint 10 no adoptado) | |
 
-Gestor único: npm 10 con `package-lock.json` versionado y `save-exact`. No se instala lector XLSX: no hace falta hasta CSAPP-02/03. Verificación de versiones: página oficial de ramas de Node consultada; la documentación de requisitos de Prisma no era accesible desde la sesión de implementación, por lo que se usaron los metadatos de paquetes en npm (`engines`, `peerDependencies`).
+Gestor único: npm 10 con `package-lock.json` versionado y `save-exact`. Lectores añadidos en CSAPP-02 (versiones exactas): `csv-parse` 7.0.3, `yauzl` 3.4.0 y `saxes` 6.0.0 (ver [lectores](lectores-xlsx-csv.md)); en desarrollo `esbuild` 0.28.2 (construye el trabajador), `yazl` 3.3.1 (genera XLSX de prueba) y `playwright` 1.63.0 (recorrido de navegador). No se actualizó ninguna dependencia previa. Verificación de versiones: página oficial de ramas de Node consultada; la documentación de requisitos de Prisma no era accesible desde la sesión de implementación, por lo que se usaron los metadatos de paquetes en npm (`engines`, `peerDependencies`).
 
 ## Variables (archivo `.env`, no versionado; modelo en `.env.example`)
 

@@ -32,6 +32,14 @@ Estado de la regla: **Confirmado** = decidido por Dennis; **Propuesto** = parám
 | Implementado en CSAPP-01: esquema, vigencias, auditoría | [Modelo físico](arquitectura/modelo-fisico-csapp01.md) | — | Implementado |
 | Guía PowerShell y prueba manual de CSAPP-01 | [Guía](plan/guia-powershell-csapp01.md) | — | Sin probar en Windows |
 | Resultados de validación de CSAPP-01 | [Validación](validacion/csapp-01.md) | — | Registro |
+| Implementado en CSAPP-02: personal único, alias y vigencias | [Personal](arquitectura/personal-csapp02.md) | MST 05-06 | Implementado; probado en Linux |
+| Implementado en CSAPP-02: matriz de usuarios contratados | [Matriz de usuarios](arquitectura/usuarios-matriz-csapp02.md) | USR 01-05 | Implementado; probado en Linux |
+| Implementado en CSAPP-02: contrato del motor de cargas | [Motor de cargas](arquitectura/motor-cargas-contrato.md) | IMP 01-07 | Implementado; probado en Linux con perfil sintético |
+| Implementado en CSAPP-02: lectores XLSX/CSV | [Lectores](arquitectura/lectores-xlsx-csv.md) | — | Implementado; medido en Linux |
+| Operación y recuperación del trabajador de cargas | [Guía del trabajador](plan/guia-trabajador-cargas.md) | — | Sin probar en Windows |
+| Guía PowerShell de CSAPP-02 | [Guía](plan/guia-powershell-csapp02.md) | — | Sin probar en Windows |
+| Recorrido de navegador reproducible | [Guía del recorrido](plan/guia-recorrido-navegador.md) | — | Probado en Linux; Windows sin probar |
+| Resultados de validación de CSAPP-02 | [Validación](validacion/csapp-02.md) | — | Registro |
 | DOC-00 y diez entregas | [Roadmap](plan/roadmap.md) | — | Confirmado |
 | Precarga futura y pruebas de Dennis | [Política](plan/precarga-y-pruebas.md) | — | Confirmado |
 | Progreso real | [Estado](plan/estado.md) | — | Registro vivo |
@@ -51,4 +59,4 @@ Estado de la regla: **Confirmado** = decidido por Dennis; **Propuesto** = parám
 
 ## Prompts
 
-[Índice de prompts](../prompts/README.md), [plantilla](../prompts/_plantilla.md), [CSAPP-DOC-00-v1](../prompts/CSAPP-DOC-00-v1.md) y [CSAPP-01-v1](../prompts/CSAPP-01-v1.md).
+[Índice de prompts](../prompts/README.md), [plantilla](../prompts/_plantilla.md), [CSAPP-DOC-00-v1](../prompts/CSAPP-DOC-00-v1.md), [CSAPP-01-v1](../prompts/CSAPP-01-v1.md) y [CSAPP-02-v1](../prompts/CSAPP-02-v1.md).

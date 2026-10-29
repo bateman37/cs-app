@@ -1,0 +1,286 @@
+// Modelo físico de CSAPP-01: acceso, maestros de clientes, vigencias, hitos y auditoría.
+// Las restricciones que Prisma no expresa (exclusión de solapamientos, CHECK, índices
+// únicos insensibles a mayúsculas) están en la migración SQL correspondiente.
+
+generator client {
+  provider = "prisma-client"
+  output   = "../src/generated/prisma"
+}
+
+datasource db {
+  provider = "postgresql"
+}
+
+// ---------------------------------------------------------------- Acceso
+
+enum UserRole {
+  ADMIN
+  CONSULTA
+}
+
+model User {
+  id            String   @id @default(cuid())
+  name          String
+  email         String   @unique
+  emailVerified Boolean  @default(false)
+  image         String?
+  role          UserRole @default(CONSULTA)
+  isActive      Boolean  @default(true)
+  createdAt     DateTime @default(now())
+  updatedAt     DateTime @updatedAt
+
+  sessions Session[]
+  accounts Account[]
+  audits   AuditEvent[]
+}
+
+model Session {
+  id        String   @id @default(cuid())
+  expiresAt DateTime
+  token     String   @unique
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+  ipAddress String?
+  userAgent String?
+  userId    String
+  user      User     @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  @@index([userId])
+}
+
+model Account {
+  id                    String    @id @default(cuid())
+  accountId             String
+  providerId            String
+  userId                String
+  user                  User      @relation(fields: [userId], references: [id], onDelete: Cascade)
+  accessToken           String?
+  refreshToken          String?
+  idToken               String?
+  accessTokenExpiresAt  DateTime?
+  refreshTokenExpiresAt DateTime?
+  scope                 String?
+  password              String?
+  createdAt             DateTime  @default(now())
+  updatedAt             DateTime  @updatedAt
+
+  @@index([userId])
+}
+
+model Verification {
+  id         String   @id @default(cuid())
+  identifier String
+  value      String
+  expiresAt  DateTime
+  createdAt  DateTime @default(now())
+  updatedAt  DateTime @updatedAt
+
+  @@index([identifier])
+}
+
+model RateLimit {
+  id          String @id @default(cuid())
+  key         String @unique
+  count       Int
+  lastRequest BigInt
+}
+
+// ---------------------------------------------------------------- Maestros
+
+enum ExternalSystem {
+  BC
+  ZENDESK
+  WRIKE
+  PAP
+}
+
+enum IdentityKind {
+  GROUP_KEY
+  ORG_ID
+  ORG_NAME
+  PROJECT_ID
+  PROJECT_NAME
+}
+
+enum ServiceAttribute {
+  SUPPORT
+  HOSTING
+  COMPLEXITY
+  PRODUCT
+}
+
+enum MilestoneType {
+  START
+  CLOUD_MIGRATION
+  MAJOR_VERSION
+}
+
+enum AuditAction {
+  CREATE
+  UPDATE
+  DEACTIVATE
+  REACTIVATE
+}
+
+/// Agrupación económica BC.
+model ClientGroup {
+  id             String   @id @default(cuid())
+  name           String
+  bcDenomination String?
+  isActive       Boolean  @default(true)
+  version        Int      @default(1)
+  createdAt      DateTime @default(now())
+  updatedAt      DateTime @updatedAt
+
+  clients    Client[]
+  identities ExternalIdentity[]
+  terms      ServiceTerm[]
+  milestones Milestone[]
+}
+
+/// Identidad operativa (organización Zendesk). groupId nulo = grupo no asignado.
+model Client {
+  id         String   @id @default(cuid())
+  groupId    String?
+  name       String
+  isInternal Boolean  @default(false)
+  isActive   Boolean  @default(true)
+  version    Int      @default(1)
+  createdAt  DateTime @default(now())
+  updatedAt  DateTime @updatedAt
+
+  group           ClientGroup?     @relation(fields: [groupId], references: [id], onDelete: Restrict)
+  implementations Implementation[]
+  identities      ExternalIdentity[]
+  terms           ServiceTerm[]
+  milestones      Milestone[]
+
+  @@index([groupId])
+}
+
+/// Implantación identificada de un Cliente; solo existe si la fuente la identifica.
+model Implementation {
+  id        String   @id @default(cuid())
+  clientId  String
+  name      String
+  key       String?
+  isActive  Boolean  @default(true)
+  version   Int      @default(1)
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  client     Client             @relation(fields: [clientId], references: [id], onDelete: Restrict)
+  identities ExternalIdentity[]
+  terms      ServiceTerm[]
+  milestones Milestone[]
+
+  @@index([clientId])
+}
+
+/// Catálogo explícito de productos.
+model Product {
+  id        String   @id @default(cuid())
+  name      String
+  isActive  Boolean  @default(true)
+  version   Int      @default(1)
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+}
+
+/// Equivalencia de origen. Vigencia [validFrom, validTo): validFrom inclusivo, validTo exclusivo;
+/// un extremo nulo significa sin límite conocido por ese lado.
+model ExternalIdentity {
+  id               String         @id @default(cuid())
+  system           ExternalSystem
+  kind             IdentityKind
+  rawValue         String
+  searchValue      String
+  groupId          String?
+  clientId         String?
+  implementationId String?
+  validFrom        DateTime?      @db.Date
+  validTo          DateTime?      @db.Date
+  note             String?
+  isActive         Boolean        @default(true)
+  version          Int            @default(1)
+  createdAt        DateTime       @default(now())
+  updatedAt        DateTime       @updatedAt
+
+  group          ClientGroup?    @relation(fields: [groupId], references: [id], onDelete: Restrict)
+  client         Client?         @relation(fields: [clientId], references: [id], onDelete: Restrict)
+  implementation Implementation? @relation(fields: [implementationId], references: [id], onDelete: Restrict)
+
+  @@index([system, kind, searchValue])
+  @@index([groupId])
+  @@index([clientId])
+  @@index([implementationId])
+}
+
+/// Dato de servicio con vigencia [validFrom, validTo), en un único ámbito (grupo, cliente o implantación).
+/// La ausencia de fila para una fecha significa «sin informar».
+model ServiceTerm {
+  id               String           @id @default(cuid())
+  attribute        ServiceAttribute
+  value            String
+  groupId          String?
+  clientId         String?
+  implementationId String?
+  validFrom        DateTime?        @db.Date
+  validTo          DateTime?        @db.Date
+  note             String?
+  version          Int              @default(1)
+  createdAt        DateTime         @default(now())
+  updatedAt        DateTime         @updatedAt
+
+  group          ClientGroup?    @relation(fields: [groupId], references: [id], onDelete: Restrict)
+  client         Client?         @relation(fields: [clientId], references: [id], onDelete: Restrict)
+  implementation Implementation? @relation(fields: [implementationId], references: [id], onDelete: Restrict)
+
+  @@index([groupId])
+  @@index([clientId])
+  @@index([implementationId])
+}
+
+model Milestone {
+  id               String        @id @default(cuid())
+  type             MilestoneType
+  date             DateTime      @db.Date
+  note             String?
+  groupId          String?
+  clientId         String?
+  implementationId String?
+  isActive         Boolean       @default(true)
+  version          Int           @default(1)
+  createdAt        DateTime      @default(now())
+  updatedAt        DateTime      @updatedAt
+
+  group          ClientGroup?    @relation(fields: [groupId], references: [id], onDelete: Restrict)
+  client         Client?         @relation(fields: [clientId], references: [id], onDelete: Restrict)
+  implementation Implementation? @relation(fields: [implementationId], references: [id], onDelete: Restrict)
+
+  @@index([groupId])
+  @@index([clientId])
+  @@index([implementationId])
+}
+
+model AuditEvent {
+  id         String      @id @default(cuid())
+  at         DateTime    @default(now())
+  actorId    String
+  actorEmail String
+  action     AuditAction
+  entityType String
+  entityId   String
+  /// Contexto para consultar el historial desde la ficha de grupo o de cliente.
+  groupId    String?
+  clientId   String?
+  summary    String
+  before     Json?
+  after      Json?
+
+  actor User @relation(fields: [actorId], references: [id], onDelete: Restrict)
+
+  @@index([groupId, at])
+  @@index([clientId, at])
+  @@index([entityType, entityId])
+}

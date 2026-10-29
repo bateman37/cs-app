@@ -17,7 +17,7 @@ Todas las entregas parten de las lecturas comunes (AGENTS, CLAUDE, [índice](../
 | CSAPP-09 | Conciliación, fiabilidad, rendimiento, exportaciones y recuperación | Reimportación/reversión, volumen medido, permisos y cifras conciliadas con cargas reales de Dennis |
 | CSAPP-10 | Aceptación, guías y preparación/ejecución del despliegue autorizado | Instalación y copia recuperable, guía Windows/IT, aceptación registrada y despliegue solo en entorno autorizado |
 
-Estado de las diez entregas: ver [estado](estado.md). Ninguna ha empezado.
+Estado de las diez entregas: ver [estado](estado.md). CSAPP-01 implementada y en PR sin fusionar; el resto no ha empezado.
 
 ## CSAPP-DOC-00 Arranque documental, fuera del roadmap
 

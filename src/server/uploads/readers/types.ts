@@ -4,8 +4,12 @@
  */
 export type CellKind = "text" | "number" | "date" | "bool" | "error" | "empty";
 
-/** `v` es el valor original como texto: un número conserva su representación exacta del archivo. */
-export type Cell = { v: string; k: CellKind };
+/**
+ * `v` es el valor original como texto: un número conserva su representación exacta del archivo.
+ * `d` solo existe en celdas de fecha (XLSX): fecha ISO AAAA-MM-DD (o AAAA-MM-DDTHH:MM:SS si lleva
+ * hora) interpretada con el calendario del libro; el valor original sigue en `v`.
+ */
+export type Cell = { v: string; k: CellKind; d?: string };
 
 export type SourceRow = {
   /** Nombre de la hoja (XLSX) o null (CSV). */

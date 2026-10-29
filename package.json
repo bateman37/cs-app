@@ -46,6 +46,8 @@
     "lint": "eslint .",
     "typecheck": "prisma generate && tsc --noEmit",
     "test": "vitest run",
+    "e2e:build": "prisma generate && next build",
+    "e2e": "tsx scripts/e2e/recorrido.ts",
     "postinstall": "prisma generate",
     "db:comprobar": "tsx scripts/check-env.ts",
     "db:migrar": "prisma migrate deploy",

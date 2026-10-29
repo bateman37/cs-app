@@ -38,9 +38,7 @@ export const declaredSchema = z
 
 export function sanitizeName(name: string): string {
   // Solo informativo: sin rutas ni caracteres de control; nunca se usa para el almacenamiento.
-  // eslint-disable-next-line no-control-regex
   const base = name.split(/[\\/]/).pop() ?? "";
-  // eslint-disable-next-line no-control-regex
   const clean = base.replace(/[\u0000-\u001f\u007f]/g, "").trim().slice(0, 200);
   return clean || "archivo";
 }

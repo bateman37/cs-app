@@ -14,7 +14,8 @@ export const MB = 1024 * 1024;
 export function uploadConfig() {
   return {
     /** Directorio privado persistente compartido por web y trabajador (fuera de public y de Git). */
-    dir: path.resolve(process.env.CSAPP_UPLOAD_DIR || path.join(process.cwd(), "almacen-cargas")),
+    // El almacén es un directorio externo en tiempo de ejecución: no debe trazarse en el build.
+    dir: path.resolve(/*turbopackIgnore: true*/ process.env.CSAPP_UPLOAD_DIR || path.join(/*turbopackIgnore: true*/ process.cwd(), "almacen-cargas")),
     maxBytes: num("CSAPP_UPLOAD_MAX_BYTES", 200 * MB),
     maxUncompressedBytes: num("CSAPP_UPLOAD_MAX_UNCOMPRESSED_BYTES", 1024 * MB),
     maxRatio: num("CSAPP_UPLOAD_MAX_RATIO", 200),

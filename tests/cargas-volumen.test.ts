@@ -1,4 +1,4 @@
-import { createReadStream, mkdtempSync, readFileSync, rmSync, statSync } from "node:fs";
+import { createReadStream, mkdtempSync, readFileSync, rmSync, statSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import path from "node:path";
 import { afterAll, beforeAll, describe, expect, it } from "vitest";
@@ -52,7 +52,7 @@ describe("Volumen", () => {
     });
     const uploadMs = Date.now() - tUp;
 
-    const worker = spawnWorker({ CSAPP_WORKER_CHUNK_ROWS: "5000", CSAPP_WORKER_POLL_MS: "200" });
+    const worker = spawnWorker({ CSAPP_WORKER_POLL_MS: "200", NODE_OPTIONS: process.env.CSAPP_TEST_WORKER_NODE_OPTIONS ?? "--max-old-space-size=384" });
     let peak = 0;
     const latencies: number[] = [];
     const t0 = Date.now();
@@ -103,6 +103,7 @@ describe("Volumen", () => {
       latenciaLecturaMaxMs: latencies[latencies.length - 1] ?? 0,
     };
     console.log(`MEDIDAS_VOLUMEN ${JSON.stringify(measures)}`);
+    writeFileSync(process.env.CSAPP_TEST_MEASURES_FILE ?? path.join(tmpdir(), "csapp-medidas-volumen.json"), JSON.stringify(measures, null, 2));
     expect(latencies.length).toBeGreaterThan(3); // la navegación respondió durante la preparación
     expect(p95).toBeLessThan(3000);
   }, 60 * 60_000);

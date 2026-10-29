@@ -9,7 +9,7 @@ Actualizado el 29 de octubre de 2026 tras ejecutar [CSAPP-DOC-00-v1](../../promp
 | Alcance | Exclusivamente documental; fuera de las diez entregas |
 | Repositorio | https://github.com/bateman37/cs-app |
 | Rama | claude/new-session-omvsmd (designada por la sesión; el prompt proponía docs/CSAPP-DOC-00-base-documental) |
-| PR | Se registra aquí al abrirla; sin fusionar |
+| PR | https://github.com/bateman37/cs-app/pull/1 (sin fusionar); contenido en el commit b8d90df |
 | Repositorio previo | Solo un README de una línea; no había decisiones posteriores que conciliar |
 | Contenido | Especificación v0.4 incorporada con sus rutas estables; prompt archivado byte a byte; roadmap ampliado con objetivo, alcance, lecturas, dependencias, aceptación y prueba manual por entrega; índice con propietario, IDs de regla y estado confirmado/propuesto |
 

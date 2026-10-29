@@ -59,9 +59,9 @@ async function medir() {
 if (arg("formato")) {
   medir().catch((e) => { console.error(e); process.exit(1); });
 } else {
-  const filasCsv = arg("filas-csv", "1000000");
-  const filasXlsx = arg("filas-xlsx", "500000");
-  for (const [f, n] of [["csv", filasCsv], ["xlsx", filasXlsx]]) {
+  const filasCsv = arg("filas-csv", "1000000") as string;
+  const filasXlsx = arg("filas-xlsx", "500000") as string;
+  for (const [f, n] of [["csv", filasCsv], ["xlsx", filasXlsx]] as [string, string][]) {
     console.log(execFileSync(process.execPath, ["--expose-gc", "--import", "tsx", import.meta.filename, "--formato", f, "--filas", n], { encoding: "utf8" }).trim());
   }
 }

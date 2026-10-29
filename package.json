@@ -49,6 +49,7 @@
     "postinstall": "prisma generate",
     "db:comprobar": "tsx scripts/check-env.ts",
     "db:migrar": "prisma migrate deploy",
-    "cuenta:crear": "tsx scripts/crear-cuenta.ts"
+    "cuenta:crear": "tsx scripts/crear-cuenta.ts",
+    "benchmark:lectores": "tsx scripts/benchmark-lectores.ts"
   }
 }

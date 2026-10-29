@@ -281,7 +281,19 @@ export function MilestonesSection({
   );
 }
 
-const ACTION_LABEL = { CREATE: "Alta", UPDATE: "Cambio", DEACTIVATE: "Desactivación", REACTIVATE: "Reactivación" } as const;
+const ACTION_LABEL = {
+  CREATE: "Alta",
+  UPDATE: "Cambio",
+  DEACTIVATE: "Desactivación",
+  REACTIVATE: "Reactivación",
+  INITIALIZE: "Inicialización",
+  UPLOAD: "Carga",
+  CONFIRM: "Confirmación",
+  CANCEL: "Cancelación",
+  ACTIVATE: "Activación",
+  REVERT: "Reversión",
+  REPROCESS: "Reproceso",
+} as const;
 const HIDE = new Set(["id", "createdAt", "updatedAt", "version", "groupId", "clientId", "implementationId", "searchValue"]);
 
 function flat(v: unknown): Record<string, string> {

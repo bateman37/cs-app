@@ -20,7 +20,7 @@ Verificaciones documentales ejecutadas (comprobaciones locales de texto y enlace
 | Dato | Valor |
 | --- | --- |
 | Rama | claude/new-session-omvsmd (designada por la sesión; el prompt proponía feature/CSAPP-01-base-y-clientes). Parte de la rama de DOC-00; su PR 1 ya se fusionó en main y se incorporó a esta rama con un merge, de modo que la PR de CSAPP-01 contiene solo esta entrega |
-| PR | Ver el último apartado de este documento (sin fusionar) |
+| PR | https://github.com/bateman37/cs-app/pull/2 (sin fusionar) |
 | Implementado | Next.js/Prisma/PostgreSQL; acceso local con Better Auth; perfiles Administrador y Consulta con autorización en servidor; Grupo Cliente, Cliente, implantaciones, equivalencias BC/Zendesk/Wrike/PAP, soporte/servidor/complejidad/producto con vigencias, hitos, catálogo de productos, auditoría atómica y control de versión; navegación con las cuatro vistas pendientes |
 | Probado | Tipos, lint, 31 pruebas con PostgreSQL real, build, instalación limpia y 41 comprobaciones de extremo a extremo en Linux. Ver [validación](../validacion/csapp-01.md) |
 | No probado | Windows/PowerShell; despliegue |

@@ -73,11 +73,11 @@ describe("Perfil sintético aislado", () => {
     expect(await ids()).toEqual(OPERATIVOS);
     await prisma.$executeRawUnsafe(`INSERT INTO csapp_synthetic.settings VALUES ('marker','synthetic')`);
     resetRegistryCache();
-    expect((await getProfiles()).length).toBe(8);
+    expect((await getProfiles()).length).toBe(11); // nueve operativos + dos sintéticos
   });
 
   it("rechaza una subida a un perfil no habilitado", async () => {
-    await expect(uploadText(admin.id, csvText([row(1)]), { profileId: "facturacion-soporte" })).rejects.toThrow(/no está disponible/);
+    await expect(uploadText(admin.id, csvText([row(1)]), { profileId: "perfil-inexistente" })).rejects.toThrow(/no está disponible/);
   });
 });
 

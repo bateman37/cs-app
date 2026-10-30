@@ -18,6 +18,7 @@ import {
 import type { ActivationContext, HeaderMatch, ImportProfile, Issue, ParsedRow } from "../uploads/profile";
 import type { Cell } from "../uploads/readers/types";
 import { lockDerivation, rederiveEntries } from "./derive";
+import { refreshTicketPreview } from "./preview";
 
 type Tx = Prisma.TransactionClient;
 type Header = (typeof TICKET_HEADERS)[number];
@@ -145,14 +146,16 @@ async function activate(tx: Tx, ctx: ActivationContext) {
     SELECT DISTINCT s.ticket_id, ${ctx.batchId}, now() FROM (${stagedTickets(ctx.batchId)}) s
     ON CONFLICT ("ticketId") DO NOTHING`);
 
-  const revisions = await tx.$executeRaw(Prisma.sql`
-    INSERT INTO "ZdTicketRevision" ("ticketId", fingerprint, "revisionNo", "organizationId", entorno, "causaRaiz", tags, destinations,
-      "createdOn", "createdTime", "ticketType", status, "typeKnown", "statusKnown", "adminDelegada", "previousRevisionId", "changedFields", "batchId")
-    SELECT s.ticket_id, s.fingerprint, COALESCE(p."revisionNo", 0) + 1, s.org, s.entorno, s.causa, s.tags, s.dest,
+  // Las revisiones nuevas se calculan primero en una tabla temporal y luego se insertan con ON CONFLICT: una sentencia que lee
+  // de la misma tabla que inserta (NOT EXISTS / LATERAL sobre ZdTicketRevision) obliga al planificador a recorrer una tabla
+  // que crece durante la sentencia y, con estadísticas de tabla vacía, resulta cuadrática con cientos de miles de filas.
+  await tx.$executeRaw(Prisma.sql`
+    CREATE TEMP TABLE "_zd_rev" ON COMMIT DROP AS
+    SELECT s.ticket_id, s.fingerprint, COALESCE(p."revisionNo", 0) + 1 AS rev_no, s.org, s.entorno, s.causa, s.tags, s.dest,
       s.created_on, s.created_time, s.type, s.status,
-      lower(s.type) = ANY(${[...TICKET_TYPES]}::text[]), lower(s.status) = ANY(${[...TICKET_STATUSES]}::text[]),
-      CASE WHEN s.entorno IS NULL THEN NULL ELSE position('delegada' in lower(s.entorno)) > 0 END,
-      p.id,
+      lower(s.type) = ANY(${[...TICKET_TYPES]}::text[]) AS type_known, lower(s.status) = ANY(${[...TICKET_STATUSES]}::text[]) AS status_known,
+      CASE WHEN s.entorno IS NULL THEN NULL ELSE position('delegada' in lower(s.entorno)) > 0 END AS admin_delegada,
+      p.id AS prev_id,
       array_remove(ARRAY[
         CASE WHEN p.id IS NOT NULL AND p."organizationId" IS DISTINCT FROM s.org THEN 'organization_id' END,
         CASE WHEN p.id IS NOT NULL AND p.entorno IS DISTINCT FROM s.entorno THEN 'Entorno y Tipología' END,
@@ -161,13 +164,18 @@ async function activate(tx: Tx, ctx: ActivationContext) {
         CASE WHEN p.id IS NOT NULL AND p."createdOn" IS DISTINCT FROM s.created_on THEN 'fecha_creación' END,
         CASE WHEN p.id IS NOT NULL AND p."ticketType" IS DISTINCT FROM s.type THEN 'type' END,
         CASE WHEN p.id IS NOT NULL AND p.status IS DISTINCT FROM s.status THEN 'status' END
-      ], NULL),
-      ${ctx.batchId}
+      ], NULL) AS changed
     FROM (${stagedTickets(ctx.batchId)}) s
     LEFT JOIN LATERAL (
       SELECT x.id, x."revisionNo", x."organizationId", x.entorno, x."causaRaiz", x.tags, x."createdOn", x."ticketType", x.status
-      FROM "ZdTicketRevision" x WHERE x."ticketId" = s.ticket_id ORDER BY x."revisionNo" DESC LIMIT 1) p ON true
-    WHERE NOT EXISTS (SELECT 1 FROM "ZdTicketRevision" x WHERE x."ticketId" = s.ticket_id AND x.fingerprint = s.fingerprint)`);
+      FROM "ZdTicketRevision" x WHERE x."ticketId" = s.ticket_id ORDER BY x."revisionNo" DESC LIMIT 1) p ON true`);
+  const revisions = await tx.$executeRaw(Prisma.sql`
+    INSERT INTO "ZdTicketRevision" ("ticketId", fingerprint, "revisionNo", "organizationId", entorno, "causaRaiz", tags, destinations,
+      "createdOn", "createdTime", "ticketType", status, "typeKnown", "statusKnown", "adminDelegada", "previousRevisionId", "changedFields", "batchId")
+    SELECT ticket_id, fingerprint, rev_no, org, entorno, causa, tags, dest, created_on, created_time, type, status, type_known, status_known,
+      admin_delegada, prev_id, changed, ${ctx.batchId}
+    FROM "_zd_rev"
+    ON CONFLICT ("ticketId", fingerprint) DO NOTHING`);
 
   await tx.$executeRaw(Prisma.sql`
     INSERT INTO "ZdTicketObservation" ("ticketId", "batchId", "revisionId", "observedOn", "observedKind", "receivedAt")
@@ -179,6 +187,7 @@ async function activate(tx: Tx, ctx: ActivationContext) {
   await recomputeCurrent(tx, batchTicketIds(ctx.batchId));
   // La llegada o el cambio de un ticket enriquece los tiempos ya cargados, sin releerlos.
   await rederiveEntries(tx, Prisma.sql`e."ticketId" IN (${batchTicketIds(ctx.batchId)})`, ctx.batchId);
+  await refreshTicketPreview(tx, ctx.batchId);
   return { inserted: newTickets, revised: revisions - newTickets };
 }
 
@@ -226,8 +235,13 @@ export const zendeskTickets: ImportProfile = {
   },
   activate,
   revert,
+  async postPrepare(tx, batchId) {
+    await refreshTicketPreview(tx, batchId);
+  },
   async rederive(tx, ctx) {
     await lockDerivation(tx);
-    return { updated: await rederiveEntries(tx, Prisma.sql`e."ticketId" IN (${batchTicketIds(ctx.batchId)})`, ctx.batchId) };
+    const updated = await rederiveEntries(tx, Prisma.sql`e."ticketId" IN (${batchTicketIds(ctx.batchId)})`, ctx.batchId);
+    await refreshTicketPreview(tx, ctx.batchId);
+    return { updated };
   },
 };

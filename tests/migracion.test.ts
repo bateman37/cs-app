@@ -50,14 +50,14 @@ describe("migración CSAPP-01 → CSAPP-02 sobre datos existentes", () => {
       expect(counts.rows[0]).toEqual({ g: "1", c: "1", t: "1", a: "1" });
       const audit = await db.query(`SELECT "personId","batchId" FROM "AuditEvent" WHERE id='e1'`);
       expect(audit.rows[0]).toEqual({ personId: null, batchId: null });
-      for (const table of ["Person", "PersonAlias", "PersonTerm", "StaffCatalogItem", "UserMatrix", "UserMatrixMonth", "UploadBatch", "UploadJob", "UploadStagedRow", "UploadRecordSource"]) {
+      for (const table of ["Person", "PersonAlias", "PersonTerm", "StaffCatalogItem", "UserMatrix", "UserMatrixMonth", "UploadBatch", "UploadJob", "UploadStagedRow", "UploadRecordSource", "ZdTicket", "ZdTicketRevision", "ZdTicketObservation", "ZdTimeEntry", "ZdTimeCorrection", "ZdTimeDecision"]) {
         const r = await db.query(`SELECT to_regclass('public."${table}"') AS t`);
         expect(r.rows[0].t, table).not.toBeNull();
       }
       const roles = await db.query(`SELECT name FROM "StaffCatalogItem" WHERE kind='PMO_ROLE' ORDER BY name`);
       expect(roles.rows.map((r) => r.name)).toEqual(["ANA", "DEV"]);
       const applied = await db.query(`SELECT migration_name FROM _prisma_migrations ORDER BY migration_name`);
-      expect(applied.rows).toHaveLength(2);
+      expect(applied.rows).toHaveLength(3);
       // Repetir el despliegue no cambia nada.
       execSync("npx prisma migrate deploy", { env, stdio: "pipe" });
     } finally {

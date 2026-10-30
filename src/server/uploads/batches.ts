@@ -254,7 +254,9 @@ export async function uploadStatus(actorId: string, id: string) {
     },
   });
   if (!b) return null;
-  return { ...b, terminal: TERMINAL_STATUSES.includes(b.status as UploadStatusName) };
+  // Un recálculo en cola o en curso mantiene el sondeo aunque el lote ya esté completado.
+  const busy = (await prisma.uploadJob.count({ where: { batchId: id, status: { in: ["PENDING", "RUNNING"] } } })) > 0;
+  return { ...b, terminal: TERMINAL_STATUSES.includes(b.status as UploadStatusName), busy };
 }
 
 /** Previsualización limitada y paginada del staging (nunca altera datos activos). */

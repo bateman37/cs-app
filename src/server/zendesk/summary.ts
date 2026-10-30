@@ -2,8 +2,8 @@ import { Prisma } from "@/generated/prisma/client";
 import { prisma } from "@/lib/db";
 import { authorize } from "@/server/authorize";
 import { pageResult, paging } from "@/server/common";
-import { TICKET_STATUSES, TICKET_TYPES, TIME_BUCKETS, ZENDESK_TICKETS_PROFILE, ZENDESK_TIME_PROFILE, type TimeBucket } from "@/domain/zendesk";
-import { derivationSql, stagedSource, ticketViewSql } from "./derive";
+import { TIME_BUCKETS, ZENDESK_TICKETS_PROFILE, ZENDESK_TIME_PROFILE, type TimeBucket } from "@/domain/zendesk";
+import { previewState } from "./preview";
 
 const n = (v: bigint | number | null | undefined) => Number(v ?? 0);
 
@@ -15,14 +15,6 @@ async function batchHead(batchId: string) {
 }
 
 // ---------------------------------------------------------------- Tickets
-
-const stagedTicketSrc = (batchId: string) => Prisma.sql`
-  SELECT r.typed->>'ticket_id' AS key, r.typed->>'organization_id' AS org_id, (r.typed->>'created_on')::date AS created_on,
-    r.typed->>'causa_raiz' AS cause,
-    (lower(r.typed->>'type') = ANY(${[...TICKET_TYPES]}::text[])) AS type_known,
-    (lower(r.typed->>'status') = ANY(${[...TICKET_STATUSES]}::text[])) AS status_known
-  FROM "UploadStagedRow" r
-  WHERE r."batchId" = ${batchId} AND r.classification = 'VALID' AND r."duplicateInFile" = false`;
 
 export type TicketsSummary = {
   rowsReceived: number;
@@ -38,6 +30,8 @@ export type TicketsSummary = {
   observations: number;
   /** Observaciones más antiguas que la vigente de otro lote: se conservan como histórico y no la sustituyen. */
   olderThanCurrent: number;
+  /** Tickets con otra observación de la misma fecha: el orden se resuelve por recepción del lote (criterio explícito, orden incierto). */
+  sameDayObservations: number;
   orgNone: number;
   orgNoClient: number;
   clientNoGroup: number;
@@ -48,6 +42,8 @@ export type TicketsSummary = {
   observedOn: string;
   freshnessKnown: boolean;
   tagsDestinations: Record<string, number>;
+  /** Cuándo se calcularon los vínculos con maestros y si estos cambiaron después. */
+  preview: { computedAt: Date; stale: boolean } | null;
 };
 
 export async function ticketsSummary(actorId: string, batchId: string): Promise<TicketsSummary | null> {
@@ -68,15 +64,21 @@ export async function ticketsSummary(actorId: string, batchId: string): Promise<
       AND EXISTS (SELECT 1 FROM "ZdTicketObservation" o
         WHERE o."ticketId" = r.typed->>'ticket_id' AND o."batchId" <> ${batchId}
           AND (o."observedOn", o."receivedAt") > (${observedOn}::date, ${head.createdAt}))`);
+  const [tie] = await prisma.$queryRaw<{ n: bigint }[]>(Prisma.sql`
+    SELECT count(*) AS n FROM "UploadStagedRow" r
+    WHERE r."batchId" = ${batchId} AND r.classification = 'VALID' AND NOT r."duplicateInFile"
+      AND EXISTS (SELECT 1 FROM "ZdTicketObservation" o
+        WHERE o."ticketId" = r.typed->>'ticket_id' AND o."batchId" <> ${batchId} AND o."observedOn" = ${observedOn}::date)`);
   const [v] = await prisma.$queryRaw<Record<string, bigint>[]>(Prisma.sql`
-    SELECT count(*) FILTER (WHERE org_state = 'NO_ORGANIZATION') AS org_none,
-      count(*) FILTER (WHERE org_state = 'NO_CLIENT') AS org_no_client,
-      count(*) FILTER (WHERE org_state = 'CLIENT_NO_GROUP') AS no_group,
-      count(*) FILTER (WHERE client_id IS NOT NULL AND internal) AS internal,
-      count(*) FILTER (WHERE client_id IS NOT NULL AND NOT internal) AS external,
-      count(*) FILTER (WHERE client_id IS NULL) AS unresolved,
+    SELECT count(*) FILTER (WHERE "orgState" = 'NO_ORGANIZATION') AS org_none,
+      count(*) FILTER (WHERE "orgState" = 'NO_CLIENT') AS org_no_client,
+      count(*) FILTER (WHERE "orgState" = 'CLIENT_NO_GROUP') AS no_group,
+      count(*) FILTER (WHERE "clientId" IS NOT NULL AND internal) AS internal,
+      count(*) FILTER (WHERE "clientId" IS NOT NULL AND NOT internal) AS external,
+      count(*) FILTER (WHERE "clientId" IS NULL) AS unresolved,
       count(*) FILTER (WHERE incomplete) AS incomplete
-    FROM (${ticketViewSql(stagedTicketSrc(batchId))}) v`);
+    FROM "ZdTicketPreview" WHERE "batchId" = ${batchId}`);
+  const preview = await previewState(prisma, batchId, "tickets");
   const dest = await prisma.$queryRaw<{ d: string; n: bigint }[]>(Prisma.sql`
     SELECT d, count(*) AS n FROM (
       SELECT DISTINCT r.typed->>'ticket_id' AS t, m.dest AS d FROM "UploadStagedRow" r,
@@ -103,6 +105,7 @@ export async function ticketsSummary(actorId: string, batchId: string): Promise<
     unchanged: n(c?.unchanged),
     observations: n(c?.distinct_t),
     olderThanCurrent: n(older?.n),
+    sameDayObservations: n(tie?.n),
     orgNone: n(v?.org_none),
     orgNoClient: n(v?.org_no_client),
     clientNoGroup: n(v?.no_group),
@@ -113,6 +116,7 @@ export async function ticketsSummary(actorId: string, batchId: string): Promise<
     observedOn,
     freshnessKnown: head.declaredExtractionDate !== null,
     tagsDestinations: destinations,
+    preview,
   };
 }
 
@@ -150,17 +154,18 @@ export async function listBatchTickets(actorId: string, batchId: string, query: 
     : f === "incomplete" ? Prisma.sql`x.incomplete`
     : f === "older" ? Prisma.sql`x.older`
     : Prisma.sql`true`}`;
+  // Vínculos desde la instantánea indexada; la fila fuente se une por (lote, posición), clave única del staging.
   const base = Prisma.sql`
-    SELECT r.position, r.sheet, r."sourceRow", r.disposition, r.typed->>'ticket_id' AS ticket_id, r.typed->>'status' AS status, r.typed->>'type' AS type,
-      r.typed->>'organization_id' AS org, v.client_id, cl.name AS client_name, gr.name AS group_name, v.internal, v.org_state, v.incident_class, v.hosting,
-      v.incomplete, r.typed->>'causa_raiz' AS cause, r.typed->'tags' AS tags,
-      EXISTS (SELECT 1 FROM "ZdTicketObservation" o WHERE o."ticketId" = r.typed->>'ticket_id' AND o."batchId" <> ${batchId}
+    SELECT r.position, r.sheet, r."sourceRow", r.disposition, p."ticketId" AS ticket_id, r.typed->>'status' AS status, r.typed->>'type' AS type,
+      r.typed->>'organization_id' AS org, p."clientId" AS client_id, cl.name AS client_name, gr.name AS group_name, p.internal,
+      p."orgState" AS org_state, p."incidentClass" AS incident_class, p.hosting, p.incomplete, r.typed->>'causa_raiz' AS cause, r.typed->'tags' AS tags,
+      EXISTS (SELECT 1 FROM "ZdTicketObservation" o WHERE o."ticketId" = p."ticketId" AND o."batchId" <> ${batchId}
         AND (o."observedOn", o."receivedAt") > (${observedOn}::date, ${head.createdAt})) AS older
-    FROM "UploadStagedRow" r
-    JOIN (${ticketViewSql(stagedTicketSrc(batchId))}) v ON v.key = r.typed->>'ticket_id'
-    LEFT JOIN "Client" cl ON cl.id = v.client_id
-    LEFT JOIN "ClientGroup" gr ON gr.id = cl."groupId"
-    WHERE r."batchId" = ${batchId} AND r.classification = 'VALID' AND NOT r."duplicateInFile"`;
+    FROM "ZdTicketPreview" p
+    JOIN "UploadStagedRow" r ON r."batchId" = p."batchId" AND r.position = p.position
+    LEFT JOIN "Client" cl ON cl.id = p."clientId"
+    LEFT JOIN "ClientGroup" gr ON gr.id = p."groupId"
+    WHERE p."batchId" = ${batchId}`;
   const [rows, total] = await Promise.all([
     prisma.$queryRaw<Record<string, unknown>[]>(Prisma.sql`SELECT * FROM (${base}) x WHERE ${cond} ORDER BY x.position LIMIT ${take} OFFSET ${skip}`),
     prisma.$queryRaw<{ n: bigint }[]>(Prisma.sql`SELECT count(*) AS n FROM (${base}) x WHERE ${cond}`),
@@ -211,30 +216,32 @@ export async function getTicketDetail(actorId: string, ticketId: string) {
  * registros materializados (indexados); antes de activar, de la derivación en vivo sobre el staging.
  */
 function timeRowsSql(batchId: string, completed: boolean): Prisma.Sql {
+  const fixed = (fallback: Prisma.Sql) => Prisma.sql`
+    CASE WHEN b.classification <> 'VALID' THEN NULL
+         WHEN b.dup THEN 'DUPLICATE_FILE'
+         WHEN b.disposition = 'DUPLICATE_EXISTING' THEN 'DUPLICATE_EXISTING'
+         WHEN b.disposition = 'PENDING_DECISION' THEN 'PENDING_DECISION'
+         ELSE ${fallback} END`;
   const base = Prisma.sql`
     SELECT r.position, r.sheet, r."sourceRow", r.classification, r."duplicateInFile" AS dup, r.disposition, r.fingerprint,
       r.typed->>'ticket_id' AS ticket_id, r.typed->>'user_id' AS user_id, r.typed->>'user_name' AS user_name, r.typed->>'date' AS work_date,
       r.typed->>'id' AS source_id,
       CASE WHEN r.classification = 'VALID' THEN (r.typed->>'logged_hours')::numeric * 60 + (r.typed->>'logged_minutes')::numeric END AS minutes
     FROM "UploadStagedRow" r WHERE r."batchId" = ${batchId}`;
-  const fixed = (alias: string, fallback: Prisma.Sql) => Prisma.sql`
-    CASE WHEN ${Prisma.raw(alias)}.classification <> 'VALID' THEN NULL
-         WHEN ${Prisma.raw(alias)}.dup THEN 'DUPLICATE_FILE'
-         WHEN ${Prisma.raw(alias)}.disposition = 'DUPLICATE_EXISTING' THEN 'DUPLICATE_EXISTING'
-         WHEN ${Prisma.raw(alias)}.disposition = 'PENDING_DECISION' THEN 'PENDING_DECISION'
-         ELSE ${fallback} END`;
   if (completed) {
+    // Lote activo: el motivo sale de los registros materializados (única por huella de origen).
     return Prisma.sql`
-      SELECT b.*, ${fixed("b", Prisma.sql`COALESCE(e1."drvBucket", e2."drvBucket", 'NO_TICKET')`)} AS bucket, COALESCE(e1."drvFlags", e2."drvFlags") AS flags
+      SELECT b.*, ${fixed(Prisma.sql`COALESCE(e1."drvBucket", e2."drvBucket", 'NO_TICKET')`)} AS bucket, COALESCE(e1."drvFlags", e2."drvFlags") AS flags
       FROM (${base}) b
       LEFT JOIN "ZdTimeEntry" e1 ON b.disposition = 'NEW' AND e1."originFingerprint" = b.fingerprint
       LEFT JOIN "ZdTimeDecision" dc ON b.disposition = 'CORRECTION' AND dc."batchId" = ${batchId} AND dc.fingerprint = b.fingerprint
       LEFT JOIN "ZdTimeEntry" e2 ON e2.id = dc."targetEntryId"`;
   }
+  // Antes de activar: instantánea calculada al preparar, unida por (lote, posición).
   return Prisma.sql`
-    SELECT b.*, ${fixed("b", Prisma.sql`COALESCE(d.bucket, 'NO_TICKET')`)} AS bucket, d.flags
+    SELECT b.*, ${fixed(Prisma.sql`COALESCE(p.bucket, 'NO_TICKET')`)} AS bucket, p.flags AS flags
     FROM (${base}) b
-    LEFT JOIN (${derivationSql(stagedSource(batchId, Prisma.sql`AND r.disposition IN ('NEW', 'CORRECTION')`))}) d ON d.key = b.position::text`;
+    LEFT JOIN "ZdTimePreview" p ON p."batchId" = ${batchId} AND p.position = b.position`;
 }
 
 export type TimesSummary = {
@@ -255,6 +262,8 @@ export type TimesSummary = {
   internalHours: string;
   pendingCorrections: number;
   source: "registros" | "previsualizacion";
+  /** Solo en previsualización: cuándo se calcularon los motivos y si los maestros o tickets cambiaron después. */
+  preview: { computedAt: Date; stale: boolean } | null;
 };
 
 export async function timesSummary(actorId: string, batchId: string): Promise<TimesSummary | null> {
@@ -306,6 +315,7 @@ export async function timesSummary(actorId: string, batchId: string): Promise<Ti
     internalHours: extra[0]?.internal ?? "0",
     pendingCorrections: buckets.find((b) => b.bucket === "PENDING_DECISION")?.rows ?? 0,
     source: completed ? "registros" : "previsualizacion",
+    preview: completed ? null : await previewState(prisma, batchId, "times"),
   };
 }
 

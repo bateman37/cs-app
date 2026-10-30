@@ -55,27 +55,29 @@ async function activate(id: string) {
 
 describe("Perfil sintético aislado", () => {
   it("solo se habilita con las tres condiciones", async () => {
-    expect((await getProfiles()).map((p) => p.id)).toEqual(["sintetico-incorporar", "sintetico-sustituir"]);
+    const OPERATIVOS = ["zendesk-tickets", "zendesk-tiempo"];
+    const ids = async () => (await getProfiles()).map((p) => p.id);
+    expect(await ids()).toEqual([...OPERATIVOS, "sintetico-incorporar", "sintetico-sustituir"]);
     const saved = process.env.CSAPP_ENABLE_SYNTHETIC_PROFILES;
     // 1. variable ausente o distinta del nombre de la base
     delete process.env.CSAPP_ENABLE_SYNTHETIC_PROFILES;
     resetRegistryCache();
-    expect(await getProfiles()).toEqual([]);
+    expect(await ids()).toEqual(OPERATIVOS);
     process.env.CSAPP_ENABLE_SYNTHETIC_PROFILES = "cs_app";
     resetRegistryCache();
-    expect(await getProfiles()).toEqual([]);
+    expect(await ids()).toEqual(OPERATIVOS);
     // 3. sin el esquema marcador no hay perfiles aunque la variable sea correcta
     process.env.CSAPP_ENABLE_SYNTHETIC_PROFILES = saved;
     await prisma.$executeRawUnsafe(`DELETE FROM csapp_synthetic.settings WHERE key = 'marker'`);
     resetRegistryCache();
-    expect(await getProfiles()).toEqual([]);
+    expect(await ids()).toEqual(OPERATIVOS);
     await prisma.$executeRawUnsafe(`INSERT INTO csapp_synthetic.settings VALUES ('marker','synthetic')`);
     resetRegistryCache();
-    expect((await getProfiles()).length).toBe(2);
+    expect((await getProfiles()).length).toBe(4);
   });
 
   it("rechaza una subida a un perfil no habilitado", async () => {
-    await expect(uploadText(admin.id, csvText([row(1)]), { profileId: "zendesk-tickets" })).rejects.toThrow(/no está disponible/);
+    await expect(uploadText(admin.id, csvText([row(1)]), { profileId: "wrike" })).rejects.toThrow(/no está disponible/);
   });
 });
 

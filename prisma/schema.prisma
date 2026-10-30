@@ -558,6 +558,9 @@ model UploadBatch {
   zdEntries      ZdTimeEntry[]
   zdCorrections  ZdTimeCorrection[]
   zdDecisions    ZdTimeDecision[]
+  zdStamp        ZdPreviewStamp?
+  zdTicketPreview ZdTicketPreview[]
+  zdTimePreview   ZdTimePreview[]
 
   @@index([createdAt])
   @@index([profileId, status])
@@ -806,4 +809,46 @@ model ZdTimeDecision {
   decidedBy User        @relation(fields: [decidedById], references: [id], onDelete: Restrict)
 
   @@unique([batchId, fingerprint])
+}
+
+/// Instantánea de los vínculos derivados de cada fila de un lote de tickets, calculada al preparar, activar o recalcular.
+/// La ficha la lee indexada (sin recalcular la derivación por consulta) y avisa si los maestros cambiaron después.
+model ZdTicketPreview {
+  batchId       String
+  position      Int
+  ticketId      String
+  orgState      String
+  clientId      String?
+  groupId       String?
+  internal      Boolean?
+  hosting       String?
+  incidentClass String
+  incomplete    Boolean
+
+  batch UploadBatch @relation(fields: [batchId], references: [id], onDelete: Restrict)
+
+  @@id([batchId, position])
+  @@index([batchId, orgState])
+}
+
+/// Instantánea del motivo principal y los indicadores de cada fila de un lote de tiempos (solo las que se materializarían).
+model ZdTimePreview {
+  batchId  String
+  position Int
+  bucket   String
+  flags    String[] @default([])
+
+  batch UploadBatch @relation(fields: [batchId], references: [id], onDelete: Restrict)
+
+  @@id([batchId, position])
+  @@index([batchId, bucket])
+}
+
+/// Huella de los datos de los que depende la instantánea (maestros y tickets) cuando se calculó.
+model ZdPreviewStamp {
+  batchId    String   @id
+  computedAt DateTime @default(now())
+  stamp      String
+
+  batch UploadBatch @relation(fields: [batchId], references: [id], onDelete: Restrict)
 }

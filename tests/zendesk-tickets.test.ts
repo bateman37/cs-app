@@ -1,6 +1,6 @@
 import { afterAll, beforeAll, beforeEach, describe, expect, it } from "vitest";
 import { prisma } from "@/lib/db";
-import { confirmUpload, getUpload, listBatchesForTest } from "./zendesk-batches";
+import { confirmUpload, getUpload } from "@/server/uploads/batches";
 import { batch, drain, freshEnvironment, removeUploadDir, useUploadDir } from "./cargas-helpers";
 import { excelSerial, ticket, ticketsBuffer, type TicketRow } from "./generators/zendesk";
 import { addClient, addGroup, addHosting, count, importZd, prepareZd, ticketCurrent, TICKETS } from "./zendesk-helpers";
@@ -354,4 +354,3 @@ describe("reversión y reproceso", () => {
   });
 });
 
-void listBatchesForTest;

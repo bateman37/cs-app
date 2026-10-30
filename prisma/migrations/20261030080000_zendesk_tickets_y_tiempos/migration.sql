@@ -220,6 +220,57 @@ ALTER TABLE "ZdTimeDecision" ADD CONSTRAINT "ZdTimeDecision_batchId_fkey" FOREIG
 ALTER TABLE "ZdTimeDecision" ADD CONSTRAINT "ZdTimeDecision_decidedById_fkey" FOREIGN KEY ("decidedById") REFERENCES "User"("id") ON DELETE RESTRICT ON UPDATE CASCADE;
 
 
+-- Instantáneas de previsualización (vínculos derivados por fila, calculados al preparar/activar/recalcular).
+-- CreateTable
+CREATE TABLE "ZdTicketPreview" (
+    "batchId" TEXT NOT NULL,
+    "position" INTEGER NOT NULL,
+    "ticketId" TEXT NOT NULL,
+    "orgState" TEXT NOT NULL,
+    "clientId" TEXT,
+    "groupId" TEXT,
+    "internal" BOOLEAN,
+    "hosting" TEXT,
+    "incidentClass" TEXT NOT NULL,
+    "incomplete" BOOLEAN NOT NULL,
+
+    CONSTRAINT "ZdTicketPreview_pkey" PRIMARY KEY ("batchId","position")
+);
+
+-- CreateTable
+CREATE TABLE "ZdTimePreview" (
+    "batchId" TEXT NOT NULL,
+    "position" INTEGER NOT NULL,
+    "bucket" TEXT NOT NULL,
+    "flags" TEXT[] DEFAULT ARRAY[]::TEXT[],
+
+    CONSTRAINT "ZdTimePreview_pkey" PRIMARY KEY ("batchId","position")
+);
+
+-- CreateTable
+CREATE TABLE "ZdPreviewStamp" (
+    "batchId" TEXT NOT NULL,
+    "computedAt" TIMESTAMP(3) NOT NULL DEFAULT CURRENT_TIMESTAMP,
+    "stamp" TEXT NOT NULL,
+
+    CONSTRAINT "ZdPreviewStamp_pkey" PRIMARY KEY ("batchId")
+);
+
+-- CreateIndex
+CREATE INDEX "ZdTicketPreview_batchId_orgState_idx" ON "ZdTicketPreview"("batchId", "orgState");
+
+-- CreateIndex
+CREATE INDEX "ZdTimePreview_batchId_bucket_idx" ON "ZdTimePreview"("batchId", "bucket");
+
+-- AddForeignKey
+ALTER TABLE "ZdTicketPreview" ADD CONSTRAINT "ZdTicketPreview_batchId_fkey" FOREIGN KEY ("batchId") REFERENCES "UploadBatch"("id") ON DELETE RESTRICT ON UPDATE CASCADE;
+
+-- AddForeignKey
+ALTER TABLE "ZdTimePreview" ADD CONSTRAINT "ZdTimePreview_batchId_fkey" FOREIGN KEY ("batchId") REFERENCES "UploadBatch"("id") ON DELETE RESTRICT ON UPDATE CASCADE;
+
+-- AddForeignKey
+ALTER TABLE "ZdPreviewStamp" ADD CONSTRAINT "ZdPreviewStamp_batchId_fkey" FOREIGN KEY ("batchId") REFERENCES "UploadBatch"("id") ON DELETE RESTRICT ON UPDATE CASCADE;
+
 -- Restricciones que Prisma no expresa.
 ALTER TABLE "ZdTicket" ADD CONSTRAINT "ZdTicket_id_digits" CHECK ("ticketId" ~ '^[0-9]+$');
 ALTER TABLE "ZdTicketRevision" ADD CONSTRAINT "ZdTicketRevision_no_positive" CHECK ("revisionNo" >= 1);

@@ -6,10 +6,10 @@ import { cancelUploadAction, confirmUploadAction, reprocessUploadAction, revertU
 type Av = { allowed: boolean; reason?: string };
 
 /** Acciones por estado: solo se envía el identificador (y la versión); el servicio valida la transición. */
-export function ActionButtons({ id, version, actions }: { id: string; version: number; actions: { confirm: Av; cancel: Av; reprocess: Av; revert: Av } }) {
+export function ActionButtons({ id, version, actions, completed = false }: { id: string; version: number; actions: { confirm: Av; cancel: Av; reprocess: Av; revert: Av }; completed?: boolean }) {
   const items: { key: keyof typeof actions; label: string; variant: "primary" | "secondary" | "danger"; action: typeof confirmUploadAction; hint: string }[] = [
     { key: "confirm", label: "Confirmar y activar", variant: "primary", action: confirmUploadAction, hint: "Solicita la activación atómica de las filas válidas." },
-    { key: "reprocess", label: "Reprocesar", variant: "secondary", action: reprocessUploadAction, hint: "Vuelve a validar el archivo original ya guardado." },
+    { key: "reprocess", label: "Reprocesar", variant: "secondary", action: reprocessUploadAction, hint: completed ? "Recalcula relaciones y atribución con los maestros y fuentes actuales; no relee el archivo ni cambia fechas ni observaciones." : "Vuelve a validar el archivo original ya guardado." },
     { key: "cancel", label: "Cancelar", variant: "danger", action: cancelUploadAction, hint: "Solo antes de que comience la activación." },
     { key: "revert", label: "Revertir", variant: "danger", action: revertUploadAction, hint: "Deshace la aportación de este lote respetando filas compartidas." },
   ];

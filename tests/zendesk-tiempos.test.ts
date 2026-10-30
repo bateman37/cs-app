@@ -1,6 +1,6 @@
 import { afterAll, beforeAll, beforeEach, describe, expect, it } from "vitest";
 import { prisma } from "@/lib/db";
-import { confirmUpload, getUpload, reprocessUpload, revertUpload } from "@/server/uploads/batches";
+import { confirmUpload, reprocessUpload, revertUpload } from "@/server/uploads/batches";
 import { runOnce } from "@/server/uploads/worker";
 import { decideTimeCorrection } from "@/server/zendesk/corrections";
 import { listBatchTimes, listCorrectionCandidates, timesSummary } from "@/server/zendesk/summary";
@@ -310,6 +310,21 @@ describe("relaciones tardías y reproceso (IMP 03)", () => {
     expect(audit.length).toBeGreaterThanOrEqual(2);
   });
 
+  it("completar el Grupo BC de un Cliente permite reprocesar: se actualiza la agrupación y la atribución al Cliente no cambia", async () => {
+    await importZd(admin.id, TICKETS, await ticketsBuffer([ticket()]));
+    const client = await addClient({ name: "Cliente sin grupo", orgId: "9001" });
+    await addPerson({ name: "Ana", zdId: "5001", pmo: [[null, null, false]] });
+    const t = await importZd(admin.id, TIEMPO, await T([timeRow()]));
+    let e = await prisma.zdTimeEntry.findFirstOrThrow();
+    expect([e.drvBucket, e.drvClientId, e.drvGroupId, e.drvFlags]).toEqual(["ATTRIBUTABLE", client.id, null, ["NO_GROUP"]]);
+    const group = await addGroup("Grupo BC");
+    await prisma.client.update({ where: { id: client.id }, data: { groupId: group.id } });
+    await reprocessUpload(admin.id, t.id);
+    await drain();
+    e = await prisma.zdTimeEntry.findFirstOrThrow();
+    expect([e.drvBucket, e.drvClientId, e.drvGroupId, e.drvFlags, e.drvVersion]).toEqual(["ATTRIBUTABLE", client.id, group.id, [], 2]);
+  });
+
   it("el nombre solo vale como alias explícito: nunca por parecido; un ID reconocido no se reasigna por el nombre", async () => {
     await importZd(admin.id, TICKETS, await ticketsBuffer([ticket()]));
     const ana = await addPerson({ name: "Ana", zdId: "5001", pmo: [[null, null, false]] });
@@ -421,6 +436,47 @@ describe("resumen verificable y listado con motivos (IMP 01, 07)", () => {
   });
 });
 
+describe("instantánea de previsualización", () => {
+  it("avisa cuando los maestros cambian después de preparar y Reprocesar la renueva; al activar se deriva con los datos actuales", async () => {
+    const g = await addGroup("G");
+    await addClient({ name: "Cliente", orgId: "9001", groupId: g.id });
+    await importZd(admin.id, TICKETS, await ticketsBuffer([ticket()]));
+    const b = await prepareZd(admin.id, TIEMPO, await T([timeRow()]));
+    let s = await timesSummary(admin.id, b.id);
+    expect(s?.preview?.stale).toBe(false);
+    expect(s?.buckets.find((x) => x.bucket === "NO_PERSON")?.rows).toBe(1);
+    await addPerson({ name: "Ana", zdId: "5001", pmo: [[null, null, false]] });
+    s = await timesSummary(admin.id, b.id);
+    expect(s?.preview?.stale).toBe(true);
+    expect(s?.buckets.find((x) => x.bucket === "NO_PERSON")?.rows).toBe(1);
+    await reprocessUpload(admin.id, b.id);
+    await drain();
+    s = await timesSummary(admin.id, b.id);
+    expect(s?.preview?.stale).toBe(false);
+    expect(s?.buckets.find((x) => x.bucket === "ATTRIBUTABLE")?.rows).toBe(1);
+    // Con la instantánea obsoleta, activar deriva igualmente con los datos actuales.
+    await addPerson({ name: "Otra", zdId: "5002" });
+    const c = await prepareZd(admin.id, TIEMPO, await T([timeRow({ user_id: "5002", user_name: "Otra", hour: hourAt(10, 0) })]));
+    await addPersonAlias((await prisma.person.findFirstOrThrow({ where: { name: "Otra" } })).id, "NAME", "otra x");
+    await prisma.personTerm.create({ data: { personId: (await prisma.person.findFirstOrThrow({ where: { name: "Otra" } })).id, attribute: "PMO_MEMBER", flag: false } });
+    expect((await timesSummary(admin.id, c.id))?.preview?.stale).toBe(true);
+    await confirmUpload(admin.id, c.id);
+    await drain();
+    expect((await prisma.zdTimeEntry.findFirstOrThrow({ where: { userId: "5002" } })).drvBucket).toBe("ATTRIBUTABLE");
+  });
+
+  it("una decisión de corrección actualiza la instantánea de esa fila sin recalcular todo el lote", async () => {
+    await importZd(admin.id, TIEMPO, await T([timeRow({ id: "88", logged_hours: 1, logged_minutes: 0 })]));
+    const b = await prepareZd(admin.id, TIEMPO, await T([timeRow({ id: "88", logged_hours: 2, logged_minutes: 0 }), timeRow({ id: "90", ticket_id: "3", logged_hours: 4, logged_minutes: 0 })]));
+    expect(await prisma.zdTimePreview.count({ where: { batchId: b.id } })).toBe(1);
+    const [cand] = await listCorrectionCandidates(admin.id, b.id);
+    await decideTimeCorrection(admin.id, b.id, { fingerprint: cand.fingerprint, decision: "DIFFERENT" });
+    expect(await prisma.zdTimePreview.count({ where: { batchId: b.id } })).toBe(2);
+    await decideTimeCorrection(admin.id, b.id, { fingerprint: cand.fingerprint, decision: "CLEAR" });
+    expect(await prisma.zdTimePreview.count({ where: { batchId: b.id } })).toBe(1);
+  });
+});
+
 describe("fallos y concurrencia (IMP 06)", () => {
   it("doble confirmación y dos trabajadores a la vez no duplican ni dejan activación parcial", async () => {
     const rows = Array.from({ length: 300 }, (_, i) => timeRow({ ticket_id: String(2000 + (i % 7)), hour: hourAt(Math.floor(i / 60), i % 60), logged_minutes: (i % 59) + 1 }));
@@ -460,4 +516,3 @@ describe("fallos y concurrencia (IMP 06)", () => {
   });
 });
 
-void getUpload;

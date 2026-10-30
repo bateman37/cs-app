@@ -366,3 +366,16 @@ export const TIME_BUCKET_ACTION: Record<TimeBucket, string> = {
 
 /** Fecha de trabajo sujeta al corte PMO (ZTM 03): desde esa fecha, PMO sale de la fuente Zendesk. */
 export const isAfterPmoCutoff = (workDate: string) => workDate >= PMO_CUTOFF;
+
+/** Indicadores secundarios de una fila de tiempo (no suman horas: son marcas sobre la partición). */
+export const TIME_FLAG_LABEL: Record<string, string> = {
+  NO_TICKET: "Sin ticket conocido",
+  NO_ORGANIZATION: "Ticket sin organización informada",
+  NO_CLIENT: "Organización sin Cliente equivalente",
+  NO_GROUP: "Cliente sin Grupo BC (conserva la atribución al Cliente; solo su agrupación económica queda pendiente)",
+  NO_PERSON: "Sin persona resuelta",
+  NO_USER_ID: "Sin user_id",
+  PERSON_BY_NAME: "Persona resuelta por alias de nombre",
+  NAME_ID_CONFLICT: "El nombre apunta a otra persona distinta del ID (se mantiene la del ID)",
+  INTERNAL: "Cliente interno",
+};

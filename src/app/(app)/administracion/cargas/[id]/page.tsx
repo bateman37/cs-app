@@ -11,6 +11,7 @@ import { Pager } from "@/components/list";
 import { HistorySection } from "../../clientes/_sections/sections";
 import { ActionButtons } from "./action-buttons";
 import { StatusPoller } from "./poller";
+import { ZendeskPanels } from "./zendesk-panels";
 
 export const metadata: Metadata = { title: "Ficha de carga" };
 const BASE = "/administracion/cargas";
@@ -32,14 +33,18 @@ export default async function CargaPage({ params, searchParams }: { params: Prom
   const onlyWarnings = first(sp.avisos) === "1";
   const pp = Number(first(sp.page)) || 1;
   const hp = Number(first(sp.hp)) || 1;
+  const det = first(sp.det);
+  const flag = first(sp.flag);
+  const dp = Number(first(sp.dp)) || 1;
   const showRows = ["READY", "ACTIVATION_QUEUED", "ACTIVATING", "COMPLETED", "REVERTED", "FAILED"].includes(st) && b.rowsReceived > 0;
   const [rows, history] = await Promise.all([
     showRows ? listStagedRows(user.id, id, { page: pp, pageSize: 20, classification: cls, onlyWarnings }) : null,
     listUploadHistory(user.id, id, { page: hp }),
   ]);
-  const summary = (b.summary ?? {}) as { schemaVersion?: string; issues?: { severity: string; code: string; message: string; count: number }[] };
+  const summary = (b.summary ?? {}) as { schemaVersion?: string; sheet?: string; notes?: string[]; issues?: { severity: string; code: string; message: string; count: number }[] };
   const meta = Object.entries((b.metadata ?? {}) as Record<string, unknown>).filter(([k]) => !k.startsWith("__"));
   const keep = { clase: cls, avisos: onlyWarnings ? "1" : "" };
+  const zdKeep = { ...keep, page: pp > 1 ? pp : undefined, hp: hp > 1 ? hp : undefined };
   const prepared = b.preparedAt !== null;
   const terminal = TERMINAL_STATUSES.includes(st);
 
@@ -61,7 +66,7 @@ export default async function CargaPage({ params, searchParams }: { params: Prom
       <StatusPoller
         id={b.id}
         label={STATUS_LABEL[st]}
-        initial={{ status: b.status, phase: b.phase, rowsProcessed: b.rowsProcessed, version: b.version, terminal }}
+        initial={{ status: b.status, phase: b.phase, rowsProcessed: b.rowsProcessed, version: b.version, terminal, busy: data.pendingRederive || data.pendingRevert }}
       />
       {b.statusDetail ? <p className="notice notice-error" role="alert">{b.statusDetail}</p> : null}
       {sameChecksum.length > 0 ? (
@@ -77,11 +82,13 @@ export default async function CargaPage({ params, searchParams }: { params: Prom
         <h2 id="sec-acciones">Acciones</h2>
         {st === "READY" && b.rowsError > 0 ? (
           <p className="notice notice-info" role="note">
-            Hay {b.rowsError.toLocaleString("es-ES")} filas con error: no se activarán. El resto de filas válidas sí se activa al confirmar.
+            {actions.confirm.allowed
+              ? `Hay ${b.rowsError.toLocaleString("es-ES")} filas con error: no se activarán. El resto de filas válidas sí se activa al confirmar.`
+              : `Hay ${b.rowsError.toLocaleString("es-ES")} filas con errores obligatorios: corrija el archivo y vuelva a subirlo. Estas filas no activan datos inválidos.`}
           </p>
         ) : null}
         {!prepared && !terminal ? <p className="muted">La preparación no ha terminado: no se puede confirmar todavía.</p> : null}
-        <ActionButtons id={b.id} version={b.version} actions={actions} />
+        <ActionButtons id={b.id} version={b.version} actions={actions} completed={st === "COMPLETED"} />
       </section>
 
       <section className="card" aria-labelledby="sec-datos">
@@ -125,6 +132,9 @@ export default async function CargaPage({ params, searchParams }: { params: Prom
             </tbody>
           </table>
         </div>
+        {summary.notes && summary.notes.length > 0 ? (
+          <ul className="muted" aria-label="Notas del esquema">{summary.notes.map((nt) => <li key={nt}>{nt}</li>)}</ul>
+        ) : null}
         {summary.issues && summary.issues.length > 0 ? (
           <>
             <h3>Incidencias por código</h3>
@@ -144,6 +154,10 @@ export default async function CargaPage({ params, searchParams }: { params: Prom
           </>
         ) : null}
       </section>
+
+      {prepared && !["REJECTED", "CANCELLED"].includes(st) ? (
+        <ZendeskPanels userId={user.id} batch={{ id: b.id, profileId: b.profileId, status: st }} base={`${BASE}/${b.id}`} det={det} flag={flag} dp={dp} keep={zdKeep} />
+      ) : null}
 
       {rows ? (
         <section className="card" aria-labelledby="sec-previsualizacion">

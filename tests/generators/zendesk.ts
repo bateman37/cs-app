@@ -3,6 +3,7 @@ import { mkdtempSync, rmSync } from "node:fs";
 import { tmpdir } from "node:os";
 import path from "node:path";
 import { TICKET_HEADERS, TIME_HEADERS } from "../../src/domain/zendesk";
+import type { PrismaClient } from "../../src/generated/prisma/client";
 import { writeXlsx, type XlsxOptions } from "./xlsx";
 
 /**
@@ -154,4 +155,64 @@ export async function timesBuffer(rows: TimeRow[], opts: BuildOptions = {}): Pro
   } finally {
     t.done();
   }
+}
+
+// ---------------------------------------------------------------- Volumen (generación por streaming, sin datos reales)
+
+const ORG_BASE = 100_000;
+
+/** `count` tickets sintéticos con tags, causas y estados variados (≈ origen: unas 114 000 filas, ~20 000 organizaciones). */
+export function* volumeTickets(count: number, opts: { orgs?: number } = {}): Generator<TicketRow> {
+  const orgs = opts.orgs ?? 20_000;
+  const statuses = ["closed", "closed", "closed", "closed", "solved", "open", "pending", "hold"];
+  const causes = ["incidente_estándar_plataforma", "incidente_configuración_plataforma", "Sistemas del Cliente", "Uso Indebido", "incidente_infraestructura", null];
+  const tags = ['["team_n2"]', '["team_n3_pmo","team_it"]', '["team_plataforma"]', "[]", '["team_plataformavsw","team_n2"]'];
+  for (let i = 0; i < count; i++) {
+    yield ticket({
+      ticket_id: String(1_000_000 + i),
+      organization_id: i % 97 === 0 ? null : String(ORG_BASE + (i % orgs)),
+      entorno: i % 11 === 0 ? "Producción · Admin Delegada" : "Producción",
+      causa: causes[i % causes.length],
+      tags: tags[i % tags.length],
+      creada: { date: excelSerial("2020-01-01") + (i % 2000) },
+      type: i % 9 === 0 ? "problem" : "incident",
+      status: statuses[i % statuses.length],
+    });
+  }
+}
+
+/** `count` tiempos sintéticos distintos (huellas únicas), repartidos en varios años, personas y tickets. */
+export function* volumeTimes(count: number, opts: { tickets?: number; people?: number } = {}): Generator<TimeRow> {
+  const tickets = opts.tickets ?? 114_000;
+  const people = opts.people ?? 300;
+  for (let i = 0; i < count; i++) {
+    const minute = i % 1440;
+    yield timeRow({
+      ticket_id: String(1_000_000 + (i % tickets)),
+      user_id: String(50_000 + (i % people)),
+      user_name: `Persona ${i % people}`,
+      date: { date: excelSerial("2022-01-03") + Math.floor(i / 160) },
+      hour: { date: minute / 1440 },
+      logged_hours: i % 4,
+      logged_minutes: (i * 7) % 60,
+      id: i % 5 === 0 ? null : String(i + 1),
+    });
+  }
+}
+
+/** Maestros sintéticos a escala: una organización y un Cliente por cada `orgs`, y `people` personas con ID y pertenencia a PMO. */
+export async function seedVolumeMasters(prisma: PrismaClient, opts: { orgs?: number; people?: number } = {}) {
+  const orgs = opts.orgs ?? 20_000;
+  const people = opts.people ?? 300;
+  const clients = Array.from({ length: orgs }, (_, i) => ({ id: `vc${i}`, name: `Cliente sintético ${i}`, updatedAt: new Date() }));
+  for (let i = 0; i < clients.length; i += 5000) await prisma.client.createMany({ data: clients.slice(i, i + 5000) });
+  await prisma.externalIdentity.createMany({
+    data: clients.map((c, i) => ({ system: "ZENDESK" as const, kind: "ORG_ID" as const, rawValue: String(ORG_BASE + i), searchValue: String(ORG_BASE + i), clientId: c.id, updatedAt: new Date() })),
+  });
+  const persons = Array.from({ length: people }, (_, i) => ({ id: `vp${i}`, name: `Persona sintética ${i}`, updatedAt: new Date() }));
+  await prisma.person.createMany({ data: persons });
+  await prisma.personAlias.createMany({
+    data: persons.map((p, i) => ({ personId: p.id, system: "ZENDESK" as const, kind: "ID" as const, rawValue: String(50_000 + i), searchValue: String(50_000 + i), updatedAt: new Date() })),
+  });
+  await prisma.personTerm.createMany({ data: persons.map((p, i) => ({ personId: p.id, attribute: "PMO_MEMBER" as const, flag: i % 10 === 0, updatedAt: new Date() })) });
 }

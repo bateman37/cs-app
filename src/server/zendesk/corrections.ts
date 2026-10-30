@@ -4,6 +4,7 @@ import { ZENDESK_TIME_PROFILE } from "@/domain/zendesk";
 import { recordAudit } from "@/server/audit";
 import { DomainError } from "@/server/errors";
 import { adminTransaction } from "@/server/tx";
+import { refreshTimePreview } from "./preview";
 import { applyCorrectionRules } from "./time";
 
 const decisionSchema = z.object({
@@ -68,6 +69,7 @@ export async function decideTimeCorrection(actorId: string, batchId: string, raw
       UPDATE "UploadStagedRow" SET disposition = 'NEW'
       WHERE "batchId" = ${batchId} AND fingerprint = ${input.fingerprint} AND disposition IN ('PENDING_DECISION', 'CORRECTION')`);
     await applyCorrectionRules(tx, batchId);
+    await refreshTimePreview(tx, batchId, input.fingerprint);
     await tx.uploadBatch.update({ where: { id: batchId }, data: { version: { increment: 1 } } });
 
     const newMinutes = Number(row.typed.logged_hours) * 60 + Number(row.typed.logged_minutes);

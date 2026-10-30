@@ -1,10 +1,10 @@
-# Cargas: qué se puede probar en esta fase (CSAPP-02)
+# Cargas: qué se puede probar (CSAPP-02 y CSAPP-03)
 
-**Administración › Cargas** (solo Administrador) es el motor común de importación. En esta fase **no existe ningún importador operativo**: el primero (tickets y tiempos de Zendesk) llegará en CSAPP-03, y Wrike/PAP/bugs y facturación después. No hace falta subir ahora los archivos grandes de Dennis para probar el motor: sus garantías están probadas con archivos sintéticos.
+**Administración › Cargas** (solo Administrador) es el motor común de importación. Desde CSAPP-03 hay **dos importadores operativos**: «Zendesk · tickets» y «Zendesk · tiempos» (Wrike, PAP, bugs y facturación llegan después y se muestran como pendientes). Para usarlos con sus XLSX reales siga la [guía de CSAPP-03](guia-powershell-csapp03.md); el motor y los importadores están probados con archivos sintéticos.
 
 ## Qué verá en su base de trabajo
 
-- «Fuentes»: un aviso de que no hay ninguna fuente disponible y la lista de fuentes previstas, deshabilitadas y con su entrega.
+- «Fuentes»: Tickets y Tiempos de Zendesk disponibles (con fecha de extracción opcional y, solo si el libro tiene varias hojas compatibles, la hoja) y la lista de fuentes previstas, deshabilitadas y con su entrega.
 - «Historial de cargas»: vacío.
 - Los perfiles sintéticos de prueba **no aparecen** aquí: solo se habilitan en una base de test aislada (variable de servidor igual al nombre de la base, nombre acabado en `_test` y esquema auxiliar creado por las pruebas).
 

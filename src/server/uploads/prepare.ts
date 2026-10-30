@@ -198,26 +198,38 @@ export async function runPrepare(rt: JobRuntime): Promise<void> {
     // Posproceso por conjuntos: conflictos de clave, duplicados del archivo, disposiciones y contadores.
     await fenced(job, async (tx) => {
       await tx.uploadBatch.update({ where: { id: batch.id }, data: { phase: "Comprobando duplicados y revisiones" } });
+      // Estadísticas del staging recién cargado: sin ellas el planificador subestima el lote y elige planes cuadráticos.
+      await tx.$executeRaw(Prisma.sql`ANALYZE "UploadStagedRow"`);
       if (profile.entityConflictPolicy === "conflict_all") {
         // Contradicción dentro del archivo: ninguna de las filas se activa; se muestra el conflicto.
+        // Una agregación por clave (O(n)): una autounión sin índice sería cuadrática con cientos de miles de filas.
         await tx.$executeRaw(Prisma.sql`
           UPDATE "UploadStagedRow" r SET classification = 'ERROR', fingerprint = NULL,
             issues = COALESCE(r.issues, '[]'::jsonb) || ${JSON.stringify([
               { severity: "error", code: "CONFLICTO_EN_ARCHIVO", message: "El mismo identificador aparece en el archivo con contenido contradictorio; no se activa ninguna de las filas." },
             ])}::jsonb
-          WHERE r."batchId" = ${batch.id} AND r.classification = 'VALID' AND r."entityKey" IS NOT NULL
-            AND EXISTS (SELECT 1 FROM "UploadStagedRow" p WHERE p."batchId" = r."batchId" AND p."entityKey" = r."entityKey"
-              AND p.classification = 'VALID' AND p.fingerprint <> r.fingerprint)`);
+          FROM (
+            SELECT "entityKey" FROM "UploadStagedRow"
+            WHERE "batchId" = ${batch.id} AND classification = 'VALID' AND "entityKey" IS NOT NULL
+            GROUP BY "entityKey" HAVING count(DISTINCT fingerprint) > 1) c
+          WHERE r."batchId" = ${batch.id} AND r.classification = 'VALID' AND r."entityKey" = c."entityKey"`);
       }
       if (profile.entityConflictPolicy === "conflict") {
+        // Error en las filas posteriores a otra de la misma clave con contenido distinto (ventana por clave, O(n log n)).
         await tx.$executeRaw(Prisma.sql`
           UPDATE "UploadStagedRow" r SET classification = 'ERROR', fingerprint = NULL,
             issues = COALESCE(r.issues, '[]'::jsonb) || ${JSON.stringify([
               { severity: "error", code: "CLAVE_REPETIDA", message: "La clave de entidad se repite en el archivo con contenido distinto." },
             ])}::jsonb
-          WHERE r."batchId" = ${batch.id} AND r.classification = 'VALID' AND r."entityKey" IS NOT NULL
-            AND EXISTS (SELECT 1 FROM "UploadStagedRow" p WHERE p."batchId" = r."batchId" AND p."entityKey" = r."entityKey"
-              AND p.classification = 'VALID' AND p.fingerprint <> r.fingerprint AND p.position < r.position)`);
+          FROM (
+            SELECT id FROM (
+              SELECT id, fingerprint,
+                min(fingerprint) OVER w AS prev_min, max(fingerprint) OVER w AS prev_max
+              FROM "UploadStagedRow"
+              WHERE "batchId" = ${batch.id} AND classification = 'VALID' AND "entityKey" IS NOT NULL
+              WINDOW w AS (PARTITION BY "entityKey" ORDER BY position ROWS BETWEEN UNBOUNDED PRECEDING AND 1 PRECEDING)) t
+            WHERE prev_min IS NOT NULL AND (prev_min <> fingerprint OR prev_max <> fingerprint)) c
+          WHERE r.id = c.id`);
       }
       await tx.$executeRaw(Prisma.sql`UPDATE "UploadStagedRow" SET "duplicateInFile" = false WHERE "batchId" = ${batch.id} AND "duplicateInFile"`);
       await tx.$executeRaw(Prisma.sql`

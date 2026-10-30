@@ -16,6 +16,7 @@ import type { ActivationContext, HeaderMatch, ImportProfile, Issue, ParsedRow } 
 import type { Cell } from "../uploads/readers/types";
 import { orphanFingerprintsSql } from "../uploads/provenance";
 import { derivationSql, lockDerivation, rederiveEntries, stagedSource } from "./derive";
+import { refreshTimePreview } from "./preview";
 
 type Tx = Prisma.TransactionClient;
 type Header = (typeof TIME_HEADERS)[number];
@@ -134,19 +135,22 @@ async function activate(tx: Tx, ctx: ActivationContext) {
   await lockDerivation(tx);
   await applyCorrectionRules(tx, ctx.batchId);
 
+  // Una sola pasada: la derivación arrastra los campos tipados como carga útil, sin volver a unirse con el staging.
   const inserted = await tx.$executeRaw(Prisma.sql`
     INSERT INTO "ZdTimeEntry" ("originFingerprint", "firstBatchId", "ticketId", "userId", "userName", "workDate", "hourText",
       "loggedHours", "loggedMinutes", minutes, "dayLabel", segmenter, "sourceId", channel, fingerprint,
       "drvTicketKnown", "drvOrganizationId", "drvClientId", "drvGroupId", "drvInternal", "drvPersonId", "drvPersonVia", "drvPmo",
       "drvTeamId", "drvLevelId", "drvEligibility", "drvBucket", "drvFlags", "drvBatchId", "updatedAt")
-    SELECT s.fingerprint, ${ctx.batchId}, s.typed->>'ticket_id', s.typed->>'user_id', s.typed->>'user_name', (s.typed->>'date')::date, s.typed->>'hour',
-      (s.typed->>'logged_hours')::numeric, (s.typed->>'logged_minutes')::numeric,
-      (s.typed->>'logged_hours')::numeric * 60 + (s.typed->>'logged_minutes')::numeric,
-      s.typed->>'dia_semana', s.typed->>'segmentador_app_time', s.typed->>'id', s.typed->>'type', s.fingerprint,
+    SELECT d.payload->>'fp', ${ctx.batchId}, d.payload->'t'->>'ticket_id', d.payload->'t'->>'user_id', d.payload->'t'->>'user_name',
+      (d.payload->'t'->>'date')::date, d.payload->'t'->>'hour',
+      (d.payload->'t'->>'logged_hours')::numeric, (d.payload->'t'->>'logged_minutes')::numeric,
+      (d.payload->'t'->>'logged_hours')::numeric * 60 + (d.payload->'t'->>'logged_minutes')::numeric,
+      d.payload->'t'->>'dia_semana', d.payload->'t'->>'segmentador_app_time', d.payload->'t'->>'id', d.payload->'t'->>'type', d.payload->>'fp',
       d.ticket_known, d.org_id, d.client_id, d.group_id, d.internal, d.person_id, d.via, d.pmo, d.team_id, d.level_id,
       d.eligibility, d.bucket, d.flags, ${ctx.batchId}, now()
-    FROM (${stagedBy(ctx.batchId, "NEW")}) s
-    JOIN (${derivationSql(stagedSource(ctx.batchId, Prisma.sql`AND r.disposition = 'NEW'`))}) d ON d.key = s.position::text
+    FROM (${derivationSql(
+      stagedSource(ctx.batchId, { extra: Prisma.sql`AND r.disposition = 'NEW'`, payload: Prisma.sql`jsonb_build_object('fp', r.fingerprint, 't', r.typed)` }),
+    )}) d
     ON CONFLICT ("originFingerprint") DO NOTHING`);
 
   // Correcciones explícitas: conservan el contenido anterior y no suman duración antigua y nueva.
@@ -239,6 +243,7 @@ export const zendeskTiempo: ImportProfile = {
   },
   async postPrepare(tx, batchId) {
     await applyCorrectionRules(tx, batchId);
+    await refreshTimePreview(tx, batchId);
   },
   activate,
   revert,

@@ -62,7 +62,7 @@ Documentación: [decisiones técnicas](../arquitectura/zendesk-csapp03.md), [tic
 | Dato | Valor |
 | --- | --- |
 | Rama / base | claude/new-session-omvsmd (designada por la sesión; el prompt proponía feature/CSAPP-04-wrike-pap-bugs). Su PR 4 estaba fusionada: la rama se reinició con `checkout -B` desde main 3c08fc0c647088d2b226d1385b95e1daa8142843, sin force-push |
-| PR | Ver «Resultado final» abajo (sin fusionar) |
+| PR | https://github.com/bateman37/cs-app/pull/5 (base main, sin fusionar); último commit de código y pruebas 7298a40bab7f384df1efa5d25478c3a061f7b9e3 |
 | Implementado | Perfiles `wrike` (CSV), `pap` (XLSX de 29 columnas) y `bugs-vfs`/`bugs-vsw` (CSV) sobre el motor común; el registro tiene seis perfiles operativos y las tres fuentes financieras siguen pendientes. Corrección explícita de un registro activo **sin ID** (Zendesk sin id y Wrike) con comparación, confirmación de la sustitución concreta, versión del registro y del lote, auditoría y reversión. Vista común `TimeActivity` con origen inequívoco y política histórica PMO. Resúmenes conciliables, detalle por motivo y revisión de vínculos en Administración › Cargas |
 | Probado | Linux (Node 22.22, PostgreSQL 16): tipos, lint, pruebas con PostgreSQL real, migración limpia y sobre CSAPP-03 con datos, recorrido de navegador con web y trabajador compilados y volumen del circuito. Cifras exactas en la [validación](../validacion/csapp-04.md) |
 | No probado | Windows/PowerShell; aceptación manual por Dennis; despliegue |

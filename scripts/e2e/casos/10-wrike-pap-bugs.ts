@@ -159,7 +159,7 @@ export async function wrikePapBugs(ctx: Ctx): Promise<void> {
       vswBug({ ID: "2002", State: "Done (Ready for Release)", "Zendesk Ticket ID": "222222", Clients: '<a href="https://vincle.zendesk.com/agent/tickets/123456">C</a> <a href="https://vincle.zendesk.com/agent/tickets/123456">C</a> <a href="#">@Ana</a>' }),
       vswBug({ ID: "2004", State: "Estado nuevo" }),
     ]));
-    const bv = await upload("Bugs VFS", file("vfs.csv"), { extraccion: "2026-03-01", selects: { "Vista del listado": "AMPLIA" } });
+    await upload("Bugs VFS", file("vfs.csv"), { extraccion: "2026-03-01", selects: { "Vista del listado": "AMPLIA" } });
     ctx.check("Bugs VFS: el CSV llega a «Listo para revisar» con la vista declarada", await waitStatus(page, "Listo para revisar"));
     ctx.check("Bugs VFS: 2 elementos, solo 1 Bug_; un Request llamado BUG no cuenta; PR no acredita producción", /Work Items distintos 2/.test(await rowText(page, "Work Items distintos")) && /Bug_ distintos[^0-9]*1/.test(await rowText(page, "Bug_ distintos")) && /pendiente de crear la pull request/.test(await body(page)));
     ctx.check("Bugs VFS: la ficha explica que la ausencia no cierra ni borra y rotula los no observados", /no cierra, borra ni resuelve/.test(await page.getByTestId("bug-no-observados").innerText()));

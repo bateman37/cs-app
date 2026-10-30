@@ -1,4 +1,4 @@
-import { createReadStream, mkdtempSync, readFileSync, rmSync, statSync } from "node:fs";
+import { appendFileSync, createReadStream, mkdtempSync, readFileSync, rmSync, statSync } from "node:fs";
 import { tmpdir } from "node:os";
 import path from "node:path";
 import { afterAll, beforeAll, beforeEach, describe, expect, it } from "vitest";
@@ -41,6 +41,13 @@ afterAll(() => {
 beforeEach(async () => {
   admin = (await freshEnvironment()).admin;
 });
+
+/** Las medidas se imprimen y, si se indica CSAPP_TEST_MEASURES_FILE, también se anexan a ese archivo (el reporter oculta la salida de las pruebas que pasan). */
+function report(m: object) {
+  const line = `MEDIDAS_CSAPP04 ${JSON.stringify(m)}`;
+  console.log(line);
+  if (process.env.CSAPP_TEST_MEASURES_FILE) appendFileSync(process.env.CSAPP_TEST_MEASURES_FILE, `${line}\n`);
+}
 
 function peakRssMb(pid: number | undefined): number | null {
   if (!pid) return null;
@@ -110,7 +117,7 @@ async function run(profileId: string, file: string, name: string, expectRows: nu
     await waitFor(async () => (await prisma.uploadJob.count({ where: { batchId: up.id, status: { in: ["PENDING", "RUNNING"] } } })) === 0, 10 * 60_000, 300);
     const rederiveMs = Date.now() - t2;
     const sec = (ms: number) => Math.round(ms / 100) / 10;
-    console.log(`MEDIDAS_CSAPP04 ${JSON.stringify({ fuente: profileId, filas: expectRows, archivoMB: Math.round((size / 1048576) * 100) / 100, recepcionS: sec(uploadMs), preparacionS: sec(prepareMs), filasPorSegundoPreparacion: Math.round(expectRows / (prepareMs / 1000)), activacionS: sec(activateMs), recalculoS: sec(rederiveMs), picoRssTrabajadorMB: peak || null })}`);
+    report({ fuente: profileId, filas: expectRows, archivoMB: Math.round((size / 1048576) * 100) / 100, recepcionS: sec(uploadMs), preparacionS: sec(prepareMs), filasPorSegundoPreparacion: Math.round(expectRows / (prepareMs / 1000)), activacionS: sec(activateMs), recalculoS: sec(rederiveMs), picoRssTrabajadorMB: peak || null });
   } finally {
     await killAndWait(worker, "SIGTERM");
   }
@@ -125,7 +132,7 @@ describe("Volumen del circuito Wrike, PAP y bugs", () => {
     await run(TICKETS, tk, "tickets.xlsx", TICKETS_N);
 
     const wr = path.join(tmp, "wrike.csv");
-    await writeCsv(wr, volumeWrike(WRIKE_N + 1, { tickets: TICKETS_N }), { bom: true, eol: "\r\n" });
+    await writeCsv(wr, volumeWrike(WRIKE_N, { tickets: TICKETS_N }), { bom: true, eol: "\r\n" });
     const w = await run(WRIKE, wr, "wrike.csv", WRIKE_N);
     const ws = await wrikeSummary(admin.id, w.id);
     expect(ws).toMatchObject({ rowsReceived: WRIKE_N, rowsWithError: 0, reconciled: true });
@@ -166,7 +173,7 @@ describe("Volumen del circuito Wrike, PAP y bugs", () => {
       const tr = Date.now();
       await revertUpload(admin.id, w.id);
       await waitFor(async () => ((await batch(w.id)).status === "REVERTED" ? true : null), 10 * 60_000, 300);
-      console.log(`MEDIDAS_CSAPP04 ${JSON.stringify({ fuente: WRIKE, reversionS: Math.round((Date.now() - tr) / 100) / 10 })}`);
+      report({ fuente: WRIKE, reversionS: Math.round((Date.now() - tr) / 100) / 10 });
     } finally {
       await killAndWait(worker, "SIGTERM");
     }

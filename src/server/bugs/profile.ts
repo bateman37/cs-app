@@ -265,7 +265,7 @@ function makeProfile(product: BugProduct): ImportProfile {
       { name: "ambito", label: "Ámbito DevOps (proyecto/área); por defecto «principal»", type: "text", required: false },
     ],
     metadataSchema: z
-      .object({ vista: z.enum(VIEW_KINDS.map((v) => v.value) as [string, ...string[]]), ambito: z.string().trim().max(80).optional() })
+      .object({ vista: z.enum(VIEW_KINDS.map((v) => v.value) as [string, ...string[]], { error: "Indique la vista del listado." }), ambito: z.string().trim().max(80).optional() })
       .strict(),
     scopeKey: (m) => bugScopeKey(product, m.ambito as string | undefined),
     blocksConfirmOnErrors: true,

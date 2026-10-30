@@ -145,42 +145,48 @@ async function recomputeCurrent(tx: Tx, ids: Prisma.Sql) {
 }
 
 /**
- * Ámbito del proyecto de la revisión vigente a la FECHA DE PRODUCCIÓN (sin fecha: solo equivalencias sin vigencia acotada).
+ * Ámbito de un proyecto PAP a la FECHA DE PRODUCCIÓN (sin fecha: solo equivalencias sin vigencia acotada). `src` produce: key, project,
+ * production_date. Equivalencia PAP de Cliente o implantación; o, solo si no hay, la clave BC de un Grupo Cliente (solo grupo).
  * Un grupo solo no autoriza reparto entre hijos; no se inventa cliente ni implantación.
  */
-export async function rederivePapItems(tx: Tx, where: Prisma.Sql): Promise<number> {
-  await tx.$executeRaw(Prisma.sql`DROP TABLE IF EXISTS "_pap_drv"`);
-  await tx.$executeRaw(Prisma.sql`
-    CREATE TEMP TABLE "_pap_drv" ON COMMIT DROP AS
-    SELECT t.id,
-      CASE WHEN rv.project IS NULL THEN 'NO_PROJECT' WHEN pj.id IS NULL AND pg."groupId" IS NULL THEN 'UNMAPPED'
+export function papScopeSql(src: Prisma.Sql): Prisma.Sql {
+  return Prisma.sql`
+    SELECT s.key,
+      CASE WHEN s.project IS NULL THEN 'NO_PROJECT' WHEN pj.id IS NULL AND pg."groupId" IS NULL THEN 'UNMAPPED'
            WHEN pj."implementationId" IS NOT NULL THEN 'IMPLEMENTATION' WHEN pj."clientId" IS NOT NULL THEN 'CLIENT' ELSE 'GROUP_ONLY' END AS scope,
       COALESCE(pj."clientId", im."clientId") AS client_id, pj."implementationId" AS impl_id,
       COALESCE(pc."groupId", pg."groupId") AS group_id
-    FROM "PapItem" t
-    LEFT JOIN "PapRevision" rv ON rv.id = t."currentRevisionId"
+    FROM (${src}) s
     LEFT JOIN LATERAL (
       SELECT e.id, e."clientId", e."implementationId" FROM "ExternalIdentity" e
-      WHERE rv.project IS NOT NULL AND e.system = 'PAP' AND e.kind IN ('PROJECT_NAME', 'PROJECT_ID') AND e."isActive"
-        AND e."searchValue" IN (lower(rv.project), rv.project)
-        AND (CASE WHEN rv."productionDate" IS NULL THEN e."validFrom" IS NULL AND e."validTo" IS NULL
-                  ELSE (e."validFrom" IS NULL OR e."validFrom" <= rv."productionDate") AND (e."validTo" IS NULL OR rv."productionDate" < e."validTo") END)
+      WHERE s.project IS NOT NULL AND e.system = 'PAP' AND e.kind IN ('PROJECT_NAME', 'PROJECT_ID') AND e."isActive"
+        AND e."searchValue" IN (lower(s.project), s.project)
+        AND (CASE WHEN s.production_date IS NULL THEN e."validFrom" IS NULL AND e."validTo" IS NULL
+                  ELSE (e."validFrom" IS NULL OR e."validFrom" <= s.production_date) AND (e."validTo" IS NULL OR s.production_date < e."validTo") END)
       LIMIT 1) pj ON true
     LEFT JOIN LATERAL (
       SELECT e."groupId" FROM "ExternalIdentity" e
-      WHERE rv.project IS NOT NULL AND pj.id IS NULL AND e.system = 'BC' AND e.kind = 'GROUP_KEY' AND e."isActive" AND e."searchValue" = lower(rv.project)
-        AND (CASE WHEN rv."productionDate" IS NULL THEN e."validFrom" IS NULL AND e."validTo" IS NULL
-                  ELSE (e."validFrom" IS NULL OR e."validFrom" <= rv."productionDate") AND (e."validTo" IS NULL OR rv."productionDate" < e."validTo") END)
+      WHERE s.project IS NOT NULL AND pj.id IS NULL AND e.system = 'BC' AND e.kind = 'GROUP_KEY' AND e."isActive" AND e."searchValue" = lower(s.project)
+        AND (CASE WHEN s.production_date IS NULL THEN e."validFrom" IS NULL AND e."validTo" IS NULL
+                  ELSE (e."validFrom" IS NULL OR e."validFrom" <= s.production_date) AND (e."validTo" IS NULL OR s.production_date < e."validTo") END)
       LIMIT 1) pg ON true
     LEFT JOIN "Implementation" im ON im.id = pj."implementationId"
-    LEFT JOIN "Client" pc ON pc.id = COALESCE(pj."clientId", im."clientId")
-    WHERE ${where}`);
-  await tx.$executeRaw(Prisma.sql`CREATE INDEX ON "_pap_drv" (id)`);
+    LEFT JOIN "Client" pc ON pc.id = COALESCE(pj."clientId", im."clientId")`;
+}
+
+/** Recalcula el ámbito de los PAP indicados con sus equivalencias actuales; solo escribe y versiona los que cambian. */
+export async function rederivePapItems(tx: Tx, where: Prisma.Sql): Promise<number> {
+  await tx.$executeRaw(Prisma.sql`DROP TABLE IF EXISTS "_pap_drv"`);
+  await tx.$executeRaw(Prisma.sql`
+    CREATE TEMP TABLE "_pap_drv" ON COMMIT DROP AS ${papScopeSql(Prisma.sql`
+      SELECT t.id AS key, rv.project AS project, rv."productionDate" AS production_date
+      FROM "PapItem" t LEFT JOIN "PapRevision" rv ON rv.id = t."currentRevisionId" WHERE ${where}`)}`);
+  await tx.$executeRaw(Prisma.sql`CREATE INDEX ON "_pap_drv" (key)`);
   return tx.$executeRaw(Prisma.sql`
     UPDATE "PapItem" t SET "drvScope" = d.scope, "drvClientId" = d.client_id, "drvImplementationId" = d.impl_id, "drvGroupId" = d.group_id,
       "drvVersion" = t."drvVersion" + 1, "drvAt" = now(), "updatedAt" = now()
     FROM "_pap_drv" d
-    WHERE t.id = d.id AND (t."drvScope", t."drvClientId", t."drvImplementationId", t."drvGroupId") IS DISTINCT FROM (d.scope, d.client_id, d.impl_id, d.group_id)`);
+    WHERE t.id = d.key AND (t."drvScope", t."drvClientId", t."drvImplementationId", t."drvGroupId") IS DISTINCT FROM (d.scope, d.client_id, d.impl_id, d.group_id)`);
 }
 
 async function activate(tx: Tx, ctx: ActivationContext) {
@@ -264,7 +270,7 @@ export const pap: ImportProfile = {
   ],
   metadataSchema: z
     .object({
-      lista: z.string().trim().min(2, "Indique la lista de origen.").max(60).regex(/^[\p{L}\p{N}][\p{L}\p{N} _.-]*$/u, "La lista de origen solo admite letras, números, espacios, «_», «.» y «-»."),
+      lista: z.string({ error: "Indique la lista de origen." }).trim().min(2, "Indique la lista de origen.").max(60).regex(/^[\p{L}\p{N}][\p{L}\p{N} _.-]*$/u, "La lista de origen solo admite letras, números, espacios, «_», «.» y «-»."),
       hoja: z.string().trim().max(120).optional(),
     })
     .strict(),

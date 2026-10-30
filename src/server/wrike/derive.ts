@@ -110,8 +110,9 @@ export function wrikeDerivationSql(src: Prisma.Sql): Prisma.Sql {
              ELSE 'PENDING_ELIGIBILITY' END AS eligibility,
         CASE WHEN method = 'AMBIGUOUS' THEN 'AMBIGUOUS' WHEN method = 'EXPLICIT_INVALID' THEN 'INVALID'
              WHEN ticket_id IS NULL THEN 'NONE' WHEN ticket_known THEN 'CONFIRMED' ELSE 'PENDING' END AS ticket_state,
-        h.value AS hosting
+        h.value AS hosting, rn.name AS role_name
       FROM ext
+      LEFT JOIN "StaffCatalogItem" rn ON rn.id = ext.role_id
       LEFT JOIN "Client" fc ON fc.id = ext.f_client
       LEFT JOIN LATERAL (
         SELECT st.value FROM "ServiceTerm" st
@@ -146,6 +147,7 @@ export function wrikeDerivationSql(src: Prisma.Sql): Prisma.Sql {
         CASE WHEN contradiction THEN 'NAME_CONTRADICTS_EXPLICIT' END,
         CASE WHEN person_id IS NULL THEN 'NO_PERSON' END,
         CASE WHEN person_id IS NOT NULL AND role_id IS NULL THEN 'NO_ROLE' END,
+        CASE WHEN role_name IS NOT NULL THEN 'ROLE:' || role_name END,
         CASE WHEN project IS NULL OR (p_client IS NULL AND p_group IS NULL) THEN 'NO_PROJECT' END,
         CASE WHEN NOT ticket_known OR cause IS NULL THEN 'CAUSE_UNCLASSIFIED' END,
         CASE WHEN f_internal IS TRUE THEN 'INTERNAL' END,

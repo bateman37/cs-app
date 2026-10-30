@@ -22,7 +22,7 @@ Linux 6.18 (4 CPU, 16 GB), Node 22.22.0, npm 10.9.4, PostgreSQL 16.15 local (bas
 ### Regresiones de rendimiento del motor compartido
 
 - `tests/cargas-trabajador.test.ts` (CSAPP-02, trabajador real): con `CSAPP_TEST_RESTART_ROWS=100000` **pasa (3/3)**. Con el valor por defecto (300 000 filas) la preparación no llega a «listo» en los 120 s que fija la prueba **en este entorno, y falla igual con el código de `main` sin ningún cambio de CSAPP-05** (comprobado con un `git worktree` de `origin/main`): es un límite temporal de la máquina, no una regresión. Un fallo de esa prueba deja un trabajador huérfano que interfiere con las siguientes ejecuciones; hubo que terminar el proceso a mano.
-- `tests/zendesk-volumen.test.ts`: ver «Medidas» (se repitió porque el lector XLSX y la vista `TimeActivity` son comunes).
+- `tests/zendesk-volumen.test.ts` (≈114 000 tickets y ≈250 000 tiempos; el lector XLSX y la vista `TimeActivity` son comunes): **2 pruebas correctas, 649 s**.
 - No se repitió `cargas-volumen` (1 000 000 filas CSV de CSAPP-02): el único cambio común en la preparación es una condición por fila.
 
 ## Casos del prompt (§12) y su prueba

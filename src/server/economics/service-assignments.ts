@@ -24,7 +24,8 @@ const date = (label: string) =>
   z
     .string()
     .trim()
-    .transform((v) => (v === "" ? null : v))
+    .optional()
+    .transform((v) => (v === undefined || v === "" ? null : v))
     .refine((v) => v === null || isIsoDate(v), `${label}: fecha no válida (AAAA-MM-DD).`);
 
 const base = {
@@ -55,6 +56,7 @@ async function assertNoOverlap(tx: Prisma.TransactionClient, kind: string, searc
 }
 
 export async function createServiceAssignment(actorId: string, raw: unknown) {
+  await authorize(prisma, actorId, "ADMIN"); // el permiso se comprueba antes que los datos
   const input = parseInput(createSchema, raw);
   const search = searchOf(input.matchValue);
   return adminTransaction(actorId, async (tx, actor) => {
@@ -74,6 +76,7 @@ export async function createServiceAssignment(actorId: string, raw: unknown) {
 }
 
 export async function updateServiceAssignment(actorId: string, id: string, raw: unknown) {
+  await authorize(prisma, actorId, "ADMIN");
   const input = parseInput(updateSchema, raw);
   return adminTransaction(actorId, async (tx, actor) => {
     const before = await tx.serviceAssignment.findUnique({ where: { id } });

@@ -91,6 +91,7 @@ const fieldDec = (raw: unknown, label: string, opts: { positive: boolean; max: s
 
 /** Nueva revisión (solo Administrador). `expectedRevisionNo` detecta una edición obsoleta; la anterior no se modifica. */
 export async function updateSettings(actorId: string, raw: Record<string, unknown>): Promise<EconomicSettings> {
+  await authorize(prisma, actorId, "ADMIN"); // el permiso se comprueba antes que los datos
   const target = fieldDec(raw.targetEurosPerDay, "targetEurosPerDay", { positive: true, max: "1000000" });
   const dayHours = fieldDec(raw.dayHours, "dayHours", { positive: true, max: "24" });
   const tolerance = fieldDec(raw.reconciliationTolerance, "reconciliationTolerance", { positive: false, max: "1000" });

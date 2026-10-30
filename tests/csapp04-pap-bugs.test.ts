@@ -21,8 +21,6 @@ const papImport = async (rows: Parameters<typeof papBuffer>[0], meta: object = L
 const papPrepare = async (rows: Parameters<typeof papBuffer>[0], meta: object = LISTA, declared?: object) => prepare(admin.id, PAP, await papBuffer(rows), { metadata: meta, declared });
 const bugImport = (product: "VFS" | "VSW", rows: Record<string, string>[], opts: { declared?: object; meta?: object } = {}) =>
   importFile(admin.id, product === "VFS" ? BUGS_VFS : BUGS_VSW, bugsCsv(product, rows), { metadata: opts.meta ?? BUG_META, declared: opts.declared });
-const bugPrepare = (product: "VFS" | "VSW", rows: Record<string, string>[], opts: { declared?: object; meta?: object } = {}) =>
-  prepare(admin.id, product === "VFS" ? BUGS_VFS : BUGS_VSW, bugsCsv(product, rows), { metadata: opts.meta ?? BUG_META, declared: opts.declared });
 
 describe("PAP: identidad estable y revisiones", () => {
   it("«ID 42: PAP texto» y «42: texto cambiado» del mismo ámbito son el mismo PAP; otra lista con 42 es otra identidad", async () => {

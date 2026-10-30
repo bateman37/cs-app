@@ -320,6 +320,7 @@ export async function timesSummary(actorId: string, batchId: string): Promise<Ti
 }
 
 export type TimeRowView = {
+  fingerprint: string | null;
   position: number;
   sheet: string | null;
   sourceRow: number;
@@ -349,7 +350,7 @@ export async function listBatchTimes(
     ${query.flag ? Prisma.sql`AND ${query.flag} = ANY(x.flags)` : Prisma.empty}`;
   const [data, total] = await Promise.all([
     prisma.$queryRaw<TimeRowView[]>(Prisma.sql`
-      SELECT x.position, x.sheet, x."sourceRow", x.ticket_id, x.user_id, x.user_name, x.work_date, x.source_id,
+      SELECT x.position, x.sheet, x."sourceRow", x.fingerprint, x.ticket_id, x.user_id, x.user_name, x.work_date, x.source_id,
         trim_scale(round(x.minutes / 60, 4))::text AS hours, x.bucket, x.flags, x.disposition
       FROM (${rows}) x WHERE ${cond} ORDER BY x.position LIMIT ${take} OFFSET ${skip}`),
     prisma.$queryRaw<{ n: bigint }[]>(Prisma.sql`SELECT count(*) AS n FROM (${rows}) x WHERE ${cond}`),

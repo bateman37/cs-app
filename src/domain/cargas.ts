@@ -45,14 +45,16 @@ export type ActionAvailability = { allowed: boolean; reason?: string };
 /** Acciones permitidas por estado, con el motivo cuando no lo están. */
 export function availableActions(
   status: UploadStatusName,
-  opts: { supportsRevert?: boolean; isCurrentOfScope?: boolean } = {},
+  opts: { supportsRevert?: boolean; isCurrentOfScope?: boolean; supportsRederive?: boolean; confirmBlockedReason?: string } = {},
 ): Record<UploadAction, ActionAvailability> {
   const no = (reason: string): ActionAvailability => ({ allowed: false, reason });
   const yes: ActionAvailability = { allowed: true };
   return {
     confirm:
       status === "READY"
-        ? yes
+        ? opts.confirmBlockedReason
+          ? no(opts.confirmBlockedReason)
+          : yes
         : no(
             status === "ACTIVATION_QUEUED" || status === "ACTIVATING" || status === "COMPLETED"
               ? "El lote ya está confirmado."
@@ -65,9 +67,10 @@ export function availableActions(
             "La activación aplica los cambios en una única transacción atómica: no se cancela con una petición. Si falla, se deshace por completo y los datos activos anteriores quedan intactos.",
           )
         : no("El lote ya no admite cancelación."),
-    reprocess: REPROCESSABLE.includes(status)
-      ? yes
-      : no("Solo se puede reprocesar un lote listo, rechazado o con error. Para uno completado use «Revertir»."),
+    reprocess:
+      REPROCESSABLE.includes(status) || (status === "COMPLETED" && opts.supportsRederive)
+        ? yes
+        : no("Solo se puede reprocesar un lote listo, rechazado o con error. Para uno completado use «Revertir»."),
     revert:
       status !== "COMPLETED"
         ? no("Solo se puede revertir un lote completado.")

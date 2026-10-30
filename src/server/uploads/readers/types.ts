@@ -39,6 +39,8 @@ export type ReaderOptions = {
   delimiter?: string;
   /** XLSX: nombre de la hoja a leer; por defecto todas las hojas visibles en orden. */
   sheet?: string;
+  /** XLSX: solo la primera fila de cada hoja (inspección de cabeceras sin leer el contenido). */
+  headerOnly?: boolean;
 };
 
 /** Error de lectura con mensaje seguro de mostrar (archivo corrupto, límite superado...). */

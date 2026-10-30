@@ -293,19 +293,29 @@ export async function* readXlsx(path: string, opts: ReaderOptions): AsyncGenerat
       });
 
       const dec = new StringDecoder("utf8");
+      let sheetDone = false;
       try {
         for await (const chunk of await entryStream(zip, entry)) {
           parser.write(dec.write(chunk as Buffer));
           while (queue.length) {
             if (++rows > limits.maxRows) throw new ReaderError("El archivo supera el número máximo de filas permitido.", "LIMIT_ROWS");
             yield queue.shift() as SourceRow;
+            // Solo cabeceras: una fila por hoja y se salta al resto sin leerla.
+            if (opts.headerOnly) {
+              sheetDone = true;
+              break;
+            }
           }
+          if (sheetDone) break;
         }
-        parser.write(dec.end());
-        parser.close();
-        while (queue.length) {
-          if (++rows > limits.maxRows) throw new ReaderError("El archivo supera el número máximo de filas permitido.", "LIMIT_ROWS");
-          yield queue.shift() as SourceRow;
+        if (!sheetDone) {
+          parser.write(dec.end());
+          parser.close();
+          while (queue.length) {
+            if (++rows > limits.maxRows) throw new ReaderError("El archivo supera el número máximo de filas permitido.", "LIMIT_ROWS");
+            yield queue.shift() as SourceRow;
+            if (opts.headerOnly) break;
+          }
         }
       } catch (err) {
         if (err instanceof ReaderError) throw err;

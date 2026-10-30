@@ -36,6 +36,8 @@ model User {
   matrixMonths   UserMatrixMonth[]
   uploadsCreated UploadBatch[]     @relation("UploadCreatedBy")
   uploadJobs     UploadJob[]
+  zdDecisions    ZdTimeDecision[]
+  zdCorrections  ZdTimeCorrection[]
 }
 
 model Session {
@@ -478,6 +480,8 @@ enum UploadJobKind {
   PREPARE
   ACTIVATE
   REVERT
+  /// Recalcula lo derivado (relaciones, atribución) de un lote ya completado, sin releer el archivo.
+  REDERIVE
 }
 
 enum UploadJobStatus {
@@ -547,6 +551,13 @@ model UploadBatch {
   jobs      UploadJob[]
   rows      UploadStagedRow[]
   sources   UploadRecordSource[]
+
+  zdTickets      ZdTicket[]
+  zdRevisions    ZdTicketRevision[]
+  zdObservations ZdTicketObservation[]
+  zdEntries      ZdTimeEntry[]
+  zdCorrections  ZdTimeCorrection[]
+  zdDecisions    ZdTimeDecision[]
 
   @@index([createdAt])
   @@index([profileId, status])
@@ -625,4 +636,174 @@ model UploadRecordSource {
   @@unique([batchId, fingerprint])
   @@index([profileId, dedupeKey, fingerprint])
   @@index([profileId, dedupeKey, entityKey])
+}
+
+// ---------------------------------------------------------------- CSAPP-03: Zendesk tickets y tiempos
+
+/// Ticket Zendesk: una entidad por ticket_id (exacto, texto). Los punteros currentRevisionId y
+/// currentObservationId son de lectura y los mantiene el servicio (sin FK para evitar ciclos).
+model ZdTicket {
+  ticketId             String   @id
+  firstBatchId         String
+  currentRevisionId    BigInt?
+  currentObservationId BigInt?
+  createdAt            DateTime @default(now())
+  updatedAt            DateTime @updatedAt
+
+  firstBatch   UploadBatch            @relation(fields: [firstBatchId], references: [id], onDelete: Restrict)
+  revisions    ZdTicketRevision[]
+  observations ZdTicketObservation[]
+
+  @@index([firstBatchId])
+}
+
+/// Revisión de contenido de un ticket: una por contenido funcional distinto (tags como conjunto).
+model ZdTicketRevision {
+  id                 BigInt   @id @default(autoincrement())
+  ticketId           String
+  /// Huella de la fila fuente tipada (el motor común); identifica el contenido funcional.
+  fingerprint        String
+  revisionNo         Int
+  organizationId     String?
+  entorno            String?
+  causaRaiz          String?
+  tags               String[] @default([])
+  destinations       String[] @default([])
+  createdOn          DateTime @db.Date
+  createdTime        String?
+  ticketType         String
+  status             String
+  typeKnown          Boolean
+  statusKnown        Boolean
+  adminDelegada      Boolean?
+  /// Revisión anterior del mismo ticket cuando se creó (referencia informativa) y campos que cambian.
+  previousRevisionId BigInt?
+  changedFields      String[] @default([])
+  batchId            String
+  createdAtDb        DateTime @default(now())
+
+  ticket       ZdTicket              @relation(fields: [ticketId], references: [ticketId], onDelete: Restrict)
+  batch        UploadBatch           @relation(fields: [batchId], references: [id], onDelete: Restrict)
+  observations ZdTicketObservation[]
+
+  @@unique([ticketId, fingerprint])
+  @@unique([ticketId, revisionNo])
+  @@index([batchId])
+  @@index([organizationId])
+}
+
+/// Observación: un lote vio este ticket con este contenido en una fecha de extracción declarada
+/// (o de recepción, si no se declaró). Se conserva aunque el contenido no cambie.
+model ZdTicketObservation {
+  id           BigInt   @id @default(autoincrement())
+  ticketId     String
+  batchId      String
+  revisionId   BigInt
+  observedOn   DateTime @db.Date
+  /// DECLARED = extracción declarada; RECEIVED = fecha de recepción (frescura desconocida).
+  observedKind String
+  receivedAt   DateTime
+  createdAt    DateTime @default(now())
+
+  ticket   ZdTicket         @relation(fields: [ticketId], references: [ticketId], onDelete: Restrict)
+  batch    UploadBatch      @relation(fields: [batchId], references: [id], onDelete: Restrict)
+  revision ZdTicketRevision @relation(fields: [revisionId], references: [id], onDelete: Restrict)
+
+  @@unique([batchId, ticketId])
+  @@index([ticketId, observedOn])
+  @@index([revisionId])
+}
+
+/// Registro de tiempo materializado (uno por fila fuente distinta). Las columnas drv* son derivadas y se
+/// recalculan sin releer el archivo; el contenido fuente solo cambia por una corrección explícita.
+model ZdTimeEntry {
+  id                String   @id @default(dbgenerated("(gen_random_uuid())::text"))
+  originFingerprint String   @unique
+  firstBatchId      String
+  ticketId          String
+  userId            String?
+  userName          String?
+  workDate          DateTime @db.Date
+  hourText          String?
+  loggedHours       Decimal
+  loggedMinutes     Decimal
+  /// Duración exacta en minutos: logged_hours × 60 + logged_minutes (se convierte a horas al agregar).
+  minutes           Decimal
+  dayLabel          String?
+  segmenter         String?
+  sourceId          String?
+  channel           String?
+  /// Huella del contenido vigente (distinta de originFingerprint tras una corrección).
+  fingerprint       String
+  revision          Int      @default(1)
+
+  drvTicketKnown    Boolean  @default(false)
+  drvOrganizationId String?
+  drvClientId       String?
+  drvGroupId        String?
+  drvInternal       Boolean?
+  drvPersonId       String?
+  drvPersonVia      String?
+  drvPmo            Boolean?
+  drvTeamId         String?
+  drvLevelId        String?
+  drvEligibility    String   @default("PENDING_ELIGIBILITY")
+  drvBucket         String   @default("NO_TICKET")
+  drvFlags          String[] @default([])
+  drvVersion        Int      @default(1)
+  drvAt             DateTime @default(now())
+  drvBatchId        String?
+
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  firstBatch  UploadBatch        @relation(fields: [firstBatchId], references: [id], onDelete: Restrict)
+  corrections ZdTimeCorrection[]
+
+  @@index([ticketId])
+  @@index([workDate])
+  @@index([drvPersonId])
+  @@index([drvClientId])
+  @@index([drvBucket])
+  @@index([sourceId, ticketId])
+  @@index([firstBatchId])
+}
+
+/// Corrección explícita de un registro existente: conserva el contenido anterior y el lote que la decidió.
+model ZdTimeCorrection {
+  id                  BigInt   @id @default(autoincrement())
+  entryId             String
+  batchId             String
+  fingerprint         String
+  previousFingerprint String
+  previous            Json
+  minutesBefore       Decimal
+  minutesAfter        Decimal
+  reverted            Boolean  @default(false)
+  decidedById         String
+  createdAt           DateTime @default(now())
+
+  entry     ZdTimeEntry @relation(fields: [entryId], references: [id], onDelete: Cascade)
+  batch     UploadBatch @relation(fields: [batchId], references: [id], onDelete: Restrict)
+  decidedBy User        @relation(fields: [decidedById], references: [id], onDelete: Restrict)
+
+  @@index([entryId])
+  @@index([batchId])
+}
+
+/// Decisión del Administrador sobre una fila con posible corrección: corrige un registro concreto u otro trabajo.
+model ZdTimeDecision {
+  id            BigInt   @id @default(autoincrement())
+  batchId       String
+  fingerprint   String
+  /// CORRECTION | DIFFERENT
+  decision      String
+  targetEntryId String?
+  decidedById   String
+  decidedAt     DateTime @default(now())
+
+  batch     UploadBatch @relation(fields: [batchId], references: [id], onDelete: Restrict)
+  decidedBy User        @relation(fields: [decidedById], references: [id], onDelete: Restrict)
+
+  @@unique([batchId, fingerprint])
 }

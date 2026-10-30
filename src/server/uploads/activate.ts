@@ -21,12 +21,19 @@ type BatchLock = {
   supersedesBatchId: string | null;
   supersededByBatchId: string | null;
   originalName: string;
+  declaredExtractionDate: string | null;
+  createdAt: Date;
 };
+
+function batchInfo(b: BatchLock) {
+  return { declaredExtractionDate: b.declaredExtractionDate, createdAt: b.createdAt };
+}
 
 async function lockBatch(tx: Prisma.TransactionClient, batchId: string): Promise<BatchLock> {
   const rows = await tx.$queryRaw<BatchLock[]>(Prisma.sql`
     SELECT id, status::text AS status, "profileId", "profileVersion", "scopeKey", "rulesSnapshot", metadata,
-           "supersedesBatchId", "supersededByBatchId", "originalName"
+           "supersedesBatchId", "supersededByBatchId", "originalName",
+           to_char("declaredExtractionDate", 'YYYY-MM-DD') AS "declaredExtractionDate", "createdAt"
     FROM "UploadBatch" WHERE id = ${batchId} FOR UPDATE`);
   if (!rows[0]) throw new NonRetryableError("Lote no encontrado.");
   return rows[0];
@@ -112,6 +119,7 @@ export async function runActivate(rt: JobRuntime): Promise<"completed" | "stale"
         dedupeKey,
         previousBatchId,
         metadata: batch.metadata,
+        batch: batchInfo(batch),
       };
       await computeDispositions(tx, batch.id, profile, dedupeKey);
       const result = await profile.activate(tx, ctx);
@@ -121,6 +129,7 @@ export async function runActivate(rt: JobRuntime): Promise<"completed" | "stale"
           INSERT INTO "UploadRecordSource" ("batchId", "profileId", "dedupeKey", fingerprint, "entityKey", occurrences, "firstPosition")
           SELECT ${batch.id}, ${batch.profileId}, ${dedupeKey}, fingerprint, min("entityKey"), count(*), min(position)
           FROM "UploadStagedRow" WHERE "batchId" = ${batch.id} AND classification = 'VALID'
+            AND disposition IS DISTINCT FROM 'PENDING_DECISION'
           GROUP BY fingerprint
           ON CONFLICT ("batchId", fingerprint) DO NOTHING`);
       } else if (previousBatchId) {
@@ -184,6 +193,7 @@ export async function runRevert(rt: JobRuntime): Promise<void> {
         dedupeKey: batch.scopeKey ?? "",
         previousBatchId,
         metadata: batch.metadata,
+        batch: batchInfo(batch),
       });
       await markJobDone(tx, job);
       await recordAudit(tx, actor, {
@@ -192,6 +202,44 @@ export async function runRevert(rt: JobRuntime): Promise<void> {
         entityId: batch.id,
         batchId: batch.id,
         summary: `Carga «${batch.originalName}» revertida${previousBatchId ? "; se restaura el conjunto anterior del ámbito" : ""}`,
+      });
+    },
+    { maxWait: 10_000, timeout: uploadConfig().activationTimeoutMs },
+  );
+}
+
+/**
+ * Recalcula lo derivado de un lote completado (relaciones tardías, maestros nuevos) sin releer el archivo
+ * ni tocar sus filas, observaciones o fechas. Una sola transacción protegida por fencing.
+ */
+export async function runRederive(rt: JobRuntime): Promise<void> {
+  const { job } = rt;
+  await prisma.$transaction(
+    async (tx) => {
+      await assertFence(tx, job);
+      const batch = await lockBatch(tx, job.batchId);
+      if (batch.status !== "COMPLETED") throw new NonRetryableError("Solo se puede recalcular un lote completado.");
+      const actor = await actorOf(tx, job);
+      const profile = await getProfile(batch.profileId);
+      if (!profile?.rederive) throw new NonRetryableError("El perfil de esta fuente no admite recalcular.");
+      await lockScope(tx, batch.profileId, batch.scopeKey);
+      const result = await profile.rederive(tx, {
+        batchId: batch.id,
+        profileId: batch.profileId,
+        scopeKey: batch.scopeKey,
+        dedupeKey: batch.scopeKey ?? "",
+        previousBatchId: null,
+        metadata: batch.metadata,
+        batch: batchInfo(batch),
+      });
+      await markJobDone(tx, job);
+      await recordAudit(tx, actor, {
+        action: "REPROCESS",
+        entityType: "UploadBatch",
+        entityId: batch.id,
+        batchId: batch.id,
+        summary: `Carga «${batch.originalName}»: lo derivado se recalculó con los datos actuales (${result.updated} registros actualizados)`,
+        after: { actualizados: result.updated },
       });
     },
     { maxWait: 10_000, timeout: uploadConfig().activationTimeoutMs },

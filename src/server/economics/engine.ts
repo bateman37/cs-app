@@ -167,8 +167,6 @@ const CLASS_OF_SQL = Prisma.sql`CASE a.eligibility WHEN 'ELIGIBLE' THEN 'ELIGIBL
 
 // ---------------------------------------------------------------- Lectura
 
-type Raw = Record<string, unknown>;
-
 type MinutesCell = Partial<Record<"ELIGIBLE" | "PENDING" | "EXCLUDED", Dec>>;
 type HoursIndex = Map<string, Map<string, Map<string, MinutesCell>>>; // periodKey → entityId → service → clase
 
@@ -196,7 +194,6 @@ async function compute(tx: Tx, input: EconomicInput, date: string, mode: CutMode
 
   // 1. Entidades del ámbito (todas, antes de paginar: la cartera usa el conjunto filtrado completo).
   const ents = await loadEntities(tx, input.scope);
-  const groupEntities = ents.filter((e) => e.type === "group");
   const groupIds = [...new Set(ents.map((e) => e.groupId).filter((g): g is string => Boolean(g)))];
 
   // 2. Hechos financieros vigentes de los años implicados (una consulta por conjuntos).

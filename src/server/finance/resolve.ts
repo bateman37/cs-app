@@ -48,3 +48,12 @@ export async function financeMasterStamp(db: Db | Tx): Promise<string> {
     FROM "ExternalIdentity" e WHERE e.system = 'BC' AND e.kind = 'GROUP_KEY'`);
   return r[0]?.stamp ?? "";
 }
+
+/** Recalcula la atribución de las filas guardadas de un lote con los maestros actuales (sin tocar importes). Devuelve las filas cambiadas. */
+export async function reresolveRows(tx: Tx, batchId: string, year: number): Promise<number> {
+  return tx.$executeRaw(Prisma.sql`
+    WITH ${resolutionCtes(Prisma.sql`SELECT id::text AS ref, "sourceKey" AS key FROM "FinanceRow" WHERE "batchId" = ${batchId}`, batchId, year)}
+    UPDATE "FinanceRow" f SET "groupId" = res.group_id, resolution = res.resolution, "resolutionDetail" = res.detail
+    FROM res WHERE f.id::text = res.ref
+      AND (f."groupId", f.resolution, f."resolutionDetail") IS DISTINCT FROM (res.group_id, res.resolution, res.detail)`);
+}

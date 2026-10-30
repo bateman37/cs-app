@@ -19,7 +19,7 @@ import { getSettings } from "@/server/economics/settings";
 import type { ActivationContext, HeaderMatch, ImportProfile, Issue, ParsedRow } from "../uploads/profile";
 import type { Cell } from "../uploads/readers/types";
 import { evaluateGate, ensureScope } from "./review";
-import { financeMasterStamp, resolutionCtes } from "./resolve";
+import { financeMasterStamp, reresolveRows, resolutionCtes } from "./resolve";
 
 type Tx = Prisma.TransactionClient;
 type Ctx = { index: { group: number; income: number; diff: number } };
@@ -180,11 +180,7 @@ async function revert(tx: Tx, ctx: ActivationContext) {
 /** Recalcula solo la atribución de un lote completado con los maestros actuales; no toca dinero, año, filtros ni fecha de extracción. */
 async function rederive(tx: Tx, ctx: ActivationContext) {
   const fb = await tx.financeBatch.findUniqueOrThrow({ where: { batchId: ctx.batchId } });
-  const updated = await tx.$executeRaw(Prisma.sql`
-    WITH ${resolutionCtes(Prisma.sql`SELECT id::text AS ref, "sourceKey" AS key FROM "FinanceRow" WHERE "batchId" = ${ctx.batchId}`, ctx.batchId, fb.year)}
-    UPDATE "FinanceRow" f SET "groupId" = res.group_id, resolution = res.resolution, "resolutionDetail" = res.detail
-    FROM res WHERE f.id::text = res.ref
-      AND (f."groupId", f.resolution, f."resolutionDetail") IS DISTINCT FROM (res.group_id, res.resolution, res.detail)`);
+  const updated = await reresolveRows(tx, ctx.batchId, fb.year);
   const stamp = await financeMasterStamp(tx);
   await tx.financeBatch.update({ where: { batchId: ctx.batchId }, data: { derivedStamp: stamp, derivedAt: new Date(), derivedVersion: { increment: 1 } } });
   return { updated };

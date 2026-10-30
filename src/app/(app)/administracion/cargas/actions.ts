@@ -5,6 +5,7 @@ import { runAdminAction } from "@/app/action-utils";
 import { cancelUpload, confirmUpload, reprocessUpload, revertUpload } from "@/server/uploads/batches";
 import { decideTimeCorrection } from "@/server/zendesk/corrections";
 import { reviewWorkItemLink } from "@/server/bugs/summary";
+import { decideFinance, reviewFinanceImpact, revokeFinanceDecision } from "@/server/finance/review";
 
 const BASE = "/administracion/cargas";
 type S = FormState;
@@ -72,5 +73,35 @@ export async function revertUploadAction(_: S, fd: FormData): Promise<S> {
   return runAdminAction(fd, (a, raw) => revertUpload(a, raw.id), {
     ok: "Reversión en cola: el trabajador la aplicará de forma atómica.",
     paths: [BASE, `${BASE}/${fd.get("id")}`],
+  });
+}
+
+/** Decisión explícita sobre un lote financiero listo (vacíos como cero, asignación anual, importes sin asignar, colisiones, declaraciones). */
+export async function decideFinanceAction(_: S, fd: FormData): Promise<S> {
+  return runAdminAction(
+    fd,
+    (a, raw) =>
+      decideFinance(a, raw.id, {
+        kind: raw.kind,
+        key: raw.key || undefined,
+        groupId: raw.groupId || undefined,
+        reason: raw.reason || undefined,
+        expectedVersion: raw.expectedVersion ? Number(raw.expectedVersion) : undefined,
+      }),
+    { ok: "Decisión guardada y auditada. Revise de nuevo el impacto antes de confirmar.", paths: [`${BASE}/${fd.get("id")}`] },
+  );
+}
+
+export async function revokeFinanceDecisionAction(_: S, fd: FormData): Promise<S> {
+  return runAdminAction(fd, (a, raw) => revokeFinanceDecision(a, raw.id, raw.kind, raw.key ?? "", raw.expectedVersion ? Number(raw.expectedVersion) : undefined), {
+    ok: "Decisión retirada y auditada.",
+    paths: [`${BASE}/${fd.get("id")}`],
+  });
+}
+
+export async function reviewFinanceImpactAction(_: S, fd: FormData): Promise<S> {
+  return runAdminAction(fd, (a, raw) => reviewFinanceImpact(a, raw.id, raw.expectedVersion ? Number(raw.expectedVersion) : undefined), {
+    ok: "Impacto revisado frente al conjunto vigente. Ya puede confirmar si no quedan decisiones pendientes.",
+    paths: [`${BASE}/${fd.get("id")}`],
   });
 }

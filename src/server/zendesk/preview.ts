@@ -11,13 +11,24 @@ type Db = Tx | import("@/generated/prisma/client").PrismaClient;
  */
 const count = (table: string) => Prisma.sql`(SELECT count(*)::text || ':' || coalesce(max("updatedAt")::text, '') FROM ${Prisma.raw(`"${table}"`)})`;
 
-export async function dataStamp(db: Db, kind: "tickets" | "times"): Promise<string> {
-  const parts = kind === "tickets" ? ["ExternalIdentity", "Client", "ServiceTerm"] : ["ZdTicket", "ExternalIdentity", "Client", "PersonAlias", "PersonTerm"];
+export type StampKind = "tickets" | "times" | "wrike" | "pap" | "bugs";
+
+export async function dataStamp(db: Db, kind: StampKind): Promise<string> {
+  const parts =
+    kind === "tickets"
+      ? ["ExternalIdentity", "Client", "ServiceTerm"]
+      : kind === "wrike"
+        ? ["ZdTicket", "ExternalIdentity", "Client", "PersonAlias", "PersonTerm", "ServiceTerm"]
+        : kind === "pap"
+          ? ["ExternalIdentity", "Client", "WorkItem", "ZdTicket"]
+          : kind === "bugs"
+            ? ["ZdTicket", "ExternalIdentity", "Client"]
+            : ["ZdTicket", "ExternalIdentity", "Client", "PersonAlias", "PersonTerm"];
   const r = await db.$queryRaw<{ s: string }[]>(Prisma.sql`SELECT concat_ws('|', ${Prisma.join(parts.map(count), ", ")}) AS s`);
   return r[0].s;
 }
 
-async function writeStamp(tx: Tx, batchId: string, kind: "tickets" | "times") {
+export async function writeStamp(tx: Tx, batchId: string, kind: StampKind) {
   const stamp = await dataStamp(tx, kind);
   await tx.$executeRaw(Prisma.sql`
     INSERT INTO "ZdPreviewStamp" ("batchId", "computedAt", stamp) VALUES (${batchId}, now(), ${stamp})
@@ -54,7 +65,7 @@ export async function refreshTimePreview(tx: Tx, batchId: string, fingerprint?: 
 }
 
 /** ¿Cambiaron los maestros o los tickets desde que se calculó la instantánea de este lote? */
-export async function previewState(db: Db, batchId: string, kind: "tickets" | "times"): Promise<{ computedAt: Date; stale: boolean } | null> {
+export async function previewState(db: Db, batchId: string, kind: StampKind): Promise<{ computedAt: Date; stale: boolean } | null> {
   const r = await db.$queryRaw<{ computedAt: Date; stamp: string }[]>(Prisma.sql`SELECT "computedAt", stamp FROM "ZdPreviewStamp" WHERE "batchId" = ${batchId}`);
   if (!r[0]) return null;
   return { computedAt: r[0].computedAt, stale: r[0].stamp !== (await dataStamp(db, kind)) };

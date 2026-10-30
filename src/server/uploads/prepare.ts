@@ -179,6 +179,7 @@ export async function runPrepare(rt: JobRuntime): Promise<void> {
           sourceRow: row.rowNumber,
           raw: row.cells.map((c) => [c.v, c.k]) as Prisma.InputJsonValue,
           typed: parsed.typed as Prisma.InputJsonValue,
+          derived: parsed.derived && !hasError ? (parsed.derived as Prisma.InputJsonValue) : Prisma.DbNull,
           fingerprint: hasError ? null : rowFingerprint(parsed.typed as Record<string, Json>),
           entityKey: hasError ? null : (parsed.entityKey ?? null),
           classification: hasError ? "ERROR" : parsed.exclude ? "EXCLUDED" : "VALID",

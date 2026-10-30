@@ -1,5 +1,6 @@
 import { prisma } from "@/lib/db";
 import { confirmUpload } from "@/server/uploads/batches";
+import { decideTimeCorrection } from "@/server/zendesk/corrections";
 import { batch, drain, uploadText } from "./cargas-helpers";
 
 export const TICKETS = "zendesk-tickets";
@@ -114,4 +115,10 @@ export async function addPersonAlias(personId: string, kind: "ID" | "NAME", raw:
   return prisma.personAlias.create({
     data: { personId, system: "ZENDESK", kind, rawValue: raw, searchValue: kind === "ID" ? raw : raw.toLowerCase() },
   });
+}
+
+/** Decisión «corrige este registro» con la revisión vista y la confirmación expresa de la sustitución concreta. */
+export async function decideCorrection(actorId: string, batchId: string, fingerprint: string, targetEntryId: string, extra: Record<string, unknown> = {}) {
+  const e = await prisma.zdTimeEntry.findUniqueOrThrow({ where: { id: targetEntryId } });
+  return decideTimeCorrection(actorId, batchId, { fingerprint, decision: "CORRECTION", targetEntryId, expectedEntryRevision: e.revision, confirmReplace: true, ...extra });
 }

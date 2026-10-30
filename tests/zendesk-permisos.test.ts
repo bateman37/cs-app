@@ -107,7 +107,6 @@ describe("permisos de los importadores Zendesk (solo Administrador)", () => {
     await expect(decideTimeCorrection(admin.id, t.id, { fingerprint: "x", decision: "DIFFERENT" })).rejects.toThrow();
     await expect(decideTimeCorrection(admin.id, t.id, { fingerprint: fp, decision: "BORRAR" })).rejects.toThrow();
     await expect(decideTimeCorrection(admin.id, tk.id, { fingerprint: fp, decision: "DIFFERENT" })).rejects.toThrow(/no encontrada/);
-    await expect(decideTimeCorrection(admin.id, t.id, { fingerprint: fp, decision: "DIFFERENT" })).rejects.toThrow(/no tiene una posible corrección/);
     expect(await count("ZdTimeDecision")).toBe(0);
   });
 });

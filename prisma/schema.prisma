@@ -30,14 +30,17 @@ model User {
   createdAt     DateTime @default(now())
   updatedAt     DateTime @updatedAt
 
-  sessions       Session[]
-  accounts       Account[]
-  audits         AuditEvent[]
-  matrixMonths   UserMatrixMonth[]
-  uploadsCreated UploadBatch[]     @relation("UploadCreatedBy")
-  uploadJobs     UploadJob[]
-  zdDecisions    ZdTimeDecision[]
-  zdCorrections  ZdTimeCorrection[]
+  sessions         Session[]
+  accounts         Account[]
+  audits           AuditEvent[]
+  matrixMonths     UserMatrixMonth[]
+  uploadsCreated   UploadBatch[]         @relation("UploadCreatedBy")
+  uploadJobs       UploadJob[]
+  zdDecisions      ZdTimeDecision[]
+  zdCorrections    ZdTimeCorrection[]
+  wrikeDecisions   WrikeTimeDecision[]
+  wrikeCorrections WrikeTimeCorrection[]
+  workItemLinks    WorkItemLink[]
 }
 
 model Session {
@@ -552,15 +555,26 @@ model UploadBatch {
   rows      UploadStagedRow[]
   sources   UploadRecordSource[]
 
-  zdTickets      ZdTicket[]
-  zdRevisions    ZdTicketRevision[]
-  zdObservations ZdTicketObservation[]
-  zdEntries      ZdTimeEntry[]
-  zdCorrections  ZdTimeCorrection[]
-  zdDecisions    ZdTimeDecision[]
-  zdStamp        ZdPreviewStamp?
+  zdTickets       ZdTicket[]
+  zdRevisions     ZdTicketRevision[]
+  zdObservations  ZdTicketObservation[]
+  zdEntries       ZdTimeEntry[]
+  zdCorrections   ZdTimeCorrection[]
+  zdDecisions     ZdTimeDecision[]
+  zdStamp         ZdPreviewStamp?
   zdTicketPreview ZdTicketPreview[]
   zdTimePreview   ZdTimePreview[]
+
+  wrikeEntries     WrikeTimeEntry[]
+  wrikeCorrections WrikeTimeCorrection[]
+  wrikeDecisions   WrikeTimeDecision[]
+  papItems         PapItem[]
+  papRevisions     PapRevision[]
+  papObservations  PapObservation[]
+  workItems        WorkItem[]
+  workItemRevs     WorkItemRevision[]
+  workItemObs      WorkItemObservation[]
+  workItemEvidence WorkItemLinkEvidence[]
 
   @@index([createdAt])
   @@index([profileId, status])
@@ -614,6 +628,8 @@ model UploadStagedRow {
   duplicateInFile Boolean     @default(false)
   /// Calculada en la activación: NEW, DUPLICATE_EXISTING, REVISION.
   disposition     String?
+  /// Datos derivados de forma determinista del propio texto fuente (causas, referencias, candidatos). No entran en la huella.
+  derived         Json?
 
   batch UploadBatch @relation(fields: [batchId], references: [id], onDelete: Restrict)
 
@@ -653,7 +669,7 @@ model ZdTicket {
   createdAt            DateTime @default(now())
   updatedAt            DateTime @updatedAt
 
-  firstBatch   UploadBatch            @relation(fields: [firstBatchId], references: [id], onDelete: Restrict)
+  firstBatch   UploadBatch           @relation(fields: [firstBatchId], references: [id], onDelete: Restrict)
   revisions    ZdTicketRevision[]
   observations ZdTicketObservation[]
 
@@ -796,14 +812,16 @@ model ZdTimeCorrection {
 
 /// Decisión del Administrador sobre una fila con posible corrección: corrige un registro concreto u otro trabajo.
 model ZdTimeDecision {
-  id            BigInt   @id @default(autoincrement())
-  batchId       String
-  fingerprint   String
+  id             BigInt   @id @default(autoincrement())
+  batchId        String
+  fingerprint    String
   /// CORRECTION | DIFFERENT
-  decision      String
-  targetEntryId String?
-  decidedById   String
-  decidedAt     DateTime @default(now())
+  decision       String
+  targetEntryId  String?
+  /// Revisión del registro objetivo cuando el Administrador decidió: si cambió después, la decisión queda obsoleta.
+  targetRevision Int?
+  decidedById    String
+  decidedAt      DateTime @default(now())
 
   batch     UploadBatch @relation(fields: [batchId], references: [id], onDelete: Restrict)
   decidedBy User        @relation(fields: [decidedById], references: [id], onDelete: Restrict)
@@ -851,4 +869,335 @@ model ZdPreviewStamp {
   stamp      String
 
   batch UploadBatch @relation(fields: [batchId], references: [id], onDelete: Restrict)
+}
+
+// ---------------------------------------------------------------- CSAPP-04: Wrike, PAP y bugs de producto
+
+/// Imputación de Wrike materializada (una por fila fuente distinta de seis campos). Las columnas drv* son derivadas.
+/// minutes = hours × 60 exacto; «Dedicación (horas)» nunca se divide entre 60.
+model WrikeTimeEntry {
+  id                String   @id @default(dbgenerated("(gen_random_uuid())::text"))
+  originFingerprint String   @unique
+  firstBatchId      String
+  userName          String?
+  projectName       String?
+  taskName          String
+  ticketFieldRaw    String?
+  /// NONE | VALID | INVALID: estado sintáctico del campo explícito «Ticket Zendesk».
+  explicitState     String
+  explicitTicket    String?
+  /// Candidatos de ticket del nombre de la tarea: [{id, method, evidence}].
+  nameCandidates    Json     @default("[]")
+  workDate          DateTime @db.Date
+  hours             Decimal
+  minutes           Decimal
+  fingerprint       String
+  revision          Int      @default(1)
+
+  drvTicketId         String?
+  drvTicketMethod     String   @default("NONE")
+  drvTicketState      String   @default("NONE")
+  drvPersonId         String?
+  drvPmo              Boolean?
+  drvTeamId           String?
+  drvLevelId          String?
+  drvRoleId           String?
+  drvGroupId          String?
+  drvClientId         String?
+  drvImplementationId String?
+  drvScopeMethod      String?
+  drvConflict         Boolean  @default(false)
+  drvCause            String   @default("UNCLASSIFIED")
+  drvEligibility      String   @default("PENDING_ELIGIBILITY")
+  drvBucket           String   @default("PENDING_ELIGIBILITY")
+  drvFlags            String[] @default([])
+  drvVersion          Int      @default(1)
+  drvAt               DateTime @default(now())
+  drvBatchId          String?
+
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  firstBatch  UploadBatch           @relation(fields: [firstBatchId], references: [id], onDelete: Restrict)
+  corrections WrikeTimeCorrection[]
+
+  @@index([workDate])
+  @@index([drvPersonId])
+  @@index([drvClientId])
+  @@index([drvBucket])
+  @@index([drvTicketId])
+  @@index([firstBatchId])
+}
+
+model WrikeTimeCorrection {
+  id                  BigInt   @id @default(autoincrement())
+  entryId             String
+  batchId             String
+  fingerprint         String
+  previousFingerprint String
+  previous            Json
+  minutesBefore       Decimal
+  minutesAfter        Decimal
+  reverted            Boolean  @default(false)
+  decidedById         String
+  createdAt           DateTime @default(now())
+
+  entry     WrikeTimeEntry @relation(fields: [entryId], references: [id], onDelete: Cascade)
+  batch     UploadBatch    @relation(fields: [batchId], references: [id], onDelete: Restrict)
+  decidedBy User           @relation(fields: [decidedById], references: [id], onDelete: Restrict)
+
+  @@index([entryId])
+  @@index([batchId])
+}
+
+model WrikeTimeDecision {
+  id             BigInt   @id @default(autoincrement())
+  batchId        String
+  fingerprint    String
+  decision       String
+  targetEntryId  String?
+  targetRevision Int?
+  decidedById    String
+  decidedAt      DateTime @default(now())
+
+  batch     UploadBatch @relation(fields: [batchId], references: [id], onDelete: Restrict)
+  decidedBy User        @relation(fields: [decidedById], references: [id], onDelete: Restrict)
+
+  @@unique([batchId, fingerprint])
+}
+
+/// PAP: una entidad por (lista de origen, ID extraído del título). El resto del título puede cambiar (revisión).
+model PapItem {
+  id                   String   @id @default(dbgenerated("(gen_random_uuid())::text"))
+  listKey              String
+  papId                String
+  firstBatchId         String
+  currentRevisionId    BigInt?
+  currentObservationId BigInt?
+  /// Ámbito del proyecto a la fecha de producción: CLIENT | IMPLEMENTATION | GROUP_ONLY | NO_PROJECT | UNMAPPED.
+  drvScope             String   @default("UNMAPPED")
+  drvGroupId           String?
+  drvClientId          String?
+  drvImplementationId  String?
+  drvVersion           Int      @default(1)
+  drvAt                DateTime @default(now())
+  createdAt            DateTime @default(now())
+  updatedAt            DateTime @updatedAt
+
+  firstBatch   UploadBatch      @relation(fields: [firstBatchId], references: [id], onDelete: Restrict)
+  revisions    PapRevision[]
+  observations PapObservation[]
+
+  @@unique([listKey, papId])
+  @@index([firstBatchId])
+  @@index([drvClientId])
+  @@index([drvGroupId])
+}
+
+model PapRevision {
+  id                 BigInt    @id @default(autoincrement())
+  itemId             String
+  fingerprint        String
+  revisionNo         Int
+  title              String
+  project            String?
+  result             String?
+  requestDate        DateTime? @db.Date
+  productionDate     DateTime? @db.Date
+  /// CORRECTIVE | NON_CORRECTIVE | UNKNOWN
+  correctiveState    String
+  /// Todos los campos fuente tipados (29 columnas).
+  data               Json
+  previousRevisionId BigInt?
+  changedFields      String[]  @default([])
+  batchId            String
+  createdAtDb        DateTime  @default(now())
+
+  item         PapItem          @relation(fields: [itemId], references: [id], onDelete: Restrict)
+  batch        UploadBatch      @relation(fields: [batchId], references: [id], onDelete: Restrict)
+  observations PapObservation[]
+  causes       PapCause[]
+  references   PapReference[]
+
+  @@unique([itemId, fingerprint])
+  @@unique([itemId, revisionNo])
+  @@index([batchId])
+}
+
+model PapObservation {
+  id           BigInt   @id @default(autoincrement())
+  itemId       String
+  batchId      String
+  revisionId   BigInt
+  observedOn   DateTime @db.Date
+  observedKind String
+  receivedAt   DateTime
+  createdAt    DateTime @default(now())
+
+  item     PapItem     @relation(fields: [itemId], references: [id], onDelete: Restrict)
+  batch    UploadBatch @relation(fields: [batchId], references: [id], onDelete: Restrict)
+  revision PapRevision @relation(fields: [revisionId], references: [id], onDelete: Restrict)
+
+  @@unique([batchId, itemId])
+  @@index([itemId, observedOn])
+  @@index([revisionId])
+}
+
+/// Pertenencia de una revisión a una causa (token original y normalizado). Un PAP con varias causas sigue siendo uno.
+model PapCause {
+  id         BigInt  @id @default(autoincrement())
+  revisionId BigInt
+  rawToken   String
+  normalized String
+  /// CORRECTIVE | EVOLUTIVE | MAINTENANCE | OTHER
+  category   String
+  origin     String?
+
+  revision PapRevision @relation(fields: [revisionId], references: [id], onDelete: Cascade)
+
+  @@unique([revisionId, normalized])
+}
+
+/// Referencias de una revisión PAP: TICKET_ASSOCIATED, TICKET_PAP, BUG, CAL o TEXT (no interpretable, con motivo).
+model PapReference {
+  id         BigInt  @id @default(autoincrement())
+  revisionId BigInt
+  kind       String
+  refKey     String
+  refId      String?
+  product    String?
+  rawText    String
+  reason     String?
+
+  revision PapRevision @relation(fields: [revisionId], references: [id], onDelete: Cascade)
+
+  @@unique([revisionId, kind, refKey])
+  @@index([kind, refId])
+}
+
+/// Work Item de producto: una entidad por (producto, ámbito DevOps, ID). VFS y VSW nunca se fusionan.
+model WorkItem {
+  id                   String    @id @default(dbgenerated("(gen_random_uuid())::text"))
+  product              String
+  scopeKey             String
+  workItemId           String
+  firstBatchId         String
+  currentRevisionId    BigInt?
+  currentObservationId BigInt?
+  /// Última fotografía que lo contenía (fecha de observación) y su lote.
+  lastObservedOn       DateTime? @db.Date
+  createdAt            DateTime  @default(now())
+  updatedAt            DateTime  @updatedAt
+
+  firstBatch   UploadBatch           @relation(fields: [firstBatchId], references: [id], onDelete: Restrict)
+  revisions    WorkItemRevision[]
+  observations WorkItemObservation[]
+  links        WorkItemLink[]
+
+  @@unique([product, scopeKey, workItemId])
+  @@index([product, workItemId])
+  @@index([firstBatchId])
+}
+
+model WorkItemRevision {
+  id                 BigInt    @id @default(autoincrement())
+  workItemId         String
+  fingerprint        String
+  revisionNo         Int
+  itemType           String
+  isBug              Boolean
+  title              String
+  state              String
+  stateCategory      String
+  stateKnown         Boolean
+  assignedTo         String?
+  createdBy          String?
+  /// Hora local de DevOps (sin zona), AAAA-MM-DDTHH:mm:ss; nunca se convierte a un instante UTC inventado.
+  createdLocal       String?
+  createdDate        DateTime? @db.Date
+  changedLocal       String?
+  areaPath           String?
+  tags               String[]  @default([])
+  commentCount       Int?
+  reportedBy         String?
+  clientsRaw         String?
+  zendeskTicketRaw   String?
+  previousRevisionId BigInt?
+  changedFields      String[]  @default([])
+  batchId            String
+  createdAtDb        DateTime  @default(now())
+
+  workItem     WorkItem              @relation(fields: [workItemId], references: [id], onDelete: Restrict)
+  batch        UploadBatch           @relation(fields: [batchId], references: [id], onDelete: Restrict)
+  observations WorkItemObservation[]
+
+  @@unique([workItemId, fingerprint])
+  @@unique([workItemId, revisionNo])
+  @@index([batchId])
+  @@index([isBug, stateCategory])
+}
+
+/// Presencia en una fotografía: el lote vio este Work Item con esta revisión en la fecha de observación.
+model WorkItemObservation {
+  id           BigInt   @id @default(autoincrement())
+  workItemId   String
+  batchId      String
+  revisionId   BigInt
+  observedOn   DateTime @db.Date
+  observedKind String
+  receivedAt   DateTime
+  createdAt    DateTime @default(now())
+
+  workItem WorkItem         @relation(fields: [workItemId], references: [id], onDelete: Restrict)
+  batch    UploadBatch      @relation(fields: [batchId], references: [id], onDelete: Restrict)
+  revision WorkItemRevision @relation(fields: [revisionId], references: [id], onDelete: Restrict)
+
+  @@unique([batchId, workItemId])
+  @@index([workItemId, observedOn])
+  @@index([revisionId])
+}
+
+/// Vínculo Work Item–ticket Zendesk (par único). La evidencia observada por cada carga está en WorkItemLinkEvidence;
+/// la decisión manual del Administrador es independiente y no se borra al cambiar un CSV. drv* es la resolución derivada.
+model WorkItemLink {
+  id            BigInt    @id @default(autoincrement())
+  workItemId    String
+  ticketId      String
+  /// CONFIRMED | REJECTED, solo por revisión explícita auditada.
+  manualState   String?
+  manualById    String?
+  manualAt      DateTime?
+  manualNote    String?
+  version       Int       @default(1)
+  drvState      String    @default("PENDING_TICKET")
+  drvTicketType String?
+  drvClientId   String?
+  drvGroupId    String?
+  drvInternal   Boolean?
+  drvAt         DateTime  @default(now())
+  createdAt     DateTime  @default(now())
+
+  workItem WorkItem               @relation(fields: [workItemId], references: [id], onDelete: Restrict)
+  manualBy User?                  @relation(fields: [manualById], references: [id], onDelete: Restrict)
+  evidence WorkItemLinkEvidence[]
+
+  @@unique([workItemId, ticketId])
+  @@index([ticketId])
+  @@index([drvState])
+}
+
+model WorkItemLinkEvidence {
+  id         BigInt   @id @default(autoincrement())
+  linkId     BigInt
+  batchId    String
+  /// ZENDESK_TICKET_ID (columna explícita) | CLIENTS_URL (URL reconocida en «Clients»).
+  source     String
+  rawRef     String
+  observedOn DateTime @db.Date
+
+  link  WorkItemLink @relation(fields: [linkId], references: [id], onDelete: Cascade)
+  batch UploadBatch  @relation(fields: [batchId], references: [id], onDelete: Restrict)
+
+  @@unique([linkId, batchId, source])
+  @@index([batchId])
 }

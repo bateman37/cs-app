@@ -57,7 +57,7 @@ describe("migración CSAPP-01 → CSAPP-02 sobre datos existentes", () => {
       const roles = await db.query(`SELECT name FROM "StaffCatalogItem" WHERE kind='PMO_ROLE' ORDER BY name`);
       expect(roles.rows.map((r) => r.name)).toEqual(["ANA", "DEV"]);
       const applied = await db.query(`SELECT migration_name FROM _prisma_migrations ORDER BY migration_name`);
-      expect(applied.rows).toHaveLength(3);
+      expect(applied.rows).toHaveLength(4);
       // Repetir el despliegue no cambia nada.
       execSync("npx prisma migrate deploy", { env, stdio: "pipe" });
     } finally {

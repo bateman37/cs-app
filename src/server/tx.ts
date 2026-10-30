@@ -17,6 +17,19 @@ const CONSTRAINT_MESSAGES: Record<string, { message: string; field?: string }> =
     message: "Otra operación simultánea ha modificado las vigencias de este dato. Recargue y revise; no se ha guardado nada.",
   },
   Product_name_ci_key: { message: "Ya existe un producto con ese nombre.", field: "name" },
+  Person_name_ci_key: { message: "Ya existe una persona con ese nombre canónico.", field: "name" },
+  StaffCatalogItem_kind_name_ci_key: { message: "Ya existe un valor con ese nombre en este catálogo.", field: "name" },
+  PersonAlias_no_overlap: {
+    message:
+      "Otra operación simultánea (o una asignación existente) usa ya este alias/ID con una vigencia solapada en otra persona. Recargue y revise los alias; no se ha guardado nada.",
+  },
+  PersonTerm_no_overlap: {
+    message: "Otra operación simultánea ha modificado las vigencias de este dato de la persona. Recargue y revise; no se ha guardado nada.",
+  },
+  UserMatrix_group_year_key: { message: "Otra operación simultánea ha creado ya la matriz de este año. Recargue y vuelva a intentarlo; no se ha guardado nada." },
+  UserMatrix_client_year_key: { message: "Otra operación simultánea ha creado ya la matriz de este año. Recargue y vuelva a intentarlo; no se ha guardado nada." },
+  UserMatrix_implementation_year_key: { message: "Otra operación simultánea ha creado ya la matriz de este año. Recargue y vuelva a intentarlo; no se ha guardado nada." },
+  UploadJob_open_per_batch_kind_key: { message: "Esta operación ya está en cola para el lote; no se ha duplicado." },
 };
 
 /**

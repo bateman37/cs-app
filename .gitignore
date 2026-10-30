@@ -1,4 +1,4 @@
-node_modules/
+node_modules
 .next/
 out/
 next-env.d.ts
@@ -12,3 +12,5 @@ fuentes-privadas/
 *.xlsx
 *.csv
 .DS_Store
+worker-dist/
+almacen-cargas/

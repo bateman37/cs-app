@@ -1,4 +1,5 @@
-// Modelo físico de CSAPP-01: acceso, maestros de clientes, vigencias, hitos y auditoría.
+// Modelo físico: CSAPP-01 (acceso, maestros de clientes, vigencias, hitos y auditoría) y
+// CSAPP-02 (personal, usuarios mensuales y motor común de cargas).
 // Las restricciones que Prisma no expresa (exclusión de solapamientos, CHECK, índices
 // únicos insensibles a mayúsculas) están en la migración SQL correspondiente.
 
@@ -29,9 +30,12 @@ model User {
   createdAt     DateTime @default(now())
   updatedAt     DateTime @updatedAt
 
-  sessions Session[]
-  accounts Account[]
-  audits   AuditEvent[]
+  sessions       Session[]
+  accounts       Account[]
+  audits         AuditEvent[]
+  matrixMonths   UserMatrixMonth[]
+  uploadsCreated UploadBatch[]     @relation("UploadCreatedBy")
+  uploadJobs     UploadJob[]
 }
 
 model Session {
@@ -120,6 +124,13 @@ enum AuditAction {
   UPDATE
   DEACTIVATE
   REACTIVATE
+  INITIALIZE
+  UPLOAD
+  CONFIRM
+  CANCEL
+  ACTIVATE
+  REVERT
+  REPROCESS
 }
 
 /// Agrupación económica BC.
@@ -132,10 +143,11 @@ model ClientGroup {
   createdAt      DateTime @default(now())
   updatedAt      DateTime @updatedAt
 
-  clients    Client[]
-  identities ExternalIdentity[]
-  terms      ServiceTerm[]
-  milestones Milestone[]
+  clients      Client[]
+  identities   ExternalIdentity[]
+  terms        ServiceTerm[]
+  milestones   Milestone[]
+  userMatrices UserMatrix[]
 }
 
 /// Identidad operativa (organización Zendesk). groupId nulo = grupo no asignado.
@@ -149,11 +161,12 @@ model Client {
   createdAt  DateTime @default(now())
   updatedAt  DateTime @updatedAt
 
-  group           ClientGroup?     @relation(fields: [groupId], references: [id], onDelete: Restrict)
+  group           ClientGroup?       @relation(fields: [groupId], references: [id], onDelete: Restrict)
   implementations Implementation[]
   identities      ExternalIdentity[]
   terms           ServiceTerm[]
   milestones      Milestone[]
+  userMatrices    UserMatrix[]
 
   @@index([groupId])
 }
@@ -169,10 +182,11 @@ model Implementation {
   createdAt DateTime @default(now())
   updatedAt DateTime @updatedAt
 
-  client     Client             @relation(fields: [clientId], references: [id], onDelete: Restrict)
-  identities ExternalIdentity[]
-  terms      ServiceTerm[]
-  milestones Milestone[]
+  client       Client             @relation(fields: [clientId], references: [id], onDelete: Restrict)
+  identities   ExternalIdentity[]
+  terms        ServiceTerm[]
+  milestones   Milestone[]
+  userMatrices UserMatrix[]
 
   @@index([clientId])
 }
@@ -274,6 +288,10 @@ model AuditEvent {
   /// Contexto para consultar el historial desde la ficha de grupo o de cliente.
   groupId    String?
   clientId   String?
+  /// Contexto para el historial de una persona del maestro PERSONAL.
+  personId   String?
+  /// Contexto para el historial de un lote de Cargas.
+  batchId    String?
   summary    String
   before     Json?
   after      Json?
@@ -282,5 +300,329 @@ model AuditEvent {
 
   @@index([groupId, at])
   @@index([clientId, at])
+  @@index([personId, at])
+  @@index([batchId, at])
   @@index([entityType, entityId])
+}
+
+// ---------------------------------------------------------------- CSAPP-02: personal
+
+enum PersonSystem {
+  PAP
+  ZENDESK
+  WRIKE
+}
+
+enum PersonAliasKind {
+  NAME
+  ID
+  EMAIL
+}
+
+enum PersonAttribute {
+  LEVEL
+  TEAM
+  PMO_MEMBER
+  PMO_ROLE
+}
+
+enum StaffCatalogKind {
+  LEVEL
+  TEAM
+  PMO_ROLE
+}
+
+/// Catálogo mínimo de nivel, equipo y rol PMO. Los roles iniciales (ANA, DEV) los siembra la migración.
+model StaffCatalogItem {
+  id        String           @id @default(cuid())
+  kind      StaffCatalogKind
+  name      String
+  isActive  Boolean          @default(true)
+  version   Int              @default(1)
+  createdAt DateTime         @default(now())
+  updatedAt DateTime         @updatedAt
+
+  terms PersonTerm[]
+}
+
+/// Maestro único de personas (PERSONAL y PERSONAL PMO). No son cuentas de acceso.
+model Person {
+  id        String   @id @default(cuid())
+  name      String
+  note      String?
+  isActive  Boolean  @default(true)
+  version   Int      @default(1)
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  aliases PersonAlias[]
+  terms   PersonTerm[]
+}
+
+/// Alias, ID o correo de una persona en un sistema. Vigencia [validFrom, validTo).
+model PersonAlias {
+  id          String          @id @default(cuid())
+  personId    String
+  system      PersonSystem
+  kind        PersonAliasKind
+  rawValue    String
+  searchValue String
+  validFrom   DateTime?       @db.Date
+  validTo     DateTime?       @db.Date
+  note        String?
+  isActive    Boolean         @default(true)
+  version     Int             @default(1)
+  createdAt   DateTime        @default(now())
+  updatedAt   DateTime        @updatedAt
+
+  person Person @relation(fields: [personId], references: [id], onDelete: Restrict)
+
+  @@index([personId])
+  @@index([system, kind, searchValue])
+}
+
+/// Nivel, equipo, pertenencia a PMO o rol PMO con vigencia [validFrom, validTo).
+/// La ausencia de tramo para una fecha significa «sin informar».
+model PersonTerm {
+  id            String          @id @default(cuid())
+  personId      String
+  attribute     PersonAttribute
+  catalogItemId String?
+  flag          Boolean?
+  validFrom     DateTime?       @db.Date
+  validTo       DateTime?       @db.Date
+  note          String?
+  version       Int             @default(1)
+  createdAt     DateTime        @default(now())
+  updatedAt     DateTime        @updatedAt
+
+  person      Person            @relation(fields: [personId], references: [id], onDelete: Restrict)
+  catalogItem StaffCatalogItem? @relation(fields: [catalogItemId], references: [id], onDelete: Restrict)
+
+  @@index([personId, attribute])
+  @@index([catalogItemId])
+}
+
+// ---------------------------------------------------------------- CSAPP-02: usuarios contratados
+
+enum UserValueKind {
+  /// Carga inicial del histórico (2025): bloqueada tras la inicialización.
+  INITIAL
+  /// Base copiada del mismo mes del año anterior.
+  COPIED
+  /// Resultado de «aplicar desde este mes».
+  PROPAGATED
+  /// Ajuste explícito de un mes concreto.
+  ADJUSTED
+}
+
+/// Matriz anual de usuarios que pagan de un ámbito (grupo, cliente o implantación).
+/// Un mes sin fila en UserMatrixMonth es «sin informar»; una fila con valor 0 es un cero confirmado.
+model UserMatrix {
+  id               String   @id @default(cuid())
+  groupId          String?
+  clientId         String?
+  implementationId String?
+  year             Int
+  version          Int      @default(1)
+  createdAt        DateTime @default(now())
+  updatedAt        DateTime @updatedAt
+
+  group          ClientGroup?      @relation(fields: [groupId], references: [id], onDelete: Restrict)
+  client         Client?           @relation(fields: [clientId], references: [id], onDelete: Restrict)
+  implementation Implementation?   @relation(fields: [implementationId], references: [id], onDelete: Restrict)
+  months         UserMatrixMonth[]
+
+  @@index([groupId])
+  @@index([clientId])
+  @@index([implementationId])
+}
+
+model UserMatrixMonth {
+  matrixId    String
+  month       Int
+  value       Int
+  kind        UserValueKind
+  isLocked    Boolean       @default(false)
+  /// Procedencia legible: «Valor inicial indicado por el administrador», «Copia de 2025-03», etc.
+  source      String
+  revision    Int           @default(1)
+  updatedById String
+  createdAt   DateTime      @default(now())
+  updatedAt   DateTime      @updatedAt
+
+  matrix    UserMatrix @relation(fields: [matrixId], references: [id], onDelete: Restrict)
+  updatedBy User       @relation(fields: [updatedById], references: [id], onDelete: Restrict)
+
+  @@id([matrixId, month])
+  @@index([updatedById])
+}
+
+// ---------------------------------------------------------------- CSAPP-02: motor común de cargas
+
+enum UploadStatus {
+  RECEIVING
+  QUEUED
+  PREPARING
+  READY
+  ACTIVATION_QUEUED
+  ACTIVATING
+  COMPLETED
+  REJECTED
+  FAILED
+  CANCELLED
+  REVERTED
+}
+
+enum UploadJobKind {
+  PREPARE
+  ACTIVATE
+  REVERT
+}
+
+enum UploadJobStatus {
+  PENDING
+  RUNNING
+  DONE
+  FAILED
+  CANCELLED
+}
+
+enum StagedClass {
+  VALID
+  ERROR
+  EXCLUDED
+}
+
+/// Lote de carga: un archivo recibido, su estado, contadores y metadatos separados
+/// (fecha de carga, extracción declarada y cobertura conocida).
+model UploadBatch {
+  id                     String       @id @default(cuid())
+  profileId              String
+  profileVersion         Int
+  status                 UploadStatus @default(RECEIVING)
+  statusDetail           String?
+  originalName           String
+  /// Identificador interno del archivo en el almacenamiento privado (nunca una ruta del navegador).
+  storageId              String       @unique
+  fileFormat             String
+  sizeBytes              BigInt       @default(0)
+  checksum               String?
+  /// Metadatos que exige el perfil (por ejemplo, el ámbito a sustituir).
+  metadata               Json         @default("{}")
+  scopeKey               String?
+  declaredExtractionDate DateTime?    @db.Date
+  declaredFrom           DateTime?    @db.Date
+  declaredTo             DateTime?    @db.Date
+  coverageNote           String?
+
+  phase               String?
+  rowsProcessed       Int     @default(0)
+  checkpointPosition  Int     @default(0)
+  rowsReceived        Int     @default(0)
+  rowsValid           Int     @default(0)
+  rowsError           Int     @default(0)
+  rowsReviewed        Int     @default(0)
+  rowsDuplicate       Int     @default(0)
+  rowsExcluded        Int     @default(0)
+  rowsWarning         Int     @default(0)
+  rowsImported        Int     @default(0)
+  summary             Json?
+  rulesSnapshot       String?
+  /// Para políticas de sustitución: lote al que sustituye y lote que lo sustituyó después.
+  supersedesBatchId   String?
+  supersededByBatchId String?
+  cancelRequested     Boolean @default(false)
+
+  createdById   String
+  confirmedById String?
+  createdAt     DateTime  @default(now())
+  updatedAt     DateTime  @updatedAt
+  preparedAt    DateTime?
+  confirmedAt   DateTime?
+  finishedAt    DateTime?
+  version       Int       @default(1)
+
+  createdBy User                 @relation("UploadCreatedBy", fields: [createdById], references: [id], onDelete: Restrict)
+  jobs      UploadJob[]
+  rows      UploadStagedRow[]
+  sources   UploadRecordSource[]
+
+  @@index([createdAt])
+  @@index([profileId, status])
+  @@index([profileId, scopeKey])
+  @@index([checksum])
+}
+
+/// Cola de trabajos en PostgreSQL. Reclamación atómica, lease con latido y token de fencing.
+model UploadJob {
+  id             String          @id @default(cuid())
+  batchId        String
+  kind           UploadJobKind
+  status         UploadJobStatus @default(PENDING)
+  attempts       Int             @default(0)
+  maxAttempts    Int             @default(3)
+  leaseOwner     String?
+  leaseExpiresAt DateTime?
+  heartbeatAt    DateTime?
+  /// Se incrementa en cada reclamación: un trabajador que perdió el trabajo no puede confirmar.
+  fence          Int             @default(0)
+  runAfter       DateTime        @default(now())
+  lastError      String?
+  /// Actor generado en servidor al encolar; el trabajador lo vuelve a autorizar.
+  actorId        String
+  createdAt      DateTime        @default(now())
+  startedAt      DateTime?
+  finishedAt     DateTime?
+
+  batch UploadBatch @relation(fields: [batchId], references: [id], onDelete: Restrict)
+  actor User        @relation(fields: [actorId], references: [id], onDelete: Restrict)
+
+  @@index([status, runAfter])
+  @@index([batchId])
+}
+
+/// Staging: una fila fuente tal y como se leyó, tipada y clasificada. No altera datos activos.
+model UploadStagedRow {
+  id              BigInt      @id @default(autoincrement())
+  batchId         String
+  /// Posición correlativa de la fila de datos en el archivo (clave de reanudación).
+  position        Int
+  sheet           String?
+  sourceRow       Int
+  raw             Json
+  typed           Json?
+  fingerprint     String?
+  entityKey       String?
+  classification  StagedClass
+  issues          Json?
+  hasWarning      Boolean     @default(false)
+  duplicateInFile Boolean     @default(false)
+  /// Calculada en la activación: NEW, DUPLICATE_EXISTING, REVISION.
+  disposition     String?
+
+  batch UploadBatch @relation(fields: [batchId], references: [id], onDelete: Restrict)
+
+  @@unique([batchId, position])
+  @@index([batchId, classification])
+  @@index([batchId, fingerprint])
+}
+
+/// Procedencia: qué lote aportó qué fila (por huella). Una fila idéntica se materializa una vez
+/// aunque la aporten varios lotes; la reversión consulta esta tabla.
+model UploadRecordSource {
+  id            BigInt  @id @default(autoincrement())
+  batchId       String
+  profileId     String
+  dedupeKey     String  @default("")
+  fingerprint   String
+  entityKey     String?
+  occurrences   Int     @default(1)
+  firstPosition Int
+
+  batch UploadBatch @relation(fields: [batchId], references: [id], onDelete: Restrict)
+
+  @@unique([batchId, fingerprint])
+  @@index([profileId, dedupeKey, fingerprint])
+  @@index([profileId, dedupeKey, entityKey])
 }

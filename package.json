@@ -11,11 +11,14 @@
     "@prisma/adapter-pg": "7.10.1",
     "@prisma/client": "7.10.1",
     "better-auth": "1.7.14",
+    "csv-parse": "7.0.3",
     "next": "16.4.3",
     "pg": "8.23.1",
     "react": "19.3.1",
     "react-dom": "19.3.1",
+    "saxes": "6.0.0",
     "server-only": "0.0.1",
+    "yauzl": "3.4.0",
     "zod": "4.6.7"
   },
   "devDependencies": {
@@ -23,13 +26,18 @@
     "@types/pg": "8.23.1",
     "@types/react": "19.3.0",
     "@types/react-dom": "19.3.0",
+    "@types/yauzl": "3.4.0",
+    "@types/yazl": "3.3.1",
     "dotenv": "18.0.9",
+    "esbuild": "0.28.2",
     "eslint": "9.39.5",
     "eslint-config-next": "16.4.3",
+    "playwright": "1.63.0",
     "prisma": "7.10.1",
     "tsx": "4.23.15",
     "typescript": "5.9.3",
-    "vitest": "5.0.5"
+    "vitest": "5.0.5",
+    "yazl": "3.3.1"
   },
   "scripts": {
     "dev": "next dev",
@@ -37,10 +45,18 @@
     "start": "next start",
     "lint": "eslint .",
     "typecheck": "prisma generate && tsc --noEmit",
-    "test": "vitest run",
+    "test": "vitest run --exclude tests/cargas-trabajador.test.ts --exclude tests/cargas-volumen.test.ts",
+    "e2e:build": "prisma generate && next build && node scripts/build-worker.mjs",
+    "e2e": "tsx scripts/e2e/recorrido.ts",
     "postinstall": "prisma generate",
     "db:comprobar": "tsx scripts/check-env.ts",
     "db:migrar": "prisma migrate deploy",
-    "cuenta:crear": "tsx scripts/crear-cuenta.ts"
+    "cuenta:crear": "tsx scripts/crear-cuenta.ts",
+    "worker:build": "node scripts/build-worker.mjs",
+    "worker:start": "node worker-dist/worker.mjs",
+    "worker": "node scripts/build-worker.mjs && node worker-dist/worker.mjs",
+    "benchmark:lectores": "tsx scripts/benchmark-lectores.ts",
+    "test:largo": "vitest run tests/cargas-trabajador.test.ts tests/cargas-volumen.test.ts",
+    "test:todo": "vitest run"
   }
 }

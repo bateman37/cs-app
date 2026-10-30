@@ -68,13 +68,13 @@ async function seedMasters() {
   await prisma.externalIdentity.createMany({
     data: Array.from({ length: 300 }, (_, i) => ({ system: "ZENDESK" as const, kind: "ORG_ID" as const, rawValue: String(100_000 + i), searchValue: String(100_000 + i), clientId: `c${i}`, updatedAt: new Date() })),
   });
-  // Proyectos Wrike y PAP: 140 equivalencias de Cliente y 10 claves BC de grupo (solo grupo).
+  // Proyectos Wrike y PAP: 140 equivalencias de Cliente y 10 equivalencias de proyecto directamente a Grupo.
   const eq = (system: "WRIKE" | "PAP") => [
     ...Array.from({ length: 140 }, (_, i) => ({ system, kind: "PROJECT_NAME" as const, rawValue: `Proyecto ${i}`, searchValue: `proyecto ${i}`, clientId: `c${i}`, updatedAt: new Date() })),
   ];
   await prisma.externalIdentity.createMany({ data: [...eq("WRIKE"), ...eq("PAP")] });
   await prisma.externalIdentity.createMany({
-    data: Array.from({ length: 10 }, (_, i) => ({ system: "BC" as const, kind: "GROUP_KEY" as const, rawValue: `Proyecto ${140 + i}`, searchValue: `proyecto ${140 + i}`, groupId: `g${i}`, updatedAt: new Date() })),
+    data: Array.from({ length: 10 }, (_, i) => ({ system: (i % 2 === 0 ? "WRIKE" : "PAP") as "WRIKE" | "PAP", kind: "PROJECT_NAME" as const, rawValue: `Proyecto ${140 + i}`, searchValue: `proyecto ${140 + i}`, groupId: `g${i}`, updatedAt: new Date() })),
   });
   for (let i = 0; i < 40; i++) {
     const p = await prisma.person.create({ data: { name: `Persona ${i}` } });

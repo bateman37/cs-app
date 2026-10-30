@@ -12,8 +12,8 @@ type Tx = Prisma.TransactionClient;
  *  - ticket: campo explícito válido; solo si falta, el único candidato inequívoco del nombre; con varios no se elige;
  *    se confirma contra los tickets cargados y, si todavía no existe, queda como referencia pendiente;
  *  - persona: alias/ID de Wrike de PERSONAL vigente a la fecha del trabajo (nunca por parecido);
- *  - ámbito: equivalencia de Proyecto (cliente o implantación; o solo el Grupo Cliente cuando el proyecto coincide con la clave BC de
- *    un grupo) y, con ticket confirmado, su Cliente; si ambos
+ *  - ámbito: equivalencia WRIKE de Proyecto a Cliente, implantación o directamente a un Grupo Cliente (CSAPP-05; sustituye al atajo
+ *    por clave BC, que ya no atribuye nada) vigente a la FECHA DEL TRABAJO y, con ticket confirmado, su Cliente; si ambos
  *    señalan ámbitos incompatibles se conservan las horas y el conflicto, sin elegir cliente;
  *  - elegibilidad (política histórica única): antes del corte no sustituye a Zendesk; desde el corte, PMO elegible, no
  *    PMO fuera, PMO desconocido pendiente;
@@ -41,7 +41,7 @@ export function wrikeDerivationSql(src: Prisma.Sql): Prisma.Sql {
     ),
     sc AS (
       SELECT tr.*, tcl.id AS tclient_any, tcl."isInternal" AS tclient_internal, tcl."groupId" AS tgroup_any,
-        pj."clientId" AS pj_client, pj."implementationId" AS pj_impl, pg."groupId" AS pg_group, pic."clientId" AS pj_impl_client,
+        pj."clientId" AS pj_client, pj."implementationId" AS pj_impl, pj."groupId" AS pj_group, pic."clientId" AS pj_impl_client,
         pcl."groupId" AS pj_client_group,
         pa."personId" AS person_id
       FROM tr
@@ -55,11 +55,6 @@ export function wrikeDerivationSql(src: Prisma.Sql): Prisma.Sql {
         WHERE tr.project IS NOT NULL AND e.system = 'WRIKE' AND e.kind IN ('PROJECT_NAME', 'PROJECT_ID') AND e."isActive"
           AND e."searchValue" IN (lower(tr.project), tr.project)
           AND (e."validFrom" IS NULL OR e."validFrom" <= tr.work_date) AND (e."validTo" IS NULL OR tr.work_date < e."validTo") LIMIT 1) pj ON true
-      LEFT JOIN LATERAL (
-        SELECT e."groupId" FROM "ExternalIdentity" e
-        WHERE tr.project IS NOT NULL AND pj."clientId" IS NULL AND pj."implementationId" IS NULL
-          AND e.system = 'BC' AND e.kind = 'GROUP_KEY' AND e."isActive" AND e."searchValue" = lower(tr.project)
-          AND (e."validFrom" IS NULL OR e."validFrom" <= tr.work_date) AND (e."validTo" IS NULL OR tr.work_date < e."validTo") LIMIT 1) pg ON true
       LEFT JOIN "Implementation" pim ON pim.id = pj."implementationId"
       LEFT JOIN LATERAL (SELECT pim."clientId" AS "clientId") pic ON true
       LEFT JOIN "Client" pcl ON pcl.id = COALESCE(pj."clientId", pic."clientId")
@@ -74,7 +69,7 @@ export function wrikeDerivationSql(src: Prisma.Sql): Prisma.Sql {
       SELECT sc.*,
         COALESCE(sc.pj_client, sc.pj_impl_client) AS p_client,
         sc.pj_impl AS p_impl,
-        COALESCE(sc.pj_client_group, sc.pg_group) AS p_group,
+        COALESCE(sc.pj_client_group, sc.pj_group) AS p_group,
         CASE WHEN sc.tclient_internal IS NOT TRUE THEN sc.tclient_any END AS t_client,
         CASE WHEN sc.tclient_internal IS NOT TRUE THEN sc.tgroup_any END AS t_group
       FROM sc

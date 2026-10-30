@@ -9,7 +9,7 @@ export type CellKind = "text" | "number" | "date" | "bool" | "error" | "empty";
  * `d` solo existe en celdas de fecha (XLSX): fecha ISO AAAA-MM-DD (o AAAA-MM-DDTHH:MM:SS si lleva
  * hora) interpretada con el calendario del libro; el valor original sigue en `v`.
  */
-export type Cell = { v: string; k: CellKind; d?: string };
+export type Cell = { v: string; k: CellKind; d?: string; /** XLSX: la celda es una fórmula (nunca se evalúa; `v` es solo el valor almacenado, si existe). */ f?: true };
 
 export type SourceRow = {
   /** Nombre de la hoja (XLSX) o null (CSV). */

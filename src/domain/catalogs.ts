@@ -56,9 +56,16 @@ export type TargetType = "group" | "client" | "implementation";
 export const SYSTEM_RULES: Record<System, { kinds: readonly Kind[]; targets: readonly TargetType[] }> = {
   BC: { kinds: ["GROUP_KEY"], targets: ["group"] },
   ZENDESK: { kinds: ["ORG_ID", "ORG_NAME"], targets: ["client"] },
-  WRIKE: { kinds: ["PROJECT_ID", "PROJECT_NAME"], targets: ["client", "implementation"] },
-  PAP: { kinds: ["ORG_ID", "ORG_NAME", "PROJECT_ID", "PROJECT_NAME"], targets: ["client", "implementation"] },
+  WRIKE: { kinds: ["PROJECT_ID", "PROJECT_NAME"], targets: ["group", "client", "implementation"] },
+  PAP: { kinds: ["ORG_ID", "ORG_NAME", "PROJECT_ID", "PROJECT_NAME"], targets: ["group", "client", "implementation"] },
 };
+
+/**
+ * CSAPP-05: un proyecto de Wrike o PAP puede identificar directamente un Grupo Cliente (sin renombrarlo ni crear una falsa clave BC).
+ * Solo los tipos de proyecto admiten destino de grupo; mismo contrato que el CHECK «ExternalIdentity_system_kind_target».
+ * Zendesk ORG_ID sigue siendo exclusivo de Cliente.
+ */
+export const GROUP_TARGET_KINDS: readonly Kind[] = ["PROJECT_ID", "PROJECT_NAME"];
 
 export const MILESTONE_TYPES = ["START", "CLOUD_MIGRATION", "MAJOR_VERSION"] as const;
 export type MilestoneTypeValue = (typeof MILESTONE_TYPES)[number];

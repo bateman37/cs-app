@@ -55,7 +55,7 @@ async function activate(id: string) {
 
 describe("Perfil sintético aislado", () => {
   it("solo se habilita con las tres condiciones", async () => {
-    const OPERATIVOS = ["zendesk-tickets", "zendesk-tiempo", "wrike", "pap", "bugs-vfs", "bugs-vsw"];
+    const OPERATIVOS = ["zendesk-tickets", "zendesk-tiempo", "wrike", "pap", "bugs-vfs", "bugs-vsw", "facturacion-soporte", "facturacion-admin-delegada", "facturacion-otros"];
     const ids = async () => (await getProfiles()).map((p) => p.id);
     expect(await ids()).toEqual([...OPERATIVOS, "sintetico-incorporar", "sintetico-sustituir"]);
     const saved = process.env.CSAPP_ENABLE_SYNTHETIC_PROFILES;

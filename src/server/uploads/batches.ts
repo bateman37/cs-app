@@ -232,11 +232,12 @@ export async function getUpload(actorId: string, id: string) {
         take: 5,
       })
     : [];
+  const gate = batch.status === "READY" ? await profile?.confirmGate?.(prisma, batch.id) : undefined;
   const actions = availableActions(batch.status as UploadStatusName, {
     supportsRevert: profile ? Boolean(profile.revert) : false,
     isCurrentOfScope: batch.supersededByBatchId === null,
     supportsRederive: Boolean(profile?.rederive),
-    confirmBlockedReason: confirmBlockReason(profile, batch.rowsError),
+    confirmBlockedReason: confirmBlockReason(profile, batch.rowsError) ?? gate,
   });
   if (pendingRevert) actions.revert = { allowed: false, reason: "La reversión ya está en cola." };
   if (pendingRederive) actions.reprocess = { allowed: false, reason: "El recálculo ya está en cola." };
@@ -294,7 +295,8 @@ export async function confirmUpload(actorId: string, id: string, opts: { expecte
   return adminTransaction(actorId, async (tx, actor) => {
     const cur = await tx.uploadBatch.findUnique({ where: { id }, select: { status: true, rowsError: true, profileId: true } });
     if (cur?.status === "READY") {
-      const blocked = confirmBlockReason(await getProfile(cur.profileId), cur.rowsError);
+      const profile = await getProfile(cur.profileId);
+      const blocked = confirmBlockReason(profile, cur.rowsError) ?? (await profile?.confirmGate?.(tx, id));
       if (blocked) throw new DomainError(blocked);
     }
     const res = await tx.uploadBatch.updateMany({

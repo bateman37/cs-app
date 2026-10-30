@@ -11,3 +11,12 @@ PAP 03. Origen cliente se conserva y participa en el volumen y el semáforo de P
 PAP 04. El periodo usa Fecha puesta en producción. Resultado se conserva como información y filtro, sin imponer ahora Resultado=OK. La duración textual no se añade a las horas Zendesk/Wrike para evitar sumar el mismo trabajo dos veces.
 
 PAP 05. Nº de BUG se conserva. Si identifica un Work Item de producto de forma inequívoca, se puede relacionar con él como dato explícito, preservando producto/ámbito; no deducir vínculos por parecido de título ni asumir que todo número es un Bug ID válido. El indicador de bugs no se obtiene buscando BUG en una descripción de cliente.
+
+## Implementación en CSAPP-04
+
+Perfil `pap` (XLSX CARGA PAP, 29 columnas por contenido). Contrato exacto de identidad (`^(?:ID\s+)?([0-9]+)\s*:` + lista de origen declarada), causas, formatos de referencias admitidos, ámbito por proyecto y política temporal: [Wrike, PAP y bugs](../arquitectura/wrike-pap-bugs-csapp04.md#6-pap-contrato-exacto). Resumen operativo:
+
+- PAP 01: clave = lista de origen (metadato obligatorio) + ID del título; otro `42` en otra lista es otra identidad; el resto del título puede cambiar (revisión). Sin identidad reconocida es error claro.
+- PAP 02-03: causas por `;#` con tokens originales y normalizados; correctivo si cualquiera lo es (también un `Correctivo (…)` nuevo); sin causa o etiqueta nueva = sin clasificar; origen cliente conservado y desglosado; los totales cuentan PAP distintos y los desgloses no se suman.
+- PAP 04: periodo = fecha de puesta en producción (sin ella, «sin fecha de producción»); `Fecha de Solicitud` vacía es válida; `Resultado` se conserva íntegro sin imponer OK; `Duración` no se suma a horas.
+- PAP 05: `Nº de BUG` se conserva; solo una referencia con producto explícito se resuelve contra un Work Item (cuando llega); un número suelto queda con producto sin determinar. Los tickets asociados y el ticket PAP asociado tienen roles distintos y sus pares se deduplican; `CAL's asociados` no son tickets.

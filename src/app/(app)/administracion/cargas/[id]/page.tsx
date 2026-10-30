@@ -12,6 +12,7 @@ import { HistorySection } from "../../clientes/_sections/sections";
 import { ActionButtons } from "./action-buttons";
 import { StatusPoller } from "./poller";
 import { ZendeskPanels } from "./zendesk-panels";
+import { Csapp04Panels } from "./csapp04-panels";
 
 export const metadata: Metadata = { title: "Ficha de carga" };
 const BASE = "/administracion/cargas";
@@ -36,6 +37,9 @@ export default async function CargaPage({ params, searchParams }: { params: Prom
   const det = first(sp.det);
   const flag = first(sp.flag);
   const dp = Number(first(sp.dp)) || 1;
+  const corr = first(sp.corr);
+  const target = first(sp.target);
+  const tf = { ticket: first(sp.tf_ticket) || undefined, person: first(sp.tf_person) || undefined, from: first(sp.tf_from) || undefined, to: first(sp.tf_to) || undefined, text: first(sp.tf_text) || undefined };
   const showRows = ["READY", "ACTIVATION_QUEUED", "ACTIVATING", "COMPLETED", "REVERTED", "FAILED"].includes(st) && b.rowsReceived > 0;
   const [rows, history] = await Promise.all([
     showRows ? listStagedRows(user.id, id, { page: pp, pageSize: 20, classification: cls, onlyWarnings }) : null,
@@ -156,7 +160,10 @@ export default async function CargaPage({ params, searchParams }: { params: Prom
       </section>
 
       {prepared && !["REJECTED", "CANCELLED"].includes(st) ? (
-        <ZendeskPanels userId={user.id} batch={{ id: b.id, profileId: b.profileId, status: st }} base={`${BASE}/${b.id}`} det={det} flag={flag} dp={dp} keep={zdKeep} />
+        <>
+          <ZendeskPanels userId={user.id} batch={{ id: b.id, profileId: b.profileId, status: st, version: b.version }} base={`${BASE}/${b.id}`} det={det} flag={flag} dp={dp} keep={zdKeep} corr={corr} target={target} tf={tf} />
+          <Csapp04Panels userId={user.id} batch={{ id: b.id, profileId: b.profileId, status: st, version: b.version }} base={`${BASE}/${b.id}`} det={det} flag={flag} dp={dp} keep={zdKeep} corr={corr} target={target} tf={tf} />
+        </>
       ) : null}
 
       {rows ? (

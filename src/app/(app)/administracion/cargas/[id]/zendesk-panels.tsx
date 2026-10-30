@@ -21,7 +21,8 @@ import {
   timesSummary,
   type TicketFilter,
 } from "@/server/zendesk/summary";
-import { CorrectionForm } from "./correction-form";
+import { CorrectionPanel } from "./correction-panel";
+import { DecisionButtons } from "./correction-form";
 
 const f = (n: number) => n.toLocaleString("es-ES");
 const hrs = (h: string) => Number(h).toLocaleString("es-ES", { maximumFractionDigits: 4 });
@@ -47,7 +48,19 @@ function StaleNotice({ preview, done }: { preview: { computedAt: Date; stale: bo
   );
 }
 
-type Props = { userId: string; batch: { id: string; profileId: string; status: string }; base: string; det: string; flag: string; dp: number; keep: Record<string, string | number | undefined> };
+export type PanelProps = {
+  userId: string;
+  batch: { id: string; profileId: string; status: string; version: number };
+  base: string;
+  det: string;
+  flag: string;
+  dp: number;
+  keep: Record<string, string | number | undefined>;
+  corr: string;
+  target: string;
+  tf: { ticket?: string; person?: string; from?: string; to?: string; text?: string };
+};
+type Props = PanelProps;
 
 export async function ZendeskPanels(props: Props) {
   if (props.batch.profileId === ZENDESK_TICKETS_PROFILE) return <TicketsPanel {...props} />;
@@ -180,7 +193,7 @@ async function TicketsPanel({ userId, batch, base, det, dp, keep }: Props) {
 
 // ---------------------------------------------------------------- Tiempos
 
-async function TimesPanel({ userId, batch, base, det, flag, dp, keep }: Props) {
+async function TimesPanel({ userId, batch, base, det, flag, dp, keep, corr, target, tf }: Props) {
   const s = await timesSummary(userId, batch.id);
   if (!s) return null;
   const bucket = (TIME_BUCKETS as readonly string[]).includes(det) ? (det as TimeBucket) : undefined;
@@ -191,6 +204,7 @@ async function TimesPanel({ userId, batch, base, det, flag, dp, keep }: Props) {
   const ready = batch.status === "READY";
   return (
     <>
+      {ready && corr ? <CorrectionPanel userId={userId} batchId={batch.id} batchVersion={batch.version} base={base} corr={corr} target={target} tf={tf} keep={keep} /> : null}
       <section className="card" aria-labelledby="sec-zd-resumen" data-testid="zd-resumen">
         <h2 id="sec-zd-resumen">Resumen de horas</h2>
         <StaleNotice preview={s.preview} done={false} />
@@ -199,8 +213,8 @@ async function TimesPanel({ userId, batch, base, det, flag, dp, keep }: Props) {
           horas no se suman dos veces. {s.source === "registros" ? "Cifras de los registros materializados." : "Previsualización con los maestros y tickets actuales."}
         </p>
         <p className="notice notice-info" role="note">
-          Las horas de PMO desde el 01/01/2025 no se toman de Zendesk: corresponden a Wrike y llegarán en una entrega posterior. Se conservan aquí como trazabilidad y no se
-          rellenan con ceros.
+          Las horas de PMO desde el 01/01/2025 no se toman de Zendesk: corresponden a la fuente Wrike (cárguela en esta misma pantalla). Se conservan aquí como trazabilidad,
+          sin sumarse, y no se rellenan con ceros.
         </p>
         <div className="table-wrap">
           <table>
@@ -270,7 +284,17 @@ async function TimesPanel({ userId, batch, base, det, flag, dp, keep }: Props) {
                     </td>
                     <td>
                       {c.decision ? <p><span className="badge badge-ok">{c.decision === "CORRECTION" ? "Corrige el registro seleccionado" : "Es otro trabajo"}</span></p> : <p><span className="badge badge-warn">Sin decidir</span></p>}
-                      {ready ? <CorrectionForm batchId={batch.id} fingerprint={c.fingerprint} matches={c.matches} decision={c.decision} /> : null}
+                      {ready ? (
+                        <>
+                          <ul className="row-actions" style={{ listStyle: "none", padding: 0 }}>
+                            {c.matches.map((m) => (
+                              <li key={m.id}><Link className="btn btn-secondary btn-sm" href={`${base}${qs({ ...keep, corr: c.fingerprint, target: m.id })}#sec-correccion`}>Comparar con el registro de {hrs(m.hours)} h{m.hourText ? ` (${m.hourText})` : ""}</Link></li>
+                            ))}
+                            <li><Link className="btn btn-secondary btn-sm" href={`${base}${qs({ ...keep, corr: c.fingerprint })}#sec-correccion`}>Elegir otro registro</Link></li>
+                          </ul>
+                          <DecisionButtons batchId={batch.id} fingerprint={c.fingerprint} batchVersion={batch.version} hasDecision={c.decision !== null} />
+                        </>
+                      ) : null}
                     </td>
                   </tr>
                 ))}
@@ -307,7 +331,7 @@ async function TimesPanel({ userId, batch, base, det, flag, dp, keep }: Props) {
             <div className="table-wrap">
               <table>
                 <caption className="skip">Registros de tiempo del lote</caption>
-                <thead><tr><th>Fila de origen</th><th>Ticket</th><th>Persona</th><th>Día de trabajo</th><th>Horas</th><th>Motivo principal</th><th>Indicadores</th></tr></thead>
+                <thead><tr><th>Fila de origen</th><th>Ticket</th><th>Persona</th><th>Día de trabajo</th><th>Horas</th><th>Motivo principal</th><th>Indicadores</th>{ready ? <th>Corrección</th> : null}</tr></thead>
                 <tbody>
                   {list.rows.map((r) => (
                     <tr key={r.position}>
@@ -318,6 +342,9 @@ async function TimesPanel({ userId, batch, base, det, flag, dp, keep }: Props) {
                       <td>{hrs(r.hours)}</td>
                       <td>{TIME_BUCKET_LABEL[r.bucket] ?? r.bucket}</td>
                       <td>{(r.flags ?? []).map((x) => TIME_FLAG_LABEL[x]?.split(" (")[0] ?? x).join("; ") || "—"}</td>
+                      {ready ? (
+                        <td>{r.fingerprint && ["NEW", "PENDING_DECISION", "CORRECTION"].includes(r.disposition ?? "") ? <Link href={`${base}${qs({ ...keep, corr: r.fingerprint })}#sec-correccion`}>Relacionar con un registro</Link> : "—"}</td>
+                      ) : null}
                     </tr>
                   ))}
                 </tbody>

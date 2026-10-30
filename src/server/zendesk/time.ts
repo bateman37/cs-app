@@ -14,7 +14,7 @@ import {
 } from "@/domain/zendesk";
 import type { ActivationContext, HeaderMatch, ImportProfile, Issue, ParsedRow } from "../uploads/profile";
 import type { Cell } from "../uploads/readers/types";
-import { orphanFingerprintsSql } from "../uploads/provenance";
+import { ZENDESK_TIME_SOURCE, activateCorrections, applyDecisionRules, revertTimeBatch } from "../time-correction";
 import { derivationSql, lockDerivation, rederiveEntries, stagedSource } from "./derive";
 import { refreshTimePreview } from "./preview";
 
@@ -108,13 +108,8 @@ function parseRow(cells: Cell[], context?: unknown): ParsedRow {
  * Es idempotente: se ejecuta tras preparar y otra vez justo antes de activar.
  */
 export async function applyCorrectionRules(tx: Tx, batchId: string) {
-  // La decisión «corrige este registro» solo vale si el registro sigue existiendo.
-  await tx.$executeRaw(Prisma.sql`
-    UPDATE "UploadStagedRow" r SET disposition = 'CORRECTION'
-    FROM "ZdTimeDecision" d
-    WHERE d."batchId" = r."batchId" AND d.fingerprint = r.fingerprint AND d.decision = 'CORRECTION'
-      AND EXISTS (SELECT 1 FROM "ZdTimeEntry" e WHERE e.id = d."targetEntryId")
-      AND r."batchId" = ${batchId} AND r.classification = 'VALID' AND r."duplicateInFile" = false AND r.disposition = 'NEW'`);
+  // Decisiones explícitas (con o sin ID externo): válidas solo con el objetivo activo en la revisión que se vio.
+  await applyDecisionRules(tx, ZENDESK_TIME_SOURCE, batchId);
   await tx.$executeRaw(Prisma.sql`
     UPDATE "UploadStagedRow" r SET disposition = 'PENDING_DECISION'
     WHERE r."batchId" = ${batchId} AND r.classification = 'VALID' AND r."duplicateInFile" = false AND r.disposition = 'NEW'
@@ -126,10 +121,6 @@ export async function applyCorrectionRules(tx: Tx, batchId: string) {
           AND (e."userId" IS NOT NULL OR e."userName" IS NOT DISTINCT FROM r.typed->>'user_name')
           AND e.fingerprint <> r.fingerprint)`);
 }
-
-const stagedBy = (batchId: string, disposition: string) => Prisma.sql`
-  SELECT r.position, r.fingerprint, r.typed FROM "UploadStagedRow" r
-  WHERE r."batchId" = ${batchId} AND r.classification = 'VALID' AND r."duplicateInFile" = false AND r.disposition = ${disposition}`;
 
 async function activate(tx: Tx, ctx: ActivationContext) {
   await lockDerivation(tx);
@@ -154,70 +145,14 @@ async function activate(tx: Tx, ctx: ActivationContext) {
     ON CONFLICT ("originFingerprint") DO NOTHING`);
 
   // Correcciones explícitas: conservan el contenido anterior y no suman duración antigua y nueva.
-  await tx.$executeRaw(Prisma.sql`
-    INSERT INTO "ZdTimeCorrection" ("entryId", "batchId", fingerprint, "previousFingerprint", previous, "minutesBefore", "minutesAfter", "decidedById")
-    SELECT e.id, ${ctx.batchId}, s.fingerprint, e.fingerprint,
-      jsonb_build_object('userName', e."userName", 'hourText', e."hourText", 'loggedHours', trim_scale(e."loggedHours")::text,
-        'loggedMinutes', trim_scale(e."loggedMinutes")::text, 'minutes', trim_scale(e.minutes)::text, 'dayLabel', e."dayLabel", 'segmenter', e.segmenter, 'channel', e.channel),
-      e.minutes, (s.typed->>'logged_hours')::numeric * 60 + (s.typed->>'logged_minutes')::numeric, dc."decidedById"
-    FROM (${stagedBy(ctx.batchId, "CORRECTION")}) s
-    JOIN "ZdTimeDecision" dc ON dc."batchId" = ${ctx.batchId} AND dc.fingerprint = s.fingerprint
-    JOIN "ZdTimeEntry" e ON e.id = dc."targetEntryId"`);
-  const revised = await tx.$executeRaw(Prisma.sql`
-    UPDATE "ZdTimeEntry" e SET
-      "userName" = s.typed->>'user_name', "hourText" = s.typed->>'hour', "loggedHours" = (s.typed->>'logged_hours')::numeric,
-      "loggedMinutes" = (s.typed->>'logged_minutes')::numeric,
-      minutes = (s.typed->>'logged_hours')::numeric * 60 + (s.typed->>'logged_minutes')::numeric,
-      "dayLabel" = s.typed->>'dia_semana', segmenter = s.typed->>'segmentador_app_time', channel = s.typed->>'type',
-      fingerprint = s.fingerprint, revision = e.revision + 1, "updatedAt" = now()
-    FROM (${stagedBy(ctx.batchId, "CORRECTION")}) s
-    JOIN "ZdTimeDecision" dc ON dc."batchId" = ${ctx.batchId} AND dc.fingerprint = s.fingerprint
-    WHERE e.id = dc."targetEntryId"`);
+  const revised = await activateCorrections(tx, ZENDESK_TIME_SOURCE, ctx.batchId, (ids) => rederiveEntries(tx, ids, ctx.batchId));
   return { inserted, revised };
 }
 
-type CorrectionRow = { id: bigint; entryId: string; previous: Record<string, string | null>; previousFingerprint: string; minutesBefore: string };
-
-/**
- * Reversión del lote (ya marcado REVERTED): deshace sus correcciones respetando las posteriores y retira solo los
- * registros que ningún otro lote vigente aporta ni corrige.
- */
+/** Reversión del lote (ya marcado REVERTED): ver revertTimeBatch (respeta correcciones posteriores y lotes compartidos). */
 async function revert(tx: Tx, ctx: ActivationContext) {
   await lockDerivation(tx);
-  const mine = await tx.$queryRaw<CorrectionRow[]>(Prisma.sql`
-    SELECT id, "entryId", previous, "previousFingerprint", "minutesBefore"::text AS "minutesBefore"
-    FROM "ZdTimeCorrection" WHERE "batchId" = ${ctx.batchId} AND NOT reverted ORDER BY id DESC`);
-  for (const c of mine) {
-    const later = await tx.$queryRaw<{ id: bigint }[]>(Prisma.sql`
-      SELECT id FROM "ZdTimeCorrection" WHERE "entryId" = ${c.entryId} AND id > ${c.id} AND NOT reverted ORDER BY id ASC LIMIT 1`);
-    if (later[0]) {
-      // Hay una corrección posterior vigente: su «antes» pasa a ser el de esta; no se restaura nada por encima.
-      await tx.$executeRaw(Prisma.sql`
-        UPDATE "ZdTimeCorrection" SET previous = ${JSON.stringify(c.previous)}::jsonb, "previousFingerprint" = ${c.previousFingerprint},
-          "minutesBefore" = ${c.minutesBefore}::numeric WHERE id = ${later[0].id}`);
-    } else {
-      const p = c.previous;
-      await tx.$executeRaw(Prisma.sql`
-        UPDATE "ZdTimeEntry" SET "userName" = ${p.userName}, "hourText" = ${p.hourText}, "loggedHours" = ${p.loggedHours}::numeric,
-          "loggedMinutes" = ${p.loggedMinutes}::numeric, minutes = ${p.minutes}::numeric, "dayLabel" = ${p.dayLabel}, segmenter = ${p.segmenter},
-          channel = ${p.channel}, fingerprint = ${c.previousFingerprint}, revision = revision + 1, "updatedAt" = now()
-        WHERE id = ${c.entryId}`);
-    }
-    await tx.$executeRaw(Prisma.sql`UPDATE "ZdTimeCorrection" SET reverted = true WHERE id = ${c.id}`);
-  }
-  if (mine.length > 0) {
-    // Un registro cuyo lote de origen ya se revirtió solo seguía vivo por la corrección que acabamos de deshacer.
-    await tx.$executeRaw(Prisma.sql`
-      DELETE FROM "ZdTimeEntry" e
-      WHERE e.id IN (${Prisma.join(mine.map((c) => c.entryId))})
-        AND NOT EXISTS (SELECT 1 FROM "UploadRecordSource" s JOIN "UploadBatch" b ON b.id = s."batchId"
-          WHERE s."profileId" = ${ZENDESK_TIME_PROFILE} AND s.fingerprint = e."originFingerprint" AND b.status = 'COMPLETED')
-        AND NOT EXISTS (SELECT 1 FROM "ZdTimeCorrection" c WHERE c."entryId" = e.id AND NOT c.reverted)`);
-  }
-  await tx.$executeRaw(Prisma.sql`
-    DELETE FROM "ZdTimeEntry" e
-    WHERE e."originFingerprint" IN (${orphanFingerprintsSql(ctx.batchId)})
-      AND NOT EXISTS (SELECT 1 FROM "ZdTimeCorrection" c WHERE c."entryId" = e.id AND c."batchId" <> ${ctx.batchId} AND NOT c.reverted)`);
+  await revertTimeBatch(tx, ZENDESK_TIME_SOURCE, ctx.batchId, (ids) => rederiveEntries(tx, ids, null));
 }
 
 const batchEntries = (batchId: string) => Prisma.sql`

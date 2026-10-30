@@ -66,6 +66,7 @@ describe("migración CSAPP-02 → CSAPP-03 sobre datos existentes", () => {
         "20261029200318_base_acceso_y_maestros",
         "20261029220244_personal_usuarios_cargas",
         "20261030080000_zendesk_tickets_y_tiempos",
+        "20261030120000_wrike_pap_bugs",
       ]);
       execSync("npx prisma migrate deploy", { env, stdio: "pipe" });
       const after = await db.query(`SELECT count(*) AS n FROM "UploadBatch"`);

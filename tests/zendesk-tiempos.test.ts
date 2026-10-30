@@ -6,7 +6,7 @@ import { decideTimeCorrection } from "@/server/zendesk/corrections";
 import { listBatchTimes, listCorrectionCandidates, timesSummary } from "@/server/zendesk/summary";
 import { batch, drain, freshEnvironment, removeUploadDir, useUploadDir } from "./cargas-helpers";
 import { excelSerial, ticket, ticketsBuffer, timeRow, timesBuffer, type TimeRow } from "./generators/zendesk";
-import { addClient, addGroup, addPerson, addPersonAlias, count, entries, importZd, prepareZd, sumHours, TICKETS, TIEMPO } from "./zendesk-helpers";
+import { addClient, addGroup, addPerson, addPersonAlias, count, entries, importZd, prepareZd, sumHours, TICKETS, TIEMPO, decideCorrection } from "./zendesk-helpers";
 
 let dir: string;
 let admin: { id: string };
@@ -152,7 +152,7 @@ describe("identidad, duplicados y correcciones (ZTM 05, IMP 04-05)", () => {
     await importZd(admin.id, TIEMPO, await T([timeRow({ id: "88", logged_hours: 1, logged_minutes: 0 })]));
     const b = await prepareZd(admin.id, TIEMPO, await T([timeRow({ id: "88", logged_hours: 2, logged_minutes: 0 })]));
     const [cand] = await listCorrectionCandidates(admin.id, b.id);
-    await decideTimeCorrection(admin.id, b.id, { fingerprint: cand.fingerprint, decision: "CORRECTION", targetEntryId: cand.matches[0].id });
+    await decideCorrection(admin.id, b.id, cand.fingerprint, cand.matches[0].id);
     expect((await timesSummary(admin.id, b.id))?.pendingCorrections).toBe(0);
     await confirmUpload(admin.id, b.id);
     await drain();
@@ -161,7 +161,7 @@ describe("identidad, duplicados y correcciones (ZTM 05, IMP 04-05)", () => {
     const c = await prisma.zdTimeCorrection.findFirstOrThrow();
     expect([Number(c.minutesBefore), Number(c.minutesAfter), c.batchId]).toEqual([60, 120, b.id]);
     expect((c.previous as { loggedHours: string }).loggedHours).toBe("1");
-    const audit = await prisma.auditEvent.findFirst({ where: { batchId: b.id, entityType: "ZdTimeDecision" } });
+    const audit = await prisma.auditEvent.findFirst({ where: { batchId: b.id, entityType: "TimeDecision" } });
     expect(audit?.summary).toMatch(/1 h → 2 h/);
     // Cargar de nuevo el contenido antiguo no lo restituye ni lo duplica.
     await importZd(admin.id, TIEMPO, await T([timeRow({ id: "88", logged_hours: 1, logged_minutes: 0 })]));
@@ -180,13 +180,18 @@ describe("identidad, duplicados y correcciones (ZTM 05, IMP 04-05)", () => {
     expect(await count("ZdTimeCorrection")).toBe(0);
   });
 
-  it("una decisión solo vale en un lote listo y sobre una coincidencia real de la fila", async () => {
+  it("una decisión solo vale en un lote listo, con objetivo activo de la misma fuente, revisión vista y confirmación expresa", async () => {
     await importZd(admin.id, TIEMPO, await T([timeRow({ id: "88" }), timeRow({ id: "91", ticket_id: "9" })]));
     const b = await prepareZd(admin.id, TIEMPO, await T([timeRow({ id: "88", logged_hours: 2 })]));
     const [cand] = await listCorrectionCandidates(admin.id, b.id);
-    const other = await prisma.zdTimeEntry.findFirstOrThrow({ where: { sourceId: "91" } });
-    await expect(decideTimeCorrection(admin.id, b.id, { fingerprint: cand.fingerprint, decision: "CORRECTION", targetEntryId: other.id })).rejects.toThrow(/coincidencia/);
-    await expect(decideTimeCorrection(admin.id, b.id, { fingerprint: cand.fingerprint, decision: "CORRECTION" })).rejects.toThrow(/Indique qué registro/);
+    const target = cand.matches[0].id;
+    const rev = (await prisma.zdTimeEntry.findUniqueOrThrow({ where: { id: target } })).revision;
+    await expect(decideTimeCorrection(admin.id, b.id, { fingerprint: cand.fingerprint, decision: "CORRECTION" })).rejects.toThrow(/Seleccione el registro/);
+    await expect(decideTimeCorrection(admin.id, b.id, { fingerprint: cand.fingerprint, decision: "CORRECTION", targetEntryId: target, expectedEntryRevision: rev })).rejects.toThrow(/Confirme expresamente/);
+    await expect(decideTimeCorrection(admin.id, b.id, { fingerprint: cand.fingerprint, decision: "CORRECTION", targetEntryId: target, confirmReplace: true })).rejects.toThrow(/revisión/);
+    await expect(decideTimeCorrection(admin.id, b.id, { fingerprint: cand.fingerprint, decision: "CORRECTION", targetEntryId: target, expectedEntryRevision: rev + 5, confirmReplace: true })).rejects.toThrow(/cambió/);
+    await expect(decideCorrection(admin.id, b.id, cand.fingerprint, "no-existe")).rejects.toThrow();
+    expect(await count("ZdTimeDecision")).toBe(0);
     await confirmUpload(admin.id, b.id);
     await expect(decideTimeCorrection(admin.id, b.id, { fingerprint: cand.fingerprint, decision: "DIFFERENT" })).rejects.toThrow(/listo para revisar/);
   });
@@ -195,7 +200,7 @@ describe("identidad, duplicados y correcciones (ZTM 05, IMP 04-05)", () => {
     const a = await importZd(admin.id, TIEMPO, await T([timeRow({ id: "88", logged_hours: 1, logged_minutes: 0 })]));
     const b = await prepareZd(admin.id, TIEMPO, await T([timeRow({ id: "88", logged_hours: 2, logged_minutes: 0 })]));
     const [cand] = await listCorrectionCandidates(admin.id, b.id);
-    await decideTimeCorrection(admin.id, b.id, { fingerprint: cand.fingerprint, decision: "CORRECTION", targetEntryId: cand.matches[0].id });
+    await decideCorrection(admin.id, b.id, cand.fingerprint, cand.matches[0].id);
     await confirmUpload(admin.id, b.id);
     await drain();
     expect(await sumHours()).toBeCloseTo(2, 12);

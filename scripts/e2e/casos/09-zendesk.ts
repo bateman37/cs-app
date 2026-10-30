@@ -75,7 +75,7 @@ export async function zendesk(ctx: Ctx): Promise<void> {
 
     await page.goto(B);
     const t0 = await body(page);
-    ctx.check("Zendesk: Cargas ofrece Tickets y Tiempos como fuentes disponibles y deja Wrike, PAP, bugs y finanzas como pendientes", (await page.locator("summary", { hasText: "Zendesk · tickets" }).count()) === 1 && (await page.locator("summary", { hasText: "Zendesk · tiempos" }).count()) === 1 && /Wrike[\s\S]*No disponible · pendiente/.test(t0) && !/Zendesk · tickets\s*No disponible/.test(t0));
+    ctx.check("Zendesk: Cargas ofrece Tickets y Tiempos como fuentes disponibles y deja solo las finanzas como pendientes", (await page.locator("summary", { hasText: "Zendesk · tickets" }).count()) === 1 && (await page.locator("summary", { hasText: "Zendesk · tiempos" }).count()) === 1 && /Facturación · soporte[\s\S]*No disponible · pendiente/.test(t0) && !/Zendesk · tickets\s*No disponible/.test(t0));
 
     // ============================================================ Tickets
     const ticketsA: TicketRow[] = [
@@ -181,10 +181,14 @@ export async function zendesk(ctx: Ctx): Promise<void> {
     const xb = await upload("Zendesk · tiempos", file("tiempos-b.xlsx"), "2026-02-13");
     await waitStatus(page, "Listo para revisar");
     ctx.check("Zendesk tiempos: la posible corrección (mismo id y contexto, otra duración) se advierte con antes y después y queda sin decidir", (await page.getByTestId("zd-correcciones").count()) === 1 && /1,5 h → 2 h/.test(await page.getByTestId("zd-correcciones").innerText()) && /Sin decidir/.test(await page.getByTestId("zd-correcciones").innerText()));
-    await page.getByRole("button", { name: /Corrige el registro de 1,5 h/ }).click();
-    await page.getByText("Decisión guardada y auditada").waitFor({ timeout: 15000 });
-    await page.reload();
-    ctx.check("Zendesk tiempos: la decisión explícita queda registrada y auditada", /Corrige el registro seleccionado/.test(await page.getByTestId("zd-correcciones").innerText()) && (await n(ctx, `SELECT count(*) n FROM "AuditEvent" WHERE "entityType" = 'ZdTimeDecision' AND "batchId" = '${xb}'`)) === 1);
+    await page.getByRole("link", { name: /Comparar con el registro de 1,5 h/ }).click();
+    await page.getByTestId("comparacion").waitFor();
+    ctx.check("Zendesk tiempos: la comparación muestra ambos registros y los minutos antes/después", /Antes: 1,5 h · después: 2 h/.test(await page.getByTestId("minutos-antes-despues").innerText()));
+    await page.getByLabel(/Confirmo que esta fila sustituye/).check();
+    await page.getByRole("button", { name: "Confirmar sustitución" }).click();
+    await waitDb(async () => (await n(ctx, `SELECT count(*) n FROM "ZdTimeDecision" WHERE "batchId" = '${xb}'`)) === 1);
+    await page.goto(`${B}/${xb}`);
+    ctx.check("Zendesk tiempos: la decisión explícita queda registrada y auditada", /Corrige el registro seleccionado/.test(await page.getByTestId("zd-correcciones").innerText()) && (await n(ctx, `SELECT count(*) n FROM "AuditEvent" WHERE "entityType" = 'TimeDecision' AND "batchId" = '${xb}'`)) === 1);
     await page.getByRole("button", { name: "Confirmar y activar" }).click();
     await waitStatus(page, "Completado");
     ctx.check("Zendesk tiempos: la corrección sustituye 1,5 h por 2 h sin sumarlas y conserva el contenido anterior", (await n(ctx, 'SELECT count(*) n FROM "ZdTimeEntry"')) === 6 && (await n(ctx, `SELECT count(*) n FROM "ZdTimeEntry" WHERE "sourceId" = '88' AND minutes = 120`)) === 1 && (await n(ctx, 'SELECT count(*) n FROM "ZdTimeCorrection"')) === 1);

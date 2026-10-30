@@ -19,6 +19,7 @@ import type { ActivationContext, HeaderMatch, ImportProfile, Issue, ParsedRow } 
 import type { Cell } from "../uploads/readers/types";
 import { lockDerivation, rederiveEntries } from "./derive";
 import { refreshTicketPreview } from "./preview";
+import { rederiveDependents } from "./dependents";
 
 type Tx = Prisma.TransactionClient;
 type Header = (typeof TICKET_HEADERS)[number];
@@ -187,6 +188,7 @@ async function activate(tx: Tx, ctx: ActivationContext) {
   await recomputeCurrent(tx, batchTicketIds(ctx.batchId));
   // La llegada o el cambio de un ticket enriquece los tiempos ya cargados, sin releerlos.
   await rederiveEntries(tx, Prisma.sql`e."ticketId" IN (${batchTicketIds(ctx.batchId)})`, ctx.batchId);
+  await rederiveDependents(tx, batchTicketIds(ctx.batchId), ctx.batchId);
   await refreshTicketPreview(tx, ctx.batchId);
   return { inserted: newTickets, revised: revisions - newTickets };
 }
@@ -212,6 +214,7 @@ async function revert(tx: Tx, ctx: ActivationContext) {
     DELETE FROM "ZdTicket" t
     WHERE t."ticketId" IN (${batchTicketIds(ctx.batchId)}) AND NOT EXISTS (SELECT 1 FROM "ZdTicketRevision" r WHERE r."ticketId" = t."ticketId")`);
   await rederiveEntries(tx, Prisma.sql`e."ticketId" IN (${batchTicketIds(ctx.batchId)})`, ctx.batchId);
+  await rederiveDependents(tx, batchTicketIds(ctx.batchId), ctx.batchId);
 }
 
 export const zendeskTickets: ImportProfile = {
@@ -240,7 +243,9 @@ export const zendeskTickets: ImportProfile = {
   },
   async rederive(tx, ctx) {
     await lockDerivation(tx);
-    const updated = await rederiveEntries(tx, Prisma.sql`e."ticketId" IN (${batchTicketIds(ctx.batchId)})`, ctx.batchId);
+    const updated =
+      (await rederiveEntries(tx, Prisma.sql`e."ticketId" IN (${batchTicketIds(ctx.batchId)})`, ctx.batchId)) +
+      (await rederiveDependents(tx, batchTicketIds(ctx.batchId), ctx.batchId));
     await refreshTicketPreview(tx, ctx.batchId);
     return { updated };
   },

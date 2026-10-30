@@ -1,4 +1,4 @@
-import { mkdtempSync, readFileSync, rmSync, statSync, createReadStream, writeFileSync } from "node:fs";
+import { appendFileSync, mkdtempSync, readFileSync, rmSync, statSync, createReadStream, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import path from "node:path";
 import { afterAll, beforeAll, beforeEach, describe, expect, it } from "vitest";
@@ -118,6 +118,7 @@ async function runVolume(profileId: string, file: string, expectRows: number, la
     picoRssTrabajadorMB: peak || null,
   };
   console.log(`MEDIDAS_ZENDESK ${JSON.stringify(measures)}`);
+  if (process.env.CSAPP_TEST_MEASURES_FILE) appendFileSync(process.env.CSAPP_TEST_MEASURES_FILE, `MEDIDAS_ZENDESK ${JSON.stringify(measures)}\n`);
   return { up, done, measures };
 }
 

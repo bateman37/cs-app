@@ -4,19 +4,18 @@ import { databaseNameOf } from "@/lib/env";
 import type { ImportProfile, PendingSource } from "./profile";
 import { zendeskTickets } from "../zendesk/tickets";
 import { zendeskTiempo } from "../zendesk/time";
+import { wrike } from "../wrike/time";
+import { pap } from "../pap/profile";
+import { bugsVfs, bugsVsw } from "../bugs/profile";
 import { SYNTHETIC_SCHEMA, syntheticIncorporar, syntheticSustituir } from "./synthetic/profile";
 
-/** Perfiles operativos: Tickets y Tiempos Zendesk (CSAPP-03). Wrike, PAP, bugs y finanzas llegan en 04 y 05. */
-const OPERATIONAL: ImportProfile[] = [zendeskTickets, zendeskTiempo];
+/** Perfiles operativos: Tickets y Tiempos Zendesk (CSAPP-03); Wrike, PAP y bugs VFS/VSW (CSAPP-04). Las finanzas llegan en CSAPP-05. */
+const OPERATIONAL: ImportProfile[] = [zendeskTickets, zendeskTiempo, wrike, pap, bugsVfs, bugsVsw];
 
 /** Fuentes previstas, mostradas como pendientes (no disponibles). */
 export const PENDING_SOURCES: PendingSource[] = [
   { id: "zendesk-tickets", label: "Zendesk · tickets", delivery: "CSAPP-03" },
   { id: "zendesk-tiempo", label: "Zendesk · tiempos", delivery: "CSAPP-03" },
-  { id: "wrike", label: "Wrike", delivery: "CSAPP-04" },
-  { id: "pap", label: "PAP", delivery: "CSAPP-04" },
-  { id: "bugs-vfs", label: "Bugs VFS", delivery: "CSAPP-04" },
-  { id: "bugs-vsw", label: "Bugs VSW", delivery: "CSAPP-04" },
   { id: "facturacion-soporte", label: "Facturación · soporte", delivery: "CSAPP-05" },
   { id: "facturacion-admin-delegada", label: "Facturación · administración delegada", delivery: "CSAPP-05" },
   { id: "facturacion-otros", label: "Facturación · otros", delivery: "CSAPP-05" },

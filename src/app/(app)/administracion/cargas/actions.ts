@@ -4,6 +4,7 @@ import type { FormState } from "@/components/form-kit";
 import { runAdminAction } from "@/app/action-utils";
 import { cancelUpload, confirmUpload, reprocessUpload, revertUpload } from "@/server/uploads/batches";
 import { decideTimeCorrection } from "@/server/zendesk/corrections";
+import { reviewWorkItemLink } from "@/server/bugs/summary";
 
 const BASE = "/administracion/cargas";
 type S = FormState;
@@ -31,7 +32,10 @@ export async function cancelUploadAction(_: S, fd: FormData): Promise<S> {
   );
 }
 
-/** Decisión explícita sobre una posible corrección de un registro de tiempo (solo con el lote listo). */
+/**
+ * Decisión explícita sobre una fila de tiempo (solo con el lote listo): corrige un registro activo concreto (con la revisión vista y la
+ * confirmación expresa), es otro trabajo o se retira. El servidor valida fuente, lote, fila, estado, objetivo y versión.
+ */
 export async function decideCorrectionAction(_: S, fd: FormData): Promise<S> {
   return runAdminAction(
     fd,
@@ -40,8 +44,20 @@ export async function decideCorrectionAction(_: S, fd: FormData): Promise<S> {
         fingerprint: raw.fingerprint,
         decision: raw.decision,
         targetEntryId: raw.targetEntryId || undefined,
+        expectedEntryRevision: raw.expectedEntryRevision || undefined,
+        expectedBatchVersion: raw.expectedBatchVersion || undefined,
+        confirmReplace: raw.confirmReplace === "on" || raw.confirmReplace === "true",
       }),
     { ok: "Decisión guardada y auditada.", paths: [`${BASE}/${fd.get("id")}`] },
+  );
+}
+
+/** Revisión explícita de un vínculo Work Item–ticket (detalle administrativo). */
+export async function reviewLinkAction(_: S, fd: FormData): Promise<S> {
+  return runAdminAction(
+    fd,
+    (a, raw) => reviewWorkItemLink(a, { linkId: raw.linkId, decision: raw.decision, expectedVersion: raw.expectedVersion, note: raw.note || undefined }),
+    { ok: "Revisión del vínculo guardada y auditada.", paths: [`${BASE}/${fd.get("id")}`, `${BASE}/${fd.get("id")}/elementos/${fd.get("workItemId")}`] },
   );
 }
 

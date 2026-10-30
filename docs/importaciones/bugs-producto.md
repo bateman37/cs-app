@@ -34,3 +34,12 @@ BUG 08. Nombres en Clients o Reported by son contexto o propuestas de alias revi
 ## Salidas
 
 Calidad contiene stock observado de bugs por producto/estado, antigüedad desde Created Date, cobertura del listado, ticket central, vínculos externos y registros sin afectación identificada. Los flujos por fecha de creación se distinguen de ese stock. El sexto indicador cuenta problemas de cliente según el contrato de Calidad, no Work Items multiplicados por vínculos. Los listados son muestras para diseñar; la primera carga real corresponde a Dennis.
+
+## Implementación en CSAPP-04
+
+Perfiles `bugs-vfs` y `bugs-vsw` (CSV). Decisiones técnicas, fotografías, vínculos con evidencia y revisión manual: [Wrike, PAP y bugs](../arquitectura/wrike-pap-bugs-csapp04.md#7-bugs-vfs-y-vsw). Resumen operativo:
+
+- BUG 01: identidad producto + ámbito DevOps (metadato `ambito`, «principal» por defecto) + Work Item ID; todos los tipos se guardan y solo `Bug_` es defecto; VFS y VSW nunca se fusionan por coincidencia de ID; varios años se conservan.
+- BUG 02-03: `State` original conservado; PR y «Done (Ready for Release)» no acreditan producción; un estado fuera del catálogo requiere revisión y los terminales son solo los configurados; `Changed Date` y `Created Date` se guardan como hora local sin zona.
+- BUG 04-05: el metadato `vista` y la extracción/intervalo/cobertura declarados describen la fotografía; la ausencia no cierra ni borra; los no observados se rotulan como tales con su última observación.
+- BUG 06-08: `Zendesk Ticket ID` y URLs de tickets de `Clients` (hosts configurados) generan pares únicos con evidencia; el ticket interno es el central; el vínculo se revisa de forma explícita y auditada en el detalle del Work Item y no cambia la causa raíz.

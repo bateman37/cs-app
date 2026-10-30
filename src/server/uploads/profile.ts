@@ -30,6 +30,11 @@ export type ParsedRow = {
   issues: Issue[];
   /** Clave de entidad revisable, si la fuente la tiene. No equivale a la huella. */
   entityKey?: string;
+  /**
+   * Datos que se derivan de forma determinista del propio texto fuente (causas, referencias, candidatos de ticket...).
+   * Se guardan junto a la fila pero NO entran en la huella: no cambian la identidad de la fila ni usan maestros.
+   */
+  derived?: Record<string, Json>;
   /** Fila válida pero fuera del cálculo por una relación no resuelta (conserva el bruto). */
   exclude?: { code: string; message: string };
 };

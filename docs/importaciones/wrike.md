@@ -29,3 +29,14 @@ WRK 06. Resolver grupo cliente mediante el proyecto Wrike aun cuando no exista t
 WRK 07. Resolver usuario y rol ANA/DEV con el maestro unificado y la fecha. Solo usar Wrike para PMO desde enero de 2025. La fórmula actual marca toda dedicación DEV como incidente Vincle y asigna customización si no encuentra causa. Es una heurística del libro, no evidencia de causa raíz. Conservar un modo de equivalencia documentado para conciliar históricos; para Calidad, etiquetar como no clasificado salvo regla aprobada. Nunca atribuir bugs por el rol de quien trabaja.
 
 El resultado muestra horas válidas, excluidas, con cliente por proyecto, con ticket confirmado, inferidas y pendientes. Las filas idénticas se deduplican por todos sus campos. Sin ID de entrada de tiempo en el CSV, una modificación requiere la gestión de revisiones del proceso común.
+
+## Implementación en CSAPP-04
+
+Perfil `wrike` (solo CSV). Decisiones técnicas, partición contable, política histórica compartida con Zendesk y corrección explícita sin ID: [Wrike, PAP y bugs](../arquitectura/wrike-pap-bugs-csapp04.md). Resumen operativo:
+
+- WRK 01-02: parser CSV real (BOM, comas, comillas y saltos conservados); horas con coma decimal (`0,5` = 30 min, ×60 exacto; `1.500`, `1,500` y mezclas se rechazan por ambiguas); los puntos de millares se normalizan solo en el ticket (`216.527` → `216527`) con gramática válida y cero o vacío = sin ticket.
+- WRK 03: las filas sin usuario, sin fecha y con cero horas quedan excluidas del hecho de dedicación con su motivo (`SIN_IMPUTACION`); horas positivas sin fecha son error obligatorio y el lote no se confirma.
+- WRK 04-05: prioridad explícito > único candidato del nombre (URL Zendesk, prefijo `ticket`/`#ID`, ID inicial delimitado) > nada; `Bug #N`, fechas y versiones no son tickets; varios candidatos no se resuelven; un explícito o candidato todavía no cargado queda como referencia pendiente y se confirma al cargar el ticket. Conflictos explícito/nombre y proyecto/ticket son visibles.
+- WRK 06: Proyecto → Cliente o implantación por equivalencia Wrike; un proyecto que solo identifica Grupo Cliente se declara con su clave BC. Sin ticket, dedicación de proyecto sin causa probada.
+- WRK 07: persona por alias/ID Wrike de PERSONAL a la fecha del trabajo; rol ANA/DEV por vigencia; desde 01/01/2025 solo PMO; causa no clasificada salvo ticket confirmado (alojamiento a la fecha del trabajo). La heurística del libro no se activa.
+- Sin ID de log: deduplicación por los seis campos; una modificación real se decide con la [corrección explícita](../arquitectura/wrike-pap-bugs-csapp04.md#3-ampliación-de-las-correcciones-sin-id).

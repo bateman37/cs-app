@@ -153,19 +153,25 @@ export async function rederivePapItems(tx: Tx, where: Prisma.Sql): Promise<numbe
   await tx.$executeRaw(Prisma.sql`
     CREATE TEMP TABLE "_pap_drv" ON COMMIT DROP AS
     SELECT t.id,
-      CASE WHEN rv.project IS NULL THEN 'NO_PROJECT' WHEN pj.id IS NULL THEN 'UNMAPPED'
+      CASE WHEN rv.project IS NULL THEN 'NO_PROJECT' WHEN pj.id IS NULL AND pg."groupId" IS NULL THEN 'UNMAPPED'
            WHEN pj."implementationId" IS NOT NULL THEN 'IMPLEMENTATION' WHEN pj."clientId" IS NOT NULL THEN 'CLIENT' ELSE 'GROUP_ONLY' END AS scope,
       COALESCE(pj."clientId", im."clientId") AS client_id, pj."implementationId" AS impl_id,
-      COALESCE(pc."groupId", pj."groupId") AS group_id
+      COALESCE(pc."groupId", pg."groupId") AS group_id
     FROM "PapItem" t
     LEFT JOIN "PapRevision" rv ON rv.id = t."currentRevisionId"
     LEFT JOIN LATERAL (
-      SELECT e.id, e."clientId", e."implementationId", e."groupId" FROM "ExternalIdentity" e
+      SELECT e.id, e."clientId", e."implementationId" FROM "ExternalIdentity" e
       WHERE rv.project IS NOT NULL AND e.system = 'PAP' AND e.kind IN ('PROJECT_NAME', 'PROJECT_ID') AND e."isActive"
         AND e."searchValue" IN (lower(rv.project), rv.project)
         AND (CASE WHEN rv."productionDate" IS NULL THEN e."validFrom" IS NULL AND e."validTo" IS NULL
                   ELSE (e."validFrom" IS NULL OR e."validFrom" <= rv."productionDate") AND (e."validTo" IS NULL OR rv."productionDate" < e."validTo") END)
       LIMIT 1) pj ON true
+    LEFT JOIN LATERAL (
+      SELECT e."groupId" FROM "ExternalIdentity" e
+      WHERE rv.project IS NOT NULL AND pj.id IS NULL AND e.system = 'BC' AND e.kind = 'GROUP_KEY' AND e."isActive" AND e."searchValue" = lower(rv.project)
+        AND (CASE WHEN rv."productionDate" IS NULL THEN e."validFrom" IS NULL AND e."validTo" IS NULL
+                  ELSE (e."validFrom" IS NULL OR e."validFrom" <= rv."productionDate") AND (e."validTo" IS NULL OR rv."productionDate" < e."validTo") END)
+      LIMIT 1) pg ON true
     LEFT JOIN "Implementation" im ON im.id = pj."implementationId"
     LEFT JOIN "Client" pc ON pc.id = COALESCE(pj."clientId", im."clientId")
     WHERE ${where}`);

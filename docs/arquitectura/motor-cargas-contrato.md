@@ -1,6 +1,6 @@
 # Motor común de cargas: contrato (CSAPP-02)
 
-Implementa [IMP 01–07](../importaciones/proceso-comun.md). Los importadores operativos son Tickets y Tiempos Zendesk (CSAPP-03, ver [decisiones técnicas](zendesk-csapp03.md)); Wrike, PAP y bugs llegan en 04 y finanzas en 05. Un perfil sintético ejercita el motor en pruebas. Operación del trabajador y recuperación: [guía del trabajador](../plan/guia-trabajador-cargas.md). Lectores XLSX/CSV: ver su documento propio.
+Implementa [IMP 01–07](../importaciones/proceso-comun.md). Los importadores operativos son Tickets y Tiempos Zendesk (CSAPP-03, ver [decisiones técnicas](zendesk-csapp03.md)); Wrike, PAP y bugs VFS/VSW son operativos desde CSAPP-04 (ver [decisiones técnicas](wrike-pap-bugs-csapp04.md)) y finanzas llegan en 05. Un perfil sintético ejercita el motor en pruebas. Operación del trabajador y recuperación: [guía del trabajador](../plan/guia-trabajador-cargas.md). Lectores XLSX/CSV: ver su documento propio.
 
 Estado: **implementado y probado en Linux** con PostgreSQL real (ver [validación](../validacion/csapp-02.md)); no probado en Windows; no aceptado por Dennis.
 
@@ -98,3 +98,5 @@ Ver `.env.example`: `CSAPP_UPLOAD_DIR`, `CSAPP_UPLOAD_MAX_BYTES`, `…_MAX_UNCOM
 ## Extensiones de CSAPP-03
 
 Opciones de perfil añadidas sin cambiar las garantías anteriores: `HeaderMatch.context` y `notes` (el orden de columnas viaja a `parseRow(cells, context)` y las columnas adicionales se informan en el resumen), `selectsSheet` (con XLSX de varias hojas compatibles exige el metadato `hoja`; el lector inspecciona solo la primera fila de cada hoja con `headerOnly`), `blocksConfirmOnErrors` (no se confirma con errores obligatorios sin resolver), `entityConflictPolicy: "conflict_all"` (todas las filas de una clave contradictoria son error), `postPrepare` (hook dentro de la transacción de preparación), `rederive` y el trabajo `REDERIVE`, y `ActivationContext.batch`. Las filas con disposición `PENDING_DECISION` no se registran como procedencia. Valores nuevos: `UploadJobKind.REDERIVE`.
+
+Opción añadida en CSAPP-04 sin cambiar las garantías anteriores: `ParsedRow.derived`, datos derivados de forma determinista del propio texto fuente (candidatos de ticket, causas, referencias, enlaces) que se guardan en `UploadStagedRow.derived` y **no entran en la huella** de la fila. Las dependencias de recálculo se extienden (tickets → Wrike y vínculos Work Item–ticket) bajo el mismo orden de bloqueos: ámbito del motor, después el bloqueo único de derivación.

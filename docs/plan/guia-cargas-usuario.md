@@ -1,6 +1,6 @@
 # Cargas: qué se puede probar (CSAPP-02 y CSAPP-03)
 
-**Administración › Cargas** (solo Administrador) es el motor común de importación. Desde CSAPP-03 hay **dos importadores operativos**: «Zendesk · tickets» y «Zendesk · tiempos» (Wrike, PAP, bugs y facturación llegan después y se muestran como pendientes). Para usarlos con sus XLSX reales siga la [guía de CSAPP-03](guia-powershell-csapp03.md); el motor y los importadores están probados con archivos sintéticos.
+**Administración › Cargas** (solo Administrador) es el motor común de importación. Hay **seis importadores operativos**: «Zendesk · tickets» y «Zendesk · tiempos» (CSAPP-03) y «Wrike», «PAP», «Bugs VFS» y «Bugs VSW» (CSAPP-04); la facturación llega después y se muestra como pendiente. Para usarlos con sus archivos reales siga las guías de [CSAPP-03](guia-powershell-csapp03.md) y [CSAPP-04](guia-powershell-csapp04.md); el motor y los importadores están probados con archivos sintéticos.
 
 ## Qué verá en su base de trabajo
 

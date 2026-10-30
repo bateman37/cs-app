@@ -1,6 +1,6 @@
 # Estado de CS App
 
-Actualizado el 30 de octubre de 2026 tras ejecutar [CSAPP-DOC-00-v1](../../prompts/CSAPP-DOC-00-v1.md), [CSAPP-01-v1](../../prompts/CSAPP-01-v1.md), [CSAPP-02-v1](../../prompts/CSAPP-02-v1.md) y [CSAPP-03-v1](../../prompts/CSAPP-03-v1.md).
+Actualizado el 30 de octubre de 2026 tras ejecutar [CSAPP-DOC-00-v1](../../prompts/CSAPP-DOC-00-v1.md), [CSAPP-01-v1](../../prompts/CSAPP-01-v1.md), [CSAPP-02-v1](../../prompts/CSAPP-02-v1.md), [CSAPP-03-v1](../../prompts/CSAPP-03-v1.md) y [CSAPP-04-v1](../../prompts/CSAPP-04-v1.md).
 
 ## Resultado de CSAPP-DOC-00
 
@@ -48,7 +48,7 @@ Documentación: [personal](../arquitectura/personal-csapp02.md), [matriz de usua
 | Dato | Valor |
 | --- | --- |
 | Rama | claude/new-session-omvsmd (designada por la sesión; el prompt proponía feature/CSAPP-03-zendesk-tickets-y-tiempos). La PR 3 estaba **fusionada** (merge 7dd1c90): la rama se reinició desde ese main, sin añadir nada a la PR 3 |
-| PR | https://github.com/bateman37/cs-app/pull/4 (base main, sin fusionar) |
+| PR | https://github.com/bateman37/cs-app/pull/4 (**fusionada** en main, merge 3c08fc0c647088d2b226d1385b95e1daa8142843; corregido según Git al preparar CSAPP-04) |
 | Implementado | Perfiles `zendesk-tickets` (ocho campos con status) y `zendesk-tiempo` (once campos) sobre el motor de CSAPP-02: validación por contenido y cabeceras, IDs y fechas exactos, tickets como entidad con revisiones y observaciones (vigencia por observación), vínculos y clasificaciones, tiempos con duración exacta, deduplicación por huella, correcciones explícitas, corte histórico PMO, partición contable conciliable, relaciones tardías, reproceso de lotes completados (`REDERIVE`), reversión y detalle en Administración › Cargas |
 | Probado | Linux (Node 22.22, PostgreSQL 16): tipos, lint, build, migración limpia y sobre CSAPP-02 con datos, pruebas con PostgreSQL real, recorrido de navegador, volumen de ≈114 000 tickets y ≈250 000 tiempos por el motor y por subida web, y recuperación tras SIGKILL. Cifras exactas en la [validación](../validacion/csapp-03.md) |
 | No probado | Windows/PowerShell; aceptación manual por Dennis; despliegue |
@@ -56,6 +56,21 @@ Documentación: [personal](../arquitectura/personal-csapp02.md), [matriz de usua
 | Pendiente de Dennis | Revisar la PR, ejecutar la [guía de CSAPP-03](guia-powershell-csapp03.md) en Windows con sus XLSX y validar las interpretaciones ZDT 11-13 y ZTM 06-08 |
 
 Documentación: [decisiones técnicas](../arquitectura/zendesk-csapp03.md), [tickets](../importaciones/zendesk-tickets.md), [tiempos](../importaciones/zendesk-tiempo.md), [motor](../arquitectura/motor-cargas-contrato.md), [guía PowerShell](guia-powershell-csapp03.md).
+
+## Resultado de CSAPP-04 (Wrike, PAP y bugs de producto VFS/VSW)
+
+| Dato | Valor |
+| --- | --- |
+| Rama / base | claude/new-session-omvsmd (designada por la sesión; el prompt proponía feature/CSAPP-04-wrike-pap-bugs). Su PR 4 estaba fusionada: la rama se reinició con `checkout -B` desde main 3c08fc0c647088d2b226d1385b95e1daa8142843, sin force-push |
+| PR | Ver «Resultado final» abajo (sin fusionar) |
+| Implementado | Perfiles `wrike` (CSV), `pap` (XLSX de 29 columnas) y `bugs-vfs`/`bugs-vsw` (CSV) sobre el motor común; el registro tiene seis perfiles operativos y las tres fuentes financieras siguen pendientes. Corrección explícita de un registro activo **sin ID** (Zendesk sin id y Wrike) con comparación, confirmación de la sustitución concreta, versión del registro y del lote, auditoría y reversión. Vista común `TimeActivity` con origen inequívoco y política histórica PMO. Resúmenes conciliables, detalle por motivo y revisión de vínculos en Administración › Cargas |
+| Probado | Linux (Node 22.22, PostgreSQL 16): tipos, lint, pruebas con PostgreSQL real, migración limpia y sobre CSAPP-03 con datos, recorrido de navegador con web y trabajador compilados y volumen del circuito. Cifras exactas en la [validación](../validacion/csapp-04.md) |
+| No probado | Windows/PowerShell; aceptación manual por Dennis; despliegue |
+| Interpretaciones | ZDT 11-13 y ZTM 06-08 **siguen pendientes de aceptación**; ZTM 07 se amplía (ver [decisiones](../arquitectura/wrike-pap-bugs-csapp04.md#2-revisión-acotada-de-las-interpretaciones-zdt-11-13-y-ztm-06-08)). Nuevas propuestas sin aceptar: clave BC de grupo como forma de declarar proyecto-solo-grupo, lista de origen PAP declarada en la carga y catálogo de etapas de estado de bugs |
+| Precarga | No realizada: no hay fuentes privadas; las cargas reales de las cuatro fuentes las hará Dennis |
+| Pendiente de Dennis | Revisar la PR, ejecutar la [guía de CSAPP-04](guia-powershell-csapp04.md) en Windows, comprobar equivalencias de PERSONAL y proyectos, cargar sus archivos reales y validar las interpretaciones |
+
+Documentación: [decisiones técnicas](../arquitectura/wrike-pap-bugs-csapp04.md), [modelo físico](../arquitectura/modelo-fisico-csapp04.md), [Wrike](../importaciones/wrike.md), [PAP](../importaciones/pap.md), [bugs](../importaciones/bugs-producto.md), [guía PowerShell](guia-powershell-csapp04.md).
 
 ## Estado por trabajo
 
@@ -66,14 +81,15 @@ Niveles: diseñado, documentado, implementado, probado, aceptado. Un criterio de
 | CSAPP-DOC-00 | Sí | Sí (PR pendiente de revisión) | No aplica | Solo verificaciones documentales | No |
 | CSAPP-01 | Sí | Sí | Sí (PR 2 fusionada) | Sí en Linux; Windows sin probar | No |
 | CSAPP-02 | Sí | Sí | Sí (PR 3 fusionada) | Sí en Linux con perfil sintético; Windows sin probar | No |
-| CSAPP-03 | Sí | Sí | Sí (PR sin fusionar) | Sí en Linux con XLSX sintéticos; Windows sin probar | No |
-| CSAPP-04 a CSAPP-10 | Sí, en [roadmap](roadmap.md) y contratos | Sí | No | No | No |
+| CSAPP-03 | Sí | Sí | Sí (PR 4 fusionada) | Sí en Linux con XLSX sintéticos; Windows sin probar | No |
+| CSAPP-04 | Sí | Sí | Sí (PR sin fusionar) | Sí en Linux con datos sintéticos; Windows sin probar | No |
+| CSAPP-05 a CSAPP-10 | Sí, en [roadmap](roadmap.md) y contratos | Sí | No | No | No |
 | Cargas reales | — | Política en [precarga y pruebas](precarga-y-pruebas.md) | No | No | No; las probará Dennis |
 
-CSAPP-04 a CSAPP-10 siguen sin iniciar y sin prompt redactado. La próxima acción es revisar la PR de CSAPP-03, que Dennis cargue sus XLSX reales y enviar el prompt de CSAPP-04.
+CSAPP-05 a CSAPP-10 siguen sin iniciar y sin prompt redactado. La próxima acción es revisar la PR de CSAPP-04, que Dennis cargue el CSV de Wrike, el XLSX de PAP y los CSV de bugs reales y enviar el prompt de CSAPP-05.
 
 ## Vigente
 
 Tickets con ocho campos/status, sexto indicador aprobado, PR aclarado, bugs VFS/VSW separados, backlog dentro de Incidentes y problemas. Parámetros por calibrar: ver [pendientes](../decisiones/pendientes.md). problem_id y fechas de resolución son enriquecimientos futuros, no campos existentes. No volver a pedir las decisiones resueltas.
 
-No se han ejecutado cargas reales ni precargas. Las conciliaciones y medidas de CSAPP-03 son de archivos sintéticos; no equivalen a conciliar con los datos reales de Dennis.
+No se han ejecutado cargas reales ni precargas. Las conciliaciones y medidas de CSAPP-03 y CSAPP-04 son de archivos sintéticos; no equivalen a conciliar con los datos reales de Dennis.

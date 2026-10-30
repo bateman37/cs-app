@@ -221,6 +221,17 @@ describe("repetición, partición y reversión", () => {
     expect(e[0]).toMatchObject({ eligibility: "ELIGIBLE", workDate: "2025-02-10" });
   });
 
+  it("doble confirmación y dos trabajadores no duplican efectos", async () => {
+    const b = await prepare(admin.id, WRIKE, wrikeCsv([wrikeRow({ tarea: "a" }), wrikeRow({ tarea: "b" })]));
+    await confirmUpload(admin.id, b.id);
+    await expect(confirmUpload(admin.id, b.id)).rejects.toThrow(/ya está confirmado|estado/);
+    await Promise.all([drain("w1"), drain("w2")]);
+    expect((await batch(b.id)).status).toBe("COMPLETED");
+    expect(await count("WrikeTimeEntry")).toBe(2);
+    expect(await count("UploadRecordSource", `"batchId" = '${b.id}'`)).toBe(2);
+    expect(await count("AuditEvent", `action = 'ACTIVATE' AND "batchId" = '${b.id}'`)).toBe(1);
+  });
+
   it("revertir retira solo lo no compartido con otro lote vigente", async () => {
     const a = await importWrike(admin.id, wrikeCsv([wrikeRow({ tarea: "x" }), wrikeRow({ tarea: "y" })]));
     const b = await importWrike(admin.id, wrikeCsv([wrikeRow({ tarea: "x" }), wrikeRow({ tarea: "z" })]));

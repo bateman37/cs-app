@@ -1,3 +1,4 @@
+import { Fragment } from "react";
 import Link from "next/link";
 import { formatDate } from "@/domain/vigencia";
 import { qs } from "@/lib/format";
@@ -52,7 +53,7 @@ export async function CorrectionPanel({ userId, batchId, batchVersion, base, cor
       ) : null}
       <h3>Fila del archivo</h3>
       <dl className="kv">
-        {cmp.fields.map(([k, label]) => <><dt key={`k${k}`}>{label}</dt><dd key={`v${k}`}>{show(k, cmp.incoming[k])}</dd></>)}
+        {cmp.fields.map(([k, label]) => <Fragment key={k}><dt>{label}</dt><dd>{show(k, cmp.incoming[k])}</dd></Fragment>)}
       </dl>
 
       {!target ? (

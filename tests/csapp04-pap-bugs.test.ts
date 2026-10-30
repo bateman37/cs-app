@@ -57,6 +57,13 @@ describe("PAP: identidad estable y revisiones", () => {
     expect(issues.every((i) => i.code === "PAP_ID_NO_RECONOCIDO")).toBe(true);
   });
 
+  it("respeta el calendario 1904 del libro: la fecha de producción es la misma que en un libro 1900", async () => {
+    const serial1900 = (iso: string) => Math.round((Date.UTC(+iso.slice(0, 4), +iso.slice(5, 7) - 1, +iso.slice(8, 10)) - Date.UTC(1899, 11, 30)) / 86400000);
+    const b = await importFile(admin.id, PAP, await papBuffer([papRow({ Title: "1: x", "Fecha puesta en producción": { date: serial1900("2025-02-10") - 1462 } })], { date1904: true }), { metadata: LISTA });
+    expect(b.status).toBe("COMPLETED");
+    expect((await prisma.papRevision.findFirstOrThrow()).productionDate?.toISOString().slice(0, 10)).toBe("2025-02-10");
+  });
+
   it("falta la lista de origen: se rechaza; el mismo ID dos veces con contenido distinto en un archivo es conflicto sin elegir por posición", async () => {
     await expect(papPrepare([papRow()], {})).rejects.toThrow(/lista de origen/);
     const b = await papPrepare([papRow({ Title: "5: a" }), papRow({ Title: "5: b" })]);

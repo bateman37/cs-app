@@ -4,7 +4,7 @@ Propietario de: el esquema físico incremental de las finanzas, su relación con
 
 ## 1. Base y continuidad
 
-Parte de `main` `24d365813ab2ba2703fa911f4e0dacd31fb781fb` (merge de la PR 5 de CSAPP-04, cuya cabeza `4d8653401830bcc939d73c2798e0667832ee72ba` está incluida). Eso confirma integración en Git, **no aceptación manual de Dennis ni pruebas en Windows**. La rama de la entrega es `feature/CSAPP-05-finanzas-motor-economico`, creada desde ese `main` con `git checkout -B` (sin force-push ni historia reescrita). Migración incremental `20261031090000_finanzas_motor_economico`: no edita las cuatro anteriores, no hace reset y no toca maestros, usuarios ni lo cargado.
+Parte de `main` `24d365813ab2ba2703fa911f4e0dacd31fb781fb` (merge de la PR 5 de CSAPP-04, cuya cabeza `4d8653401830bcc939d73c2798e0667832ee72ba` está incluida). Eso confirma integración en Git, **no aceptación manual de Dennis ni pruebas en Windows**. La rama de la entrega es `claude/new-session-omvsmd` (designada por la sesión; el prompt proponía `feature/CSAPP-05-finanzas-motor-economico`): su punta anterior era la cabeza de la PR 5 (ya incluida en `main`), por lo que se avanzó con un push normal (fast-forward) tras crear el trabajo sobre `main`, sin force-push ni historia reescrita. Un push inicial a `feature/CSAPP-05-finanzas-motor-economico` se hizo por error y esa rama remota queda sin uso. Migración incremental `20261031090000_finanzas_motor_economico`: no edita las cuatro anteriores, no hace reset y no toca maestros, usuarios ni lo cargado.
 
 ## 2. Esquema físico
 

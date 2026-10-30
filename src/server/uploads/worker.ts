@@ -1,7 +1,7 @@
 import { randomUUID } from "node:crypto";
 import { prisma } from "@/lib/db";
 import { uploadConfig } from "./config";
-import { runActivate, runRevert } from "./activate";
+import { runActivate, runRederive, runRevert } from "./activate";
 import { runPrepare } from "./prepare";
 import {
   claimNextJob,
@@ -33,6 +33,7 @@ export async function processJob(job: ClaimedJob, shouldStop: () => boolean, log
     log(`Trabajo ${job.kind} del lote ${job.batchId} (intento ${job.attempts}/${job.maxAttempts})`);
     if (job.kind === "PREPARE") await runPrepare(rt);
     else if (job.kind === "ACTIVATE") await runActivate(rt);
+    else if (job.kind === "REDERIVE") await runRederive(rt);
     else await runRevert(rt);
     log(`Trabajo ${job.kind} del lote ${job.batchId} terminado`);
   } catch (e) {

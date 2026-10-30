@@ -1,6 +1,6 @@
 # Recorrido de navegador reproducible (CSAPP-01 y base para nuevas pantallas)
 
-El informe de CSAPP-01 declaró 41 comprobaciones con Chromium cuyo guion no se versionó y no se ha podido recuperar del entorno. Este recorrido es una **reimplementación nueva** de los casos esenciales: no equivale a «las 41 originales». Ejecutado en Linux (Node 22.22, PostgreSQL 16.15, Chromium preinstalado): 40 comprobaciones de CSAPP-01 más 27 de Administración › Cargas (CSAPP-02), 67 en total, todas correctas en dos ejecuciones seguidas. **No probado en Windows/PowerShell.**
+El informe de CSAPP-01 declaró 41 comprobaciones con Chromium cuyo guion no se versionó y no se ha podido recuperar del entorno. Este recorrido es una **reimplementación nueva** de los casos esenciales: no equivale a «las 41 originales». Ejecutado en Linux (Node 22.22, PostgreSQL 16.15, Chromium preinstalado): 40 comprobaciones de CSAPP-01 más 27 de Administración › Cargas (CSAPP-02), 67 en total, todas correctas en dos ejecuciones seguidas. Con Personal y usuarios (CSAPP-02) y los importadores de CSAPP-03 el recorrido completo llega a 121 comprobaciones (43 de Zendesk), correctas en la última ejecución. **No probado en Windows/PowerShell.**
 
 ## Qué hace
 
@@ -20,6 +20,7 @@ El informe de CSAPP-01 declaró 41 comprobaciones con Chromium cuyo guion no se 
 | `05-persistencia` | Tras reiniciar `next start`, la sesión (en base de datos) y los datos siguen |
 | `06-limite-intentos` | Los intentos de acceso fallidos se limitan (429) y, bloqueado el origen, ni la contraseña correcta entra |
 | `07-cargas` (CSAPP-02) | Con el motor real: Consulta sin acceso (pantalla, pestaña y subida forjada 403 sin lote); Administrador ve fuentes y pendientes; subida por la interfaz (queda «En cola» sin trabajador); con el trabajador construido la ficha pasa sola a «Listo para revisar» (sondeo), contadores, previsualización y filtro; confirmar y activar; repetir el archivo avisa del checksum y no duplica; cabeceras equivocadas → rechazado; historial y filtros |
+| `09-zendesk` (CSAPP-03) | Circuito real de Tickets y Tiempos con XLSX sintéticos y trabajador construido: fuentes disponibles y resto pendientes; subida por la interfaz, validación, resumen conciliable, filtro por motivo y detalle de ticket; confirmar y activar; segunda extracción con revisión y observación; **Cancelar** antes de activar; **Reprocesar** (lote listo y lote completado tras completar un maestro); **Revertir** (restituye una corrección y retira solo lo propio); formato antiguo rechazado; errores obligatorios que bloquean confirmar; posible corrección con decisión explícita auditada; Consulta y sin sesión no leen estado ni archivo |
 | `99-extensiones` | Punto de extensión vacío para Personal, Usuarios y Cargas |
 
 La mutación forjada reproduce los campos ocultos reales del formulario (`$ACTION_REF_1`, `$ACTION_1:0`, `$ACTION_1:1`, `$ACTION_KEY`) leídos de una página de Administrador y los envía con la cookie del perfil probado y la cabecera `Origin` de la aplicación; el resultado se verifica en la base. El cupo de acceso (5 por minuto y origen) se vacía antes de cada login para no falsear resultados; solo el caso del límite lo agota, y va el último.
@@ -51,3 +52,7 @@ El script usa `spawn` de Node sin shell, pero su comportamiento en Windows (señ
 ## Añadir casos
 
 Crear `scripts/e2e/casos/NN-nombre.ts` que exporte `async function (ctx: Ctx)`, registrarlo en `recorrido.ts` antes de `limite`, y usar `login(ctx, email, password)` (de `casos/util.ts`) y `ctx.check(etiqueta, ok, detalle)`.
+
+## Subida web de volumen (CSAPP-03)
+
+`npm run e2e:volumen` (`scripts/e2e/volumen.ts`) genera por streaming un XLSX de ≈114 000 tickets y otro de ≈250 000 tiempos (variables `TICKETS` y `TIMES`), los sube por el navegador real a `next start`, los prepara y activa el trabajador real, y registra filas, bytes, tiempos de cada fase y pico de memoria (VmHWM de `/proc`, solo Linux) en `E2E_MEASURES_FILE`. Usa la base de test; nada se versiona. Ver las medidas obtenidas en la [validación de CSAPP-03](../validacion/csapp-03.md).

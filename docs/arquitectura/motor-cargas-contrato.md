@@ -1,6 +1,6 @@
 # Motor común de cargas: contrato (CSAPP-02)
 
-Implementa [IMP 01–07](../importaciones/proceso-comun.md) con un perfil sintético de pruebas. **No hay ningún importador operativo**: tickets y tiempos llegan en CSAPP-03, Wrike/PAP/bugs en 04 y finanzas en 05. Operación del trabajador y recuperación: [guía del trabajador](../plan/guia-trabajador-cargas.md). Lectores XLSX/CSV: ver su documento propio.
+Implementa [IMP 01–07](../importaciones/proceso-comun.md). Los importadores operativos son Tickets y Tiempos Zendesk (CSAPP-03, ver [decisiones técnicas](zendesk-csapp03.md)); Wrike, PAP y bugs llegan en 04 y finanzas en 05. Un perfil sintético ejercita el motor en pruebas. Operación del trabajador y recuperación: [guía del trabajador](../plan/guia-trabajador-cargas.md). Lectores XLSX/CSV: ver su documento propio.
 
 Estado: **implementado y probado en Linux** con PostgreSQL real (ver [validación](../validacion/csapp-02.md)); no probado en Windows; no aceptado por Dennis.
 
@@ -35,9 +35,10 @@ Estado: **implementado y probado en Linux** con PostgreSQL real (ver [validació
 | RECEIVING/QUEUED/READY/ACTIVATION_QUEUED | CANCELLED | `cancelUpload` |
 | PREPARING | CANCELLED | `cancelUpload` marca `cancelRequested`; el trabajador se detiene entre bloques |
 | READY/REJECTED/FAILED | QUEUED | `reprocessUpload` (reutiliza el archivo original) |
+| COMPLETED | COMPLETED | `reprocessUpload` con perfil que admite recalcular: encola `REDERIVE` (recalcula lo derivado sin releer el archivo; el lote no cambia de estado) |
 | COMPLETED | REVERTED | `revertUpload` encola `REVERT`; transacción atómica |
 
-Acciones por estado (fuente única: `src/domain/cargas.ts`, `availableActions`): **Confirmar** solo en READY; **Cancelar** antes de ACTIVATING (en ACTIVATING la interfaz explica que esa fase aplica los cambios en una transacción atómica, que no se cancela con una petición y que un fallo la deshace por completo); **Reprocesar** en READY/REJECTED/FAILED; **Revertir** solo en COMPLETED si el perfil lo admite y, con sustitución por ámbito, solo el lote vigente. El cliente no envía estados: cada acción es una función de servidor con compare-and-set sobre el estado.
+Acciones por estado (fuente única: `src/domain/cargas.ts`, `availableActions`): **Confirmar** solo en READY; **Cancelar** antes de ACTIVATING (en ACTIVATING la interfaz explica que esa fase aplica los cambios en una transacción atómica, que no se cancela con una petición y que un fallo la deshace por completo); **Reprocesar** en READY/REJECTED/FAILED (y en COMPLETED si el perfil declara `rederive`); **Revertir** solo en COMPLETED si el perfil lo admite y, con sustitución por ámbito, solo el lote vigente. El cliente no envía estados: cada acción es una función de servidor con compare-and-set sobre el estado.
 
 ## Contadores (ficha del lote)
 
@@ -93,3 +94,7 @@ Metadatos separados: fecha de carga (`createdAt`), extracción declarada, interv
 ## Configuración
 
 Ver `.env.example`: `CSAPP_UPLOAD_DIR`, `CSAPP_UPLOAD_MAX_BYTES`, `…_MAX_UNCOMPRESSED_BYTES`, `…_MAX_RATIO`, `…_MAX_ROWS`, `…_MAX_SHARED_STRINGS_BYTES`, `…_MAX_CONCURRENT` (429), `…_MAX_OPEN_BATCHES`, `…_INCOMPLETE_MINUTES` y los `CSAPP_WORKER_*` (lease, latido, sondeo, intentos, bloque, espera).
+
+## Extensiones de CSAPP-03
+
+Opciones de perfil añadidas sin cambiar las garantías anteriores: `HeaderMatch.context` y `notes` (el orden de columnas viaja a `parseRow(cells, context)` y las columnas adicionales se informan en el resumen), `selectsSheet` (con XLSX de varias hojas compatibles exige el metadato `hoja`; el lector inspecciona solo la primera fila de cada hoja con `headerOnly`), `blocksConfirmOnErrors` (no se confirma con errores obligatorios sin resolver), `entityConflictPolicy: "conflict_all"` (todas las filas de una clave contradictoria son error), `postPrepare` (hook dentro de la transacción de preparación), `rederive` y el trabajo `REDERIVE`, y `ActivationContext.batch`. Las filas con disposición `PENDING_DECISION` no se registran como procedencia. Valores nuevos: `UploadJobKind.REDERIVE`.

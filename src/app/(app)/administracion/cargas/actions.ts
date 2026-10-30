@@ -3,6 +3,7 @@
 import type { FormState } from "@/components/form-kit";
 import { runAdminAction } from "@/app/action-utils";
 import { cancelUpload, confirmUpload, reprocessUpload, revertUpload } from "@/server/uploads/batches";
+import { decideTimeCorrection } from "@/server/zendesk/corrections";
 
 const BASE = "/administracion/cargas";
 type S = FormState;
@@ -27,6 +28,20 @@ export async function cancelUploadAction(_: S, fd: FormData): Promise<S> {
       return r;
     },
     { ok: "Cancelación registrada. Si el lote se estaba preparando, se detendrá entre bloques.", paths: [BASE, `${BASE}/${fd.get("id")}`] },
+  );
+}
+
+/** Decisión explícita sobre una posible corrección de un registro de tiempo (solo con el lote listo). */
+export async function decideCorrectionAction(_: S, fd: FormData): Promise<S> {
+  return runAdminAction(
+    fd,
+    (a, raw) =>
+      decideTimeCorrection(a, raw.id, {
+        fingerprint: raw.fingerprint,
+        decision: raw.decision,
+        targetEntryId: raw.targetEntryId || undefined,
+      }),
+    { ok: "Decisión guardada y auditada.", paths: [`${BASE}/${fd.get("id")}`] },
   );
 }
 

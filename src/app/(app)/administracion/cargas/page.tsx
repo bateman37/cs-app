@@ -43,9 +43,9 @@ export default async function CargasPage({ searchParams }: { searchParams: Promi
           <div className="empty" role="note">
             <p><strong>No hay ninguna fuente disponible en esta base de datos.</strong></p>
             <p>
-              El motor está construido y probado, pero los importadores operativos todavía no existen: el primero (tickets y tiempos de
-              Zendesk) llegará en CSAPP-03. El único perfil que ejercita el motor es uno sintético de pruebas, que solo se habilita en un
-              entorno de test aislado y nunca en esta base de trabajo.
+              Los importadores operativos de tickets y tiempos de Zendesk deberían aparecer aquí: si no lo hacen, revise que la aplicación
+              y el trabajador estén construidos con la versión actual. Los perfiles sintéticos de pruebas solo se habilitan en un entorno de
+              test aislado y nunca en esta base de trabajo.
             </p>
           </div>
         ) : (

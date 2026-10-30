@@ -53,3 +53,13 @@ ZDT 08. Comparar tags completos del conjunto. Un ticket con PMO e IT cuenta una 
 ZDT 09. Sexto numerador aprobado: unión de problemas externos con vínculo explícito a Bug_ o causa incidente_estándar_plataforma. Un problema presente en ambos se cuenta una vez. La causa estándar no prueba por sí sola cierre del ticket ni del bug; status es otra dimensión.
 
 ZDT 10. No clasificar por palabra BUG o tag bug genérico. Las relaciones del CSV de producto son múltiples y conservan procedencia. Sin problem_id no reconstruir qué incidentes cuelgan de un problema. No sumar bugs, problemas e incidentes como si fueran la misma unidad.
+
+## Implementación en CSAPP-03
+
+Implementado y probado en Linux; detalle técnico en [importadores Zendesk](../arquitectura/zendesk-csapp03.md). Las siguientes reglas concretan los contratos anteriores donde el texto dejaba margen; son **interpretaciones implementadas pendientes de aceptación por Dennis**, no decisiones nuevas de negocio.
+
+ZDT 11. Revisión y observación son dos cosas. Una revisión es un contenido funcional distinto de un `ticket_id` (los tags se comparan como conjunto). Una observación es que un lote vio ese ticket con esa revisión en una fecha: se registra aunque el contenido no cambie y no crea otro ticket ni otra actividad. La fecha de observación es la extracción declarada o, si no hay, la de recepción (se avisa de frescura desconocida). La revisión vigente es la de la observación más reciente; el empate se resuelve por recepción del lote y después por orden de activación, nunca por posición de fila, y se informa. Un export anterior se conserva como histórico y no sustituye al vigente; reprocesarlo no cambia su observación.
+
+ZDT 12. Dos filas del mismo ticket con contenido contradictorio dentro de un archivo son errores (ninguna se activa) y el lote no se confirma hasta corregir el archivo. Con errores obligatorios sin resolver el lote tampoco se confirma. Revertir un lote retira solo lo que ningún otro lote sustenta y recalcula la vigencia con las observaciones restantes.
+
+ZDT 13. Vínculos y clasificaciones dependientes de maestros (Cliente, interno/externo, Grupo BC, alojamiento, Incidente Vincle) se calculan al consultar con los maestros actuales y la fecha de creación del ticket, de modo que completar un maestro mejora los resúmenes sin recargar. Admin delegada y los destinos por tag exacto se guardan con la revisión. Los tickets sin horas, sin organización o sin equivalencia se conservan siempre.

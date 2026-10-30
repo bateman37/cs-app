@@ -18,7 +18,11 @@ export type MetadataField = {
   options?: { value: string; label: string }[];
 };
 
-export type HeaderMatch = { ok: true; schemaVersion: string } | { ok: false; message: string };
+/**
+ * `context` viaja de matchHeaders a parseRow (p. ej. el orden de columnas); `notes` son informaciones
+ * del esquema (columnas adicionales...) que se guardan en el resumen del lote.
+ */
+export type HeaderMatch = { ok: true; schemaVersion: string; context?: unknown; notes?: string[] } | { ok: false; message: string };
 
 export type ParsedRow = {
   /** Todos los campos fuente tipados y normalizados (base de la huella; sin enriquecer con maestros). */
@@ -36,6 +40,8 @@ export type ActivationContext = {
   batchId: string;
   profileId: string;
   scopeKey: string | null;
+  /** Fechas del lote que el perfil necesita (p. ej. la fecha de observación). */
+  batch: { declaredExtractionDate: string | null; createdAt: Date };
   /** Dominio de deduplicación: scopeKey ?? "". */
   dedupeKey: string;
   /** REPLACE_SCOPE: lote vigente que se sustituye (o al que se restaura al revertir). */
@@ -60,15 +66,29 @@ export interface ImportProfile {
   scopeKey?(metadata: Record<string, unknown>): string | null;
   /** Identifica esquema, cabeceras y versión. */
   matchHeaders(headerRow: string[]): HeaderMatch;
-  parseRow(cells: Cell[]): ParsedRow;
-  /** Clave repetida con contenido distinto dentro del archivo. Por defecto «revision». */
-  entityConflictPolicy?: "revision" | "conflict";
+  parseRow(cells: Cell[], context?: unknown): ParsedRow;
+  /**
+   * Clave repetida con contenido distinto dentro del archivo. Por defecto «revision».
+   * «conflict»: las filas posteriores son error; «conflict_all»: TODAS las filas de la clave son error
+   * (no se activa una elección arbitraria entre contradictorias).
+   */
+  entityConflictPolicy?: "revision" | "conflict" | "conflict_all";
+  /** Con errores pendientes el lote no se confirma (el usuario corrige el archivo y vuelve a subirlo). */
+  blocksConfirmOnErrors?: boolean;
+  /** XLSX: con varias hojas compatibles se exige la hoja explícita (metadato «hoja»); nunca se elige una al azar. */
+  selectsSheet?: boolean;
+  /** Se ejecuta dentro de la transacción de preparación, tras las disposiciones y antes de los contadores. */
+  postPrepare?(tx: Prisma.TransactionClient, batchId: string): Promise<void>;
+  /** Recalcula lo derivado de un lote completado (relaciones tardías, maestros nuevos) sin releer el archivo. */
+  rederive?(tx: Prisma.TransactionClient, ctx: ActivationContext): Promise<{ updated: number }>;
   /** Reglas y versiones de maestros relevantes; si cambia entre previsualización y activación, se revalida. */
   rulesFingerprint(db: Db): Promise<string>;
   /** Escribe los datos activos de su ámbito dentro de la transacción del motor. */
   activate(tx: Prisma.TransactionClient, ctx: ActivationContext): Promise<{ inserted: number; revised: number }>;
   /** Opcional: sin él, el perfil no admite revertir. */
   revert?(tx: Prisma.TransactionClient, ctx: ActivationContext): Promise<void>;
+  /** Sin él, el perfil usa el nombre de la hoja de `sheet`. */
+  sheetFromMetadata?(metadata: Record<string, unknown>): string | undefined;
 }
 
 /** Fuentes futuras: solo metadatos para que la interfaz las muestre como pendientes. */

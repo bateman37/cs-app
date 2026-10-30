@@ -48,9 +48,10 @@ export async function cargas(ctx: Ctx): Promise<void> {
   // --- Subida real por la interfaz, sin trabajador: queda en cola.
   const upload = async (file: string) => {
     await page.goto(B);
-    await page.getByText("Sintético · incorporar y revisar").first().click();
-    await page.locator('input[type="file"]').first().setInputFiles(file);
-    await page.getByRole("button", { name: "Subir y validar" }).first().click();
+    const card = page.locator("details", { hasText: "Sintético · incorporar y revisar" }).first();
+    await card.locator("summary").click();
+    await card.locator('input[type="file"]').setInputFiles(file);
+    await card.getByRole("button", { name: "Subir y validar" }).click();
     await page.waitForURL(/\/administracion\/cargas\/[^/]+$/, { timeout: 20000 });
   };
   await upload(good);

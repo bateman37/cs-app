@@ -6,7 +6,7 @@ import { uploadConfig } from "./config";
  * Cola de trabajos en PostgreSQL (sin Redis). Reclamación atómica con FOR UPDATE SKIP LOCKED,
  * lease con latido y token de fencing: un trabajador que perdió el trabajo no puede confirmar.
  */
-export type JobKind = "PREPARE" | "ACTIVATE" | "REVERT";
+export type JobKind = "PREPARE" | "ACTIVATE" | "REVERT" | "REDERIVE";
 
 export type ClaimedJob = {
   id: string;

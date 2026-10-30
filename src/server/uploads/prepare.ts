@@ -91,6 +91,34 @@ export async function runPrepare(rt: JobRuntime): Promise<void> {
       return reject(job, batch.id, "El archivo no parece un CSV de texto (contiene bytes binarios).");
     }
 
+    // XLSX con selección de hoja: se inspeccionan solo las cabeceras de cada hoja visible. Una única hoja
+    // compatible se lee sola; varias compatibles exigen la hoja explícita (nunca se elige una al azar).
+    const meta = (batch.metadata ?? {}) as Record<string, unknown>;
+    let sheetName = profile.sheet ?? profile.sheetFromMetadata?.(meta) ?? (typeof meta.hoja === "string" && meta.hoja.trim() ? meta.hoja.trim() : undefined);
+    if (batch.fileFormat === "xlsx" && profile.selectsSheet && !sheetName) {
+      const compatible: string[] = [];
+      let firstProblem = "";
+      try {
+        for await (const row of readRows(filePath(batch.storageId), { format: "xlsx", limits: readerLimits(), headerOnly: true })) {
+          const m = profile.matchHeaders(row.cells.map((c) => c.v));
+          if (m.ok) compatible.push(row.sheet ?? "");
+          else if (!firstProblem) firstProblem = m.message;
+        }
+      } catch (e) {
+        if (e instanceof ReaderError) return reject(job, batch.id, e.message);
+        throw e;
+      }
+      if (compatible.length === 0) return reject(job, batch.id, firstProblem || "El libro no tiene ninguna hoja con datos.");
+      if (compatible.length > 1) {
+        return reject(
+          job,
+          batch.id,
+          `El libro tiene varias hojas compatibles con esta fuente (${compatible.map((n) => `«${n}»`).join(", ")}). No se elige una automáticamente: vuelva a subir el archivo indicando la hoja en «Hoja del libro».`,
+        );
+      }
+      sheetName = compatible[0];
+    }
+
     type Staged = Prisma.UploadStagedRowCreateManyInput;
     let buf: Staged[] = [];
     let position = 0;
@@ -98,6 +126,8 @@ export async function runPrepare(rt: JobRuntime): Promise<void> {
     let expectHeader = true;
     let headerSeen = false;
     let schemaVersion = "";
+    let headerContext: unknown;
+    let headerNotes: string[] = [];
 
     const flush = async (last: number) => {
       const rows = buf;
@@ -116,7 +146,7 @@ export async function runPrepare(rt: JobRuntime): Promise<void> {
         format: batch.fileFormat as "csv" | "xlsx",
         limits: readerLimits(),
         delimiter: profile.delimiter,
-        sheet: profile.sheet,
+        sheet: sheetName,
       })) {
         if (row.sheet !== currentSheet) {
           currentSheet = row.sheet;
@@ -126,6 +156,8 @@ export async function runPrepare(rt: JobRuntime): Promise<void> {
           const m = profile.matchHeaders(row.cells.map((c) => c.v));
           if (!m.ok) throw new RejectedError(m.message);
           schemaVersion = m.schemaVersion;
+          headerContext = m.context;
+          headerNotes = m.notes ?? [];
           headerSeen = true;
           expectHeader = false;
           continue;
@@ -134,7 +166,7 @@ export async function runPrepare(rt: JobRuntime): Promise<void> {
         position++;
         if (position <= checkpoint) continue;
 
-        const parsed = profile.parseRow(row.cells);
+        const parsed = profile.parseRow(row.cells, headerContext);
         const issues: Issue[] = [...parsed.issues];
         const hasError = issues.some((i) => i.severity === "error");
         if (parsed.exclude && !hasError) {
@@ -166,15 +198,38 @@ export async function runPrepare(rt: JobRuntime): Promise<void> {
     // Posproceso por conjuntos: conflictos de clave, duplicados del archivo, disposiciones y contadores.
     await fenced(job, async (tx) => {
       await tx.uploadBatch.update({ where: { id: batch.id }, data: { phase: "Comprobando duplicados y revisiones" } });
+      // Estadísticas del staging recién cargado: sin ellas el planificador subestima el lote y elige planes cuadráticos.
+      await tx.$executeRaw(Prisma.sql`ANALYZE "UploadStagedRow"`);
+      if (profile.entityConflictPolicy === "conflict_all") {
+        // Contradicción dentro del archivo: ninguna de las filas se activa; se muestra el conflicto.
+        // Una agregación por clave (O(n)): una autounión sin índice sería cuadrática con cientos de miles de filas.
+        await tx.$executeRaw(Prisma.sql`
+          UPDATE "UploadStagedRow" r SET classification = 'ERROR', fingerprint = NULL,
+            issues = COALESCE(r.issues, '[]'::jsonb) || ${JSON.stringify([
+              { severity: "error", code: "CONFLICTO_EN_ARCHIVO", message: "El mismo identificador aparece en el archivo con contenido contradictorio; no se activa ninguna de las filas." },
+            ])}::jsonb
+          FROM (
+            SELECT "entityKey" FROM "UploadStagedRow"
+            WHERE "batchId" = ${batch.id} AND classification = 'VALID' AND "entityKey" IS NOT NULL
+            GROUP BY "entityKey" HAVING count(DISTINCT fingerprint) > 1) c
+          WHERE r."batchId" = ${batch.id} AND r.classification = 'VALID' AND r."entityKey" = c."entityKey"`);
+      }
       if (profile.entityConflictPolicy === "conflict") {
+        // Error en las filas posteriores a otra de la misma clave con contenido distinto (ventana por clave, O(n log n)).
         await tx.$executeRaw(Prisma.sql`
           UPDATE "UploadStagedRow" r SET classification = 'ERROR', fingerprint = NULL,
             issues = COALESCE(r.issues, '[]'::jsonb) || ${JSON.stringify([
               { severity: "error", code: "CLAVE_REPETIDA", message: "La clave de entidad se repite en el archivo con contenido distinto." },
             ])}::jsonb
-          WHERE r."batchId" = ${batch.id} AND r.classification = 'VALID' AND r."entityKey" IS NOT NULL
-            AND EXISTS (SELECT 1 FROM "UploadStagedRow" p WHERE p."batchId" = r."batchId" AND p."entityKey" = r."entityKey"
-              AND p.classification = 'VALID' AND p.fingerprint <> r.fingerprint AND p.position < r.position)`);
+          FROM (
+            SELECT id FROM (
+              SELECT id, fingerprint,
+                min(fingerprint) OVER w AS prev_min, max(fingerprint) OVER w AS prev_max
+              FROM "UploadStagedRow"
+              WHERE "batchId" = ${batch.id} AND classification = 'VALID' AND "entityKey" IS NOT NULL
+              WINDOW w AS (PARTITION BY "entityKey" ORDER BY position ROWS BETWEEN UNBOUNDED PRECEDING AND 1 PRECEDING)) t
+            WHERE prev_min IS NOT NULL AND (prev_min <> fingerprint OR prev_max <> fingerprint)) c
+          WHERE r.id = c.id`);
       }
       await tx.$executeRaw(Prisma.sql`UPDATE "UploadStagedRow" SET "duplicateInFile" = false WHERE "batchId" = ${batch.id} AND "duplicateInFile"`);
       await tx.$executeRaw(Prisma.sql`
@@ -184,6 +239,7 @@ export async function runPrepare(rt: JobRuntime): Promise<void> {
             FROM "UploadStagedRow" WHERE "batchId" = ${batch.id} AND classification = 'VALID') t
           WHERE rn > 1)`);
       await computeDispositions(tx, batch.id, profile, dedupeKey);
+      if (profile.postPrepare) await profile.postPrepare(tx, batch.id);
       const counters = await recomputeCounters(tx, batch.id);
       const issueRows = await tx.$queryRaw<{ severity: string; code: string; message: string; n: bigint }[]>(Prisma.sql`
         SELECT i->>'severity' AS severity, i->>'code' AS code, min(i->>'message') AS message, count(*) AS n
@@ -199,6 +255,8 @@ export async function runPrepare(rt: JobRuntime): Promise<void> {
           preparedAt: new Date(),
           summary: {
             schemaVersion,
+            ...(sheetName ? { sheet: sheetName } : {}),
+            ...(headerNotes.length > 0 ? { notes: headerNotes } : {}),
             issues: issueRows.map((r) => ({ severity: r.severity, code: r.code, message: r.message, count: Number(r.n) })),
           },
         },

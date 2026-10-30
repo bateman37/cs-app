@@ -2,10 +2,12 @@ import { Prisma } from "@/generated/prisma/client";
 import { prisma } from "@/lib/db";
 import { databaseNameOf } from "@/lib/env";
 import type { ImportProfile, PendingSource } from "./profile";
+import { zendeskTickets } from "../zendesk/tickets";
+import { zendeskTiempo } from "../zendesk/time";
 import { SYNTHETIC_SCHEMA, syntheticIncorporar, syntheticSustituir } from "./synthetic/profile";
 
-/** Perfiles operativos. Ninguno todavía: los importadores reales llegan en CSAPP-03 y siguientes. */
-const OPERATIONAL: ImportProfile[] = [];
+/** Perfiles operativos: Tickets y Tiempos Zendesk (CSAPP-03). Wrike, PAP, bugs y finanzas llegan en 04 y 05. */
+const OPERATIONAL: ImportProfile[] = [zendeskTickets, zendeskTiempo];
 
 /** Fuentes previstas, mostradas como pendientes (no disponibles). */
 export const PENDING_SOURCES: PendingSource[] = [

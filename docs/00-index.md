@@ -20,9 +20,9 @@ Estado de la regla: **Confirmado** = decidido por Dennis; **Propuesto** = parám
 | Origen y actuación | [Diagnóstico](producto/diagnostico-origen.md) | DIA 01-07 | Confirmado; catálogo de causas configurable |
 | Fórmulas y denominadores | [Catálogo](calculos/catalogo.md) | CAL 01-16 | Confirmado; tolerancias de conciliación propuestas (CAL 08) |
 | Importación común y avisos | [Proceso común](importaciones/proceso-comun.md) | IMP 01-07 | Confirmado |
-| Tickets: único perfil de ocho campos | [Tickets](importaciones/zendesk-tickets.md) | ZDT 01-10 | Confirmado |
+| Tickets: único perfil de ocho campos | [Tickets](importaciones/zendesk-tickets.md) | ZDT 01-10 (11-13 implementación) | Confirmado; ZDT 11-13 interpretaciones implementadas pendientes de aceptación |
 | Bugs VFS y VSW separados | [Bugs de producto](importaciones/bugs-producto.md) | BUG 01-08 | Confirmado |
-| Dedicación Zendesk | [Tiempos](importaciones/zendesk-tiempo.md) | ZTM 01-05 | Confirmado |
+| Dedicación Zendesk | [Tiempos](importaciones/zendesk-tiempo.md) | ZTM 01-05 (06-08 implementación) | Confirmado; ZTM 06-08 interpretaciones implementadas pendientes de aceptación |
 | Dedicación PMO | [Wrike](importaciones/wrike.md) | WRK 01-07 | Confirmado |
 | Tres categorías anuales | [Facturación](importaciones/facturacion.md) | FAC 01-08 | Confirmado; vacío monetario como cero (FAC 07) propuesto |
 | Pases a producción | [PAP](importaciones/pap.md) | PAP 01-05 | Confirmado |
@@ -40,6 +40,9 @@ Estado de la regla: **Confirmado** = decidido por Dennis; **Propuesto** = parám
 | Guía PowerShell de CSAPP-02 | [Guía](plan/guia-powershell-csapp02.md) | — | Sin probar en Windows |
 | Recorrido de navegador reproducible | [Guía del recorrido](plan/guia-recorrido-navegador.md) | — | Probado en Linux; Windows sin probar |
 | Resultados de validación de CSAPP-02 | [Validación](validacion/csapp-02.md) | — | Registro |
+| Implementado en CSAPP-03: importadores de tickets y tiempos Zendesk | [Decisiones técnicas](arquitectura/zendesk-csapp03.md) | ZDT, ZTM | Implementado; probado en Linux |
+| Guía PowerShell de CSAPP-03 | [Guía](plan/guia-powershell-csapp03.md) | — | Sin probar en Windows |
+| Resultados de validación de CSAPP-03 | [Validación](validacion/csapp-03.md) | — | Registro |
 | DOC-00 y diez entregas | [Roadmap](plan/roadmap.md) | — | Confirmado |
 | Precarga futura y pruebas de Dennis | [Política](plan/precarga-y-pruebas.md) | — | Confirmado |
 | Progreso real | [Estado](plan/estado.md) | — | Registro vivo |
@@ -59,4 +62,4 @@ Estado de la regla: **Confirmado** = decidido por Dennis; **Propuesto** = parám
 
 ## Prompts
 
-[Índice de prompts](../prompts/README.md), [plantilla](../prompts/_plantilla.md), [CSAPP-DOC-00-v1](../prompts/CSAPP-DOC-00-v1.md), [CSAPP-01-v1](../prompts/CSAPP-01-v1.md) y [CSAPP-02-v1](../prompts/CSAPP-02-v1.md).
+[Índice de prompts](../prompts/README.md), [plantilla](../prompts/_plantilla.md), [CSAPP-DOC-00-v1](../prompts/CSAPP-DOC-00-v1.md), [CSAPP-01-v1](../prompts/CSAPP-01-v1.md), [CSAPP-02-v1](../prompts/CSAPP-02-v1.md) y [CSAPP-03-v1](../prompts/CSAPP-03-v1.md).

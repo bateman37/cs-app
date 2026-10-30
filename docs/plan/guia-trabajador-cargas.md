@@ -61,3 +61,7 @@ Los perfiles sintéticos se habilitan solo dentro de esas pruebas (variable de s
 ## Ficheros y limpieza
 
 Los archivos subidos viven en `CSAPP_UPLOAD_DIR\files\<uuid>`; los parciales, en `incoming\`. No se borra automáticamente ningún archivo de lotes (activos, completados, rechazados o cancelados): no hay política de retención aprobada. Incluya el directorio en las copias de seguridad junto con la base de datos.
+
+## Trabajos de recálculo (CSAPP-03)
+
+Además de `PREPARE`, `ACTIVATE` y `REVERT`, el trabajador procesa `REDERIVE`: «Reprocesar» sobre un lote **completado** de Zendesk recalcula la atribución de sus registros con los maestros actuales, sin releer el archivo. Usa la misma reclamación, lease, latido y fencing; un fallo deshace la transacción y se reintenta o termina `FAILED` como el resto. La ficha sigue sondeando el estado mientras hay un trabajo pendiente aunque el lote ya sea terminal. Si cambió el trabajador, reconstruya y reinicie (`npm run worker`) para que conozca el valor nuevo.

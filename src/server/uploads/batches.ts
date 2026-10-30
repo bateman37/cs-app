@@ -206,6 +206,12 @@ export async function listSources(actorId: string) {
   };
 }
 
+/** Motivo por el que un perfil bloquea confirmar un lote con errores obligatorios sin resolver (o null). */
+export function confirmBlockReason(profile: { blocksConfirmOnErrors?: boolean } | null, rowsError: number): string | undefined {
+  if (!profile?.blocksConfirmOnErrors || rowsError <= 0) return undefined;
+  return `Hay ${rowsError.toLocaleString("es-ES")} fila(s) con errores obligatorios sin resolver: el lote no se confirma mientras queden. Corrija el archivo, súbalo de nuevo y cancele este lote.`;
+}
+
 export async function getUpload(actorId: string, id: string) {
   await authorize(prisma, actorId, "ADMIN");
   const batch = await prisma.uploadBatch.findUnique({
@@ -218,6 +224,7 @@ export async function getUpload(actorId: string, id: string) {
   if (!batch) return null;
   const profile = await getProfile(batch.profileId);
   const pendingRevert = batch.jobs.some((j) => j.kind === "REVERT" && (j.status === "PENDING" || j.status === "RUNNING"));
+  const pendingRederive = batch.jobs.some((j) => j.kind === "REDERIVE" && (j.status === "PENDING" || j.status === "RUNNING"));
   const sameChecksum = batch.checksum
     ? await prisma.uploadBatch.findMany({
         where: { checksum: batch.checksum, id: { not: batch.id } },
@@ -228,9 +235,12 @@ export async function getUpload(actorId: string, id: string) {
   const actions = availableActions(batch.status as UploadStatusName, {
     supportsRevert: profile ? Boolean(profile.revert) : false,
     isCurrentOfScope: batch.supersededByBatchId === null,
+    supportsRederive: Boolean(profile?.rederive),
+    confirmBlockedReason: confirmBlockReason(profile, batch.rowsError),
   });
   if (pendingRevert) actions.revert = { allowed: false, reason: "La reversión ya está en cola." };
-  return { batch: { ...batch, sizeBytes: num(batch.sizeBytes) }, profile: profile ? { id: profile.id, label: profile.label, policy: profile.policy } : null, actions, pendingRevert, sameChecksum };
+  if (pendingRederive) actions.reprocess = { allowed: false, reason: "El recálculo ya está en cola." };
+  return { batch: { ...batch, sizeBytes: num(batch.sizeBytes) }, profile: profile ? { id: profile.id, label: profile.label, policy: profile.policy } : null, actions, pendingRevert, pendingRederive, sameChecksum };
 }
 
 /** Estado ligero para sondeo desde la interfaz. */
@@ -244,7 +254,9 @@ export async function uploadStatus(actorId: string, id: string) {
     },
   });
   if (!b) return null;
-  return { ...b, terminal: TERMINAL_STATUSES.includes(b.status as UploadStatusName) };
+  // Un recálculo en cola o en curso mantiene el sondeo aunque el lote ya esté completado.
+  const busy = (await prisma.uploadJob.count({ where: { batchId: id, status: { in: ["PENDING", "RUNNING"] } } })) > 0;
+  return { ...b, terminal: TERMINAL_STATUSES.includes(b.status as UploadStatusName), busy };
 }
 
 /** Previsualización limitada y paginada del staging (nunca altera datos activos). */
@@ -280,6 +292,11 @@ async function explain(tx: Prisma.TransactionClient, id: string, verb: string): 
 
 export async function confirmUpload(actorId: string, id: string, opts: { expectedVersion?: number } = {}) {
   return adminTransaction(actorId, async (tx, actor) => {
+    const cur = await tx.uploadBatch.findUnique({ where: { id }, select: { status: true, rowsError: true, profileId: true } });
+    if (cur?.status === "READY") {
+      const blocked = confirmBlockReason(await getProfile(cur.profileId), cur.rowsError);
+      if (blocked) throw new DomainError(blocked);
+    }
     const res = await tx.uploadBatch.updateMany({
       where: { id, status: "READY", ...(opts.expectedVersion !== undefined ? { version: opts.expectedVersion } : {}) },
       data: { status: "ACTIVATION_QUEUED", phase: "En cola de activación", confirmedById: actor.id, confirmedAt: new Date(), version: { increment: 1 } },
@@ -324,10 +341,17 @@ export async function cancelUpload(actorId: string, id: string) {
 
 export async function reprocessUpload(actorId: string, id: string) {
   return adminTransaction(actorId, async (tx, actor) => {
-    const b = await tx.uploadBatch.findUnique({ where: { id }, select: { storageId: true, status: true } });
+    const b = await tx.uploadBatch.findUnique({ where: { id }, select: { storageId: true, status: true, profileId: true } });
     if (!b) throw new DomainError("Carga no encontrada.");
-    const act = availableActions(b.status as UploadStatusName).reprocess;
+    const profile = await getProfile(b.profileId);
+    const act = availableActions(b.status as UploadStatusName, { supportsRederive: Boolean(profile?.rederive) }).reprocess;
     if (!act.allowed) throw new DomainError(act.reason ?? "No se puede reprocesar.");
+    if (b.status === "COMPLETED") {
+      // Lote ya activo: se recalcula lo derivado con los maestros y fuentes actuales, sin releer el archivo.
+      await enqueueJob(tx, id, "REDERIVE", actor.id);
+      await recordAudit(tx, actor, { action: "REPROCESS", entityType: "UploadBatch", entityId: id, batchId: id, summary: "Recálculo solicitado: relaciones y atribución con los datos actuales" });
+      return { id, status: "COMPLETED" as const, rederive: true as const };
+    }
     if ((await fileSize(b.storageId)) === null) throw new DomainError("El archivo original ya no está en el almacén: suba el archivo de nuevo.");
     const r = await tx.uploadBatch.updateMany({
       where: { id, status: { in: ["READY", "REJECTED", "FAILED"] } },

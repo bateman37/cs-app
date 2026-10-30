@@ -29,3 +29,13 @@ ZTM 05. Corregir una fila sin ID estable no se resuelve anexando automáticament
 ## Resultado de la carga
 
 Mostrar horas recibidas, deduplicadas, elegibles, excluidas por PMO, sin ticket, sin persona y sin cliente. La suma de esas categorías debe explicar el total original. Las horas excluidas de una vista permanecen consultables. No conciliar el total bruto de todos los años con solo el subtotal de soporte de un cierre.
+
+## Implementación en CSAPP-03
+
+Implementado y probado en Linux; detalle técnico en [importadores Zendesk](../arquitectura/zendesk-csapp03.md). Interpretaciones implementadas **pendientes de aceptación por Dennis**:
+
+ZTM 06. Cada fila válida del lote cae en un único motivo principal (duplicada, pendiente de decisión, excluida por PMO, elegibilidad pendiente, sin ticket, ticket sin organización, organización sin Cliente, sin persona o atribuible); las demás circunstancias son indicadores que no suman horas. La suma de la partición reconcilia con las filas y horas válidas. Lo no atribuible se conserva y se distingue de un cero. Antes de 2025 la falta de persona impide atribuir pero no prohíbe la fuente Zendesk.
+
+ZTM 07. Una posible corrección es una fila con el mismo `id` y el mismo contexto de trabajo (ticket, persona y día) que un registro activo y contenido distinto. Se advierte; hasta que el Administrador decida (corrige ese registro, o es otro trabajo) la fila conserva su bruto y no añade horas, y el resto del lote se activa. La decisión se toma dentro de la ficha, antes de confirmar, y queda auditada con antes/después. Nunca se corrige por parecido ni sin `id`, y no se crea una bandeja masiva; los `id` vacíos no se revisan.
+
+ZTM 08. Un tiempo recibido antes que su ticket, persona o equivalencia se conserva sin atribuir y se resuelve después: automáticamente al activar o revertir tickets, y con «Reprocesar» sobre el lote completado cuando se completan alias, equivalencias o vigencias. El recálculo no relee el archivo ni cambia fechas de trabajo; sus cambios quedan versionados en cada registro.

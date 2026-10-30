@@ -32,7 +32,7 @@ Además de las entradas comunes y del apartado propio del roadmap:
 | CSAPP-02 | producto/maestros.md; producto/administracion.md; importaciones/proceso-comun.md; plan/precarga-y-pruebas.md |
 | CSAPP-03 | importaciones/zendesk-tickets.md; importaciones/zendesk-tiempo.md; importaciones/proceso-comun.md; arquitectura/modelo.md; producto/backlog-antiguedad.md |
 | CSAPP-04 | importaciones/wrike.md; importaciones/pap.md; importaciones/bugs-producto.md; importaciones/proceso-comun.md; producto/diagnostico-origen.md |
-| CSAPP-05 | importaciones/facturacion.md; calculos/catalogo.md; plan/precarga-y-pruebas.md |
+| CSAPP-05 | importaciones/facturacion.md; calculos/catalogo.md; plan/precarga-y-pruebas.md; producto/comparativa.md; producto/administracion.md; arquitectura/finanzas-motor-csapp05.md |
 | CSAPP-06 | producto/comparativa.md; producto/analisis-cliente.md; calculos/catalogo.md |
 | CSAPP-07 | producto/pulse-rent.md; producto/administracion.md; calculos/catalogo.md |
 | CSAPP-08 | producto/calidad.md; producto/backlog-antiguedad.md; producto/diagnostico-origen.md; calculos/catalogo.md; producto/administracion.md |

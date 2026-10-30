@@ -7,6 +7,7 @@ import {
   MILESTONE_TYPES,
   SYSTEM_LABEL,
   SYSTEM_RULES,
+  GROUP_TARGET_KINDS,
   SYSTEMS,
   TARGET_LABEL,
   type TargetType,
@@ -98,6 +99,13 @@ export const identitySchema = z
         code: "custom",
         path: ["targetType"],
         message: `${SYSTEM_LABEL[v.system]} solo se asigna a: ${rules.targets.map((t) => TARGET_LABEL[t]).join(" o ")}.`,
+      });
+    }
+    if (v.targetType === "group" && (v.system === "WRIKE" || v.system === "PAP") && !GROUP_TARGET_KINDS.includes(v.kind)) {
+      ctx.addIssue({
+        code: "custom",
+        path: ["targetType"],
+        message: `Un Grupo Cliente solo se asigna desde una identidad de proyecto de ${SYSTEM_LABEL[v.system]} (ID o nombre de proyecto), no desde «${KIND_LABEL[v.kind]}».`,
       });
     }
     if (v.system === "ZENDESK" && v.kind === "ORG_ID" && !isDigits(v.rawValue.trim())) {

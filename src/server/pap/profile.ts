@@ -146,30 +146,24 @@ async function recomputeCurrent(tx: Tx, ids: Prisma.Sql) {
 
 /**
  * Ámbito de un proyecto PAP a la FECHA DE PRODUCCIÓN (sin fecha: solo equivalencias sin vigencia acotada). `src` produce: key, project,
- * production_date. Equivalencia PAP de Cliente o implantación; o, solo si no hay, la clave BC de un Grupo Cliente (solo grupo).
+ * production_date. Equivalencia PAP de proyecto a Cliente, implantación o directamente a un Grupo Cliente (CSAPP-05; ya no se usa la clave BC como atajo).
  * Un grupo solo no autoriza reparto entre hijos; no se inventa cliente ni implantación.
  */
 export function papScopeSql(src: Prisma.Sql): Prisma.Sql {
   return Prisma.sql`
     SELECT s.key,
-      CASE WHEN s.project IS NULL THEN 'NO_PROJECT' WHEN pj.id IS NULL AND pg."groupId" IS NULL THEN 'UNMAPPED'
+      CASE WHEN s.project IS NULL THEN 'NO_PROJECT' WHEN pj.id IS NULL THEN 'UNMAPPED'
            WHEN pj."implementationId" IS NOT NULL THEN 'IMPLEMENTATION' WHEN pj."clientId" IS NOT NULL THEN 'CLIENT' ELSE 'GROUP_ONLY' END AS scope,
       COALESCE(pj."clientId", im."clientId") AS client_id, pj."implementationId" AS impl_id,
-      COALESCE(pc."groupId", pg."groupId") AS group_id
+      COALESCE(pc."groupId", pj."groupId") AS group_id
     FROM (${src}) s
     LEFT JOIN LATERAL (
-      SELECT e.id, e."clientId", e."implementationId" FROM "ExternalIdentity" e
+      SELECT e.id, e."clientId", e."implementationId", e."groupId" FROM "ExternalIdentity" e
       WHERE s.project IS NOT NULL AND e.system = 'PAP' AND e.kind IN ('PROJECT_NAME', 'PROJECT_ID') AND e."isActive"
         AND e."searchValue" IN (lower(s.project), s.project)
         AND (CASE WHEN s.production_date IS NULL THEN e."validFrom" IS NULL AND e."validTo" IS NULL
                   ELSE (e."validFrom" IS NULL OR e."validFrom" <= s.production_date) AND (e."validTo" IS NULL OR s.production_date < e."validTo") END)
       LIMIT 1) pj ON true
-    LEFT JOIN LATERAL (
-      SELECT e."groupId" FROM "ExternalIdentity" e
-      WHERE s.project IS NOT NULL AND pj.id IS NULL AND e.system = 'BC' AND e.kind = 'GROUP_KEY' AND e."isActive" AND e."searchValue" = lower(s.project)
-        AND (CASE WHEN s.production_date IS NULL THEN e."validFrom" IS NULL AND e."validTo" IS NULL
-                  ELSE (e."validFrom" IS NULL OR e."validFrom" <= s.production_date) AND (e."validTo" IS NULL OR s.production_date < e."validTo") END)
-      LIMIT 1) pg ON true
     LEFT JOIN "Implementation" im ON im.id = pj."implementationId"
     LEFT JOIN "Client" pc ON pc.id = COALESCE(pj."clientId", im."clientId")`;
 }

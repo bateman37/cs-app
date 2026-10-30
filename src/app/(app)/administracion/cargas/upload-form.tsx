@@ -3,7 +3,7 @@
 import { useRef, useState } from "react";
 import { useRouter } from "next/navigation";
 
-type Field = { name: string; label: string; type: "text" | "select" | "date"; required: boolean; options?: { value: string; label: string }[] };
+type Field = { name: string; label: string; type: "text" | "select" | "date" | "checkbox"; required: boolean; options?: { value: string; label: string }[] };
 export type Source = { id: string; label: string; description: string; formats: string[]; metadataFields: Field[] };
 
 function b64(obj: unknown): string {
@@ -81,7 +81,12 @@ export function UploadForm({ source }: { source: Source }) {
         <label htmlFor={`${id}-archivo`}>Archivo ({source.formats.map((f) => f.toUpperCase()).join(" o ")})</label>
         <input id={`${id}-archivo`} name="archivo" type="file" accept={source.formats.map((f) => `.${f}`).join(",")} disabled={busy} />
       </div>
-      {source.metadataFields.map((f) => (
+      {source.metadataFields.map((f) => f.type === "checkbox" ? (
+        <div className="field field-check" key={f.name}>
+          <input id={`${id}-${f.name}`} name={f.name} type="checkbox" value="si" disabled={busy} />
+          <label htmlFor={`${id}-${f.name}`}>{f.label}{f.required ? <span aria-hidden="true"> *</span> : null}</label>
+        </div>
+      ) : (
         <div className="field" key={f.name}>
           <label htmlFor={`${id}-${f.name}`}>{f.label}{f.required ? <span aria-hidden="true"> *</span> : null}</label>
           {f.type === "select" ? (

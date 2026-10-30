@@ -5,7 +5,7 @@ import yazl from "yazl";
 
 /** Generador mínimo de XLSX para pruebas (SpreadsheetML válido, en streaming para archivos grandes). */
 export type XlsxOptions = {
-  sheets?: { name: string; rows: Iterable<(string | number | { date: number } | null)[]>; hidden?: boolean }[];
+  sheets?: { name: string; rows: Iterable<(string | number | { date: number } | { raw: string } | { f: string; v?: string } | null)[]>; hidden?: boolean }[];
   /** Escribe la <dimension> de la hoja (los exports de Power BI suelen omitirla). */
   dimension?: boolean;
   /** Cadenas compartidas en vez de inlineStr (solo para archivos pequeños). */
@@ -57,6 +57,8 @@ export async function writeXlsx(path: string, opts: XlsxOptions): Promise<void> 
           const ref = `${colName(ci)}${r}`;
           if (c === null) return "";
           if (typeof c === "number") return `<c r="${ref}"><v>${c}</v></c>`;
+          if (typeof c === "object" && "raw" in c) return `<c r="${ref}"><v>${esc(c.raw)}</v></c>`;
+          if (typeof c === "object" && "f" in c) return `<c r="${ref}"><f>${esc(c.f)}</f>${c.v !== undefined ? `<v>${esc(c.v)}</v>` : ""}</c>`;
           if (typeof c === "object") return `<c r="${ref}" s="1"><v>${c.date}</v></c>`;
           return opts.sharedStrings ? `<c r="${ref}" t="s"><v>${sst(c)}</v></c>` : `<c r="${ref}" t="inlineStr"><is><t xml:space="preserve">${esc(c)}</t></is></c>`;
         });

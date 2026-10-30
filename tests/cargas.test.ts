@@ -55,7 +55,7 @@ async function activate(id: string) {
 
 describe("Perfil sintético aislado", () => {
   it("solo se habilita con las tres condiciones", async () => {
-    const OPERATIVOS = ["zendesk-tickets", "zendesk-tiempo", "wrike", "pap", "bugs-vfs", "bugs-vsw"];
+    const OPERATIVOS = ["zendesk-tickets", "zendesk-tiempo", "wrike", "pap", "bugs-vfs", "bugs-vsw", "facturacion-soporte", "facturacion-admin-delegada", "facturacion-otros"];
     const ids = async () => (await getProfiles()).map((p) => p.id);
     expect(await ids()).toEqual([...OPERATIVOS, "sintetico-incorporar", "sintetico-sustituir"]);
     const saved = process.env.CSAPP_ENABLE_SYNTHETIC_PROFILES;
@@ -73,11 +73,11 @@ describe("Perfil sintético aislado", () => {
     expect(await ids()).toEqual(OPERATIVOS);
     await prisma.$executeRawUnsafe(`INSERT INTO csapp_synthetic.settings VALUES ('marker','synthetic')`);
     resetRegistryCache();
-    expect((await getProfiles()).length).toBe(8);
+    expect((await getProfiles()).length).toBe(11); // nueve operativos + dos sintéticos
   });
 
   it("rechaza una subida a un perfil no habilitado", async () => {
-    await expect(uploadText(admin.id, csvText([row(1)]), { profileId: "facturacion-soporte" })).rejects.toThrow(/no está disponible/);
+    await expect(uploadText(admin.id, csvText([row(1)]), { profileId: "perfil-inexistente" })).rejects.toThrow(/no está disponible/);
   });
 });
 

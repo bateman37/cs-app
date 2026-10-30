@@ -2,7 +2,7 @@
 
 ## Clientes y proyectos
 
-MST 01. Crear un cliente canónico con identificador interno estable, nombre de grupo BC, estado activo y fechas de vigencia. Guardar las identidades externas en una tabla de equivalencias por sistema. Admitir varias identidades por cliente; cada identidad solo puede apuntar a un cliente en el mismo intervalo. Un parecido de texto propone una correspondencia, nunca la confirma.
+MST 01. Crear un cliente canónico con identificador interno estable, nombre de grupo BC, estado activo y fechas de vigencia. Guardar las identidades externas en una tabla de equivalencias por sistema. Admitir varias identidades por cliente; cada identidad solo puede apuntar a un cliente en el mismo intervalo. Un parecido de texto propone una correspondencia, nunca la confirma. Desde CSAPP-05, una equivalencia Wrike o PAP de **proyecto** puede apuntar directamente a un Grupo Cliente (con vigencias, auditoría, versión y exclusión de solapamientos en base de datos); Zendesk ORG_ID sigue siendo de Cliente y la clave BC de un grupo no atribuye proyectos.
 
 MST 02. Campos funcionales: grupo BC; organizaciones Zendesk con ID y nombre; nombres o IDs de proyecto Wrike; nombres o IDs PAP; plan Gold, Platinum, Silver On Demand o Silver Recurrente; alojamiento CLOUD u OP; complejidad Basic, Medium o Enterprise. Añadir producto y proyectos operativos como campos separados. Conservar alias y etiquetas originales sin duplicar columnas para BUSCARV.
 

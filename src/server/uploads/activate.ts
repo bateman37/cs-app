@@ -121,6 +121,26 @@ export async function runActivate(rt: JobRuntime): Promise<"completed" | "stale"
         metadata: batch.metadata,
         batch: batchInfo(batch),
       };
+      if (profile.checkActivation) {
+        const bounce = await profile.checkActivation(tx, ctx);
+        if (bounce) {
+          // El conjunto revisado ya no es el vigente (u otra condición de la revisión cambió): no se aplica nada y la
+          // confirmación anterior no autoriza esta activación. El lote vuelve a «listo» para actualizar el impacto.
+          await tx.uploadBatch.update({
+            where: { id: batch.id },
+            data: { status: "READY", phase: "Revisión obsoleta: actualice el impacto y confirme de nuevo", statusDetail: bounce, version: { increment: 1 }, confirmedAt: null, confirmedById: null },
+          });
+          await markJobDone(tx, job);
+          await recordAudit(tx, actor, {
+            action: "REPROCESS",
+            entityType: "UploadBatch",
+            entityId: batch.id,
+            batchId: batch.id,
+            summary: `Carga «${batch.originalName}»: no se activó; ${bounce}`,
+          });
+          return "stale" as const;
+        }
+      }
       await computeDispositions(tx, batch.id, profile, dedupeKey);
       const result = await profile.activate(tx, ctx);
 

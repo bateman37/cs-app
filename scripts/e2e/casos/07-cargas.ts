@@ -42,7 +42,7 @@ export async function cargas(ctx: Ctx): Promise<void> {
   // --- Administrador: fuentes e historial vacío.
   const { context, page } = await login(ctx, ctx.accounts.adminEmail, ctx.accounts.adminPassword);
   await page.goto(B);
-  ctx.check("Cargas: el Administrador ve la fuente disponible (perfil sintético) y las futuras como pendientes", (await page.getByText("Sintético · incorporar y revisar").count()) > 0 && (await page.getByText("Zendesk · tickets").count()) > 0 && (await page.getByText("No disponible · pendiente").count()) > 0);
+  ctx.check("Cargas: el Administrador ve la fuente sintética de pruebas y las operativas (ya no quedan fuentes pendientes tras CSAPP-05)", (await page.getByText("Sintético · incorporar y revisar").count()) > 0 && (await page.getByText("Zendesk · tickets").count()) > 0 && (await page.getByText("Facturación · soporte").count()) > 0 && (await page.getByText("No disponible · pendiente").count()) === 0);
   ctx.check("Cargas: historial vacío con mensaje claro", (await page.getByText("Todavía no se ha realizado ninguna carga").count()) > 0);
 
   // --- Subida real por la interfaz, sin trabajador: queda en cola.

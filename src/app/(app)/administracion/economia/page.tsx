@@ -5,16 +5,17 @@ import { prisma } from "@/lib/db";
 import { runEconomics, PERIOD_KEYS, SERVICES, type PeriodSeries, type ServiceSelection } from "@/server/economics/engine";
 import { listSettingsRevisions } from "@/server/economics/settings";
 import { listHoursDetail, listIncomeDetail } from "@/server/economics/detail";
-import { CATEGORY_LABEL, Dec, type FinanceCategory, type Formula } from "@/domain/finance";
+import { CATEGORY_LABEL, type FinanceCategory, type Formula } from "@/domain/finance";
 import { isIsoDate, todayMadrid } from "@/domain/vigencia";
 import { first, qs, type SearchParams } from "@/lib/format";
 import { Pager } from "@/components/list";
+import { formatDecimalEs } from "@/lib/money";
 
 export const metadata: Metadata = { title: "Comprobación económica" };
 const BASE = "/administracion/economia";
 
 const SERVICE_LABEL: Record<ServiceSelection, string> = { SOPORTE: "Soporte", ADMIN_DELEGADA: "Administración delegada", OTROS: "Otros", TOTAL: "Total (los tres)" };
-const fmt = (v: string | null | undefined, d = 2) => (v === null || v === undefined ? "—" : (Dec.parse(v) as Dec).toFixed(d).replace(".", ","));
+const fmt = (v: string | null | undefined, d = 2) => (v === null || v === undefined ? "—" : formatDecimalEs(v, d));
 const STATUS: Record<string, string> = { AVAILABLE: "dato disponible", PARTIAL: "parcial / incompleto", NO_SOURCE: "sin fuente", NOT_COMPUTABLE: "no calculable" };
 
 function F({ f, d = 2, unit }: { f: Formula; d?: number; unit?: string }) {

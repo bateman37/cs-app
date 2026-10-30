@@ -1,4 +1,4 @@
-import { afterAll, beforeEach, describe, expect, it } from "vitest";
+import { afterAll, beforeAll, beforeEach, describe, expect, it } from "vitest";
 import { prisma } from "@/lib/db";
 import { confirmUpload, revertUpload } from "@/server/uploads/batches";
 import { reprocessUpload } from "@/server/uploads/batches";
@@ -9,7 +9,8 @@ import { exactSum } from "./generators/finance";
 
 let admin: { id: string };
 let reader: { id: string };
-const dir = useUploadDir();
+let dir: string;
+beforeAll(() => { dir = useUploadDir(); });
 beforeEach(async () => { ({ admin, reader } = await freshEnvironment()); });
 afterAll(() => removeUploadDir(dir));
 
@@ -240,7 +241,7 @@ describe("atribución a Grupo Cliente", () => {
     const g1 = await group("Grupo 1", { key: "Acme SA" });
     const g2 = await group("Grupo 2", { key: "Nueva SL", from: "2026-06-01" }); // alias nacido a mitad de año: no se pierde
     const b = await prepareFin(admin.id, "SOPORTE", 2026, [{ grupo: "ACME SA", vta: 10 }, { grupo: "nueva sl", vta: 20 }, { grupo: "Desconocida", vta: 5 }], { total: { vta: 35 } });
-    let a = await cfg(b.id);
+    const a = await cfg(b.id);
     expect(a.resolution).toMatchObject({ resolved: 2, unresolved: 1 });
     expect(a.sums).toMatchObject({ unique: "35", attributed: "30", unassigned: "5" });
     expect(a.reconciliation.reconciled).toBe(true);
@@ -284,6 +285,16 @@ describe("atribución a Grupo Cliente", () => {
     expect(a.blockers.map((x) => x.code)).toContain("COLLISION");
     await decideFinance(admin.id, b.id, { kind: "ACCEPT_COLLISION", key: a.collisions[0].groupId, reason: "Dos contratos distintos" });
     expect((await cfg(b.id)).blockers.map((x) => x.code)).not.toContain("COLLISION");
+  });
+  it("completar el maestro y reprocesar un lote listo recupera el grupo antes de activar, conservando el dinero y las decisiones", async () => {
+    const b = await prepareFin(admin.id, "SOPORTE", 2026, [{ grupo: "Pendiente SA", vta: 10 }], { total: { vta: 10 } });
+    expect((await cfg(b.id)).resolution.unresolved).toBe(1);
+    await group("Grupo nuevo", { key: "pendiente sa" });
+    await reprocessUpload(admin.id, b.id); await drain();
+    const a = await cfg(b.id);
+    expect(a.resolution).toMatchObject({ resolved: 1, unresolved: 0 });
+    expect(a.sums).toMatchObject({ unique: "10", attributed: "10", unassigned: "0" });
+    expect(a.blockers.map((x) => x.code)).toEqual(["REVIEW"]);
   });
   it("el reproceso de un lote completado recupera el grupo sin cambiar dinero, año, filtros ni extracción, y no lo reactiva", async () => {
     const b = await prepareFin(admin.id, "SOPORTE", 2026, [{ grupo: "Tardia", vta: 10 }], { total: { vta: 10 }, declared: { extraccion: "2026-10-01" } });

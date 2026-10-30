@@ -2,10 +2,11 @@ import Link from "next/link";
 import { prisma } from "@/lib/db";
 import { computeAnalysis, DECISION_LABEL, type DecisionKind } from "@/server/finance/review";
 import { CATEGORY_LABEL, Dec } from "@/domain/finance";
+import { formatDecimalEs } from "@/lib/money";
 import { formatDate } from "@/domain/vigencia";
 import { DecisionForm, ReviewForm, RevokeForm } from "./finance-forms";
 
-const eur = (v: string | null) => (v === null ? "—" : `${(Dec.parse(v) as Dec).toFixed(2).replace(".", ",")} €`);
+const eur = (v: string | null) => (v === null ? "—" : `${formatDecimalEs(Dec.parse(v)?.toString() ?? v)} €`);
 
 /** Ficha financiera: controles, conciliación, impacto de la sustitución, decisiones y revisión (CSAPP-05). */
 export async function FinancePanel({ batch, base }: { batch: { id: string; profileId: string; status: string; version: number; supersedesBatchId: string | null; supersededByBatchId: string | null; declaredExtractionDate: Date | null; createdAt: Date }; base: string }) {
@@ -18,6 +19,18 @@ export async function FinancePanel({ batch, base }: { batch: { id: string; profi
     batch.supersedesBatchId ? prisma.uploadBatch.findUnique({ where: { id: batch.supersedesBatchId }, select: { id: true, originalName: true, status: true } }) : null,
     batch.supersededByBatchId ? prisma.uploadBatch.findUnique({ where: { id: batch.supersededByBatchId }, select: { id: true, originalName: true, status: true } }) : null,
   ]);
+  const done = ["COMPLETED", "REVERTED"].includes(batch.status);
+  const result = done
+    ? (
+        await prisma.$queryRaw<{ n: bigint; total: string | null; unassigned: bigint; unassignedAmount: string | null; groups: bigint; derivedVersion: number; stale: boolean }[]>`
+          SELECT count(*) AS n, sum(r.income)::text AS total, count(*) FILTER (WHERE r."groupId" IS NULL) AS unassigned,
+            sum(r.income) FILTER (WHERE r."groupId" IS NULL)::text AS "unassignedAmount", count(DISTINCT r."groupId") AS groups, fb."derivedVersion",
+            fb."derivedStamp" IS DISTINCT FROM (SELECT md5(COALESCE(string_agg(concat_ws('|', e.id, e.version, e."groupId", e."searchValue", e."validFrom", e."validTo", e."isActive"), ';' ORDER BY e.id), ''))
+              FROM "ExternalIdentity" e WHERE e.system = 'BC' AND e.kind = 'GROUP_KEY') AS stale
+          FROM "FinanceRow" r JOIN "FinanceBatch" fb ON fb."batchId" = r."batchId" WHERE r."batchId" = ${batch.id} GROUP BY fb."derivedVersion", fb."derivedStamp"`
+      )[0] ?? null
+    : null;
+  const isActive = a.scope.activeBatchId === batch.id;
   const has = (k: DecisionKind, key = "") => a.decisions.find((d) => d.kind === k && d.key === key);
   const codes = new Set(a.blockers.map((b) => b.code));
   return (
@@ -59,7 +72,18 @@ export async function FinancePanel({ batch, base }: { batch: { id: string; profi
         </tbody>
       </table></div>
 
-      <h3>Impacto de la sustitución</h3>
+      {result ? (
+        <>
+          <h3>Resultado activo</h3>
+          <dl className="kv">
+            <dt>Estado en su ámbito</dt><dd>{batch.status === "REVERTED" ? "revertido: no aporta ingreso" : isActive ? "es el conjunto vigente de este año y categoría" : "sustituido por un lote posterior: se conserva como evidencia y no aporta ingreso"}</dd>
+            <dt>Líneas y total guardados</dt><dd>{Number(result.n).toLocaleString("es-ES")} líneas · {eur(result.total)}</dd>
+            <dt>Atribuido a Grupo Cliente</dt><dd>{Number(result.groups).toLocaleString("es-ES")} grupos; {Number(result.unassigned)} líneas sin asignar ({eur(result.unassignedAmount)}){Number(result.unassigned) > 0 ? " — cobertura parcial: la ausencia de un grupo no prueba ingreso cero" : ""}</dd>
+            <dt>Atribución</dt><dd>versión {result.derivedVersion}{result.stale ? " — los maestros BC cambiaron desde entonces: recálculo pendiente (use «Reprocesar»)" : " — al día con los maestros actuales"}</dd>
+          </dl>
+        </>
+      ) : null}
+      <h3>{done ? "Impacto en el momento de preparar (frente al conjunto vigente actual)" : "Impacto de la sustitución"}</h3>
       <div className="table-wrap"><table>
         <caption className="skip">Impacto frente al conjunto vigente</caption>
         <tbody>
@@ -81,7 +105,7 @@ export async function FinancePanel({ batch, base }: { batch: { id: string; profi
           )}
 
           {codes.has("EMPTY_INCOME") || codes.has("EMPTY_ZERO_STALE") || codes.has("EMPTY_ZERO_INVALID") || has("EMPTY_AS_ZERO") ? (
-            <details className="edit" open={codes.has("EMPTY_INCOME")}>
+            <details className="edit" open={codes.has("EMPTY_INCOME") || Boolean(has("EMPTY_AS_ZERO"))}>
               <summary>Vta Potencial vacía ({a.counts.emptyIncome} filas): {DECISION_LABEL.EMPTY_AS_ZERO}</summary>
               <p className="muted">No es una regla global: se aplica solo a este lote, exige Total presente y conciliado, y no usa «Diferencia». Se conserva el vacío original, el valor derivado cero, el actor y el motivo.</p>
               <DecisionForm batchId={batch.id} version={batch.version} kind="EMPTY_AS_ZERO" label="Tratar los vacíos como cero en este lote" reasonRequired />
@@ -101,7 +125,7 @@ export async function FinancePanel({ batch, base }: { batch: { id: string; profi
             </details>
           ))}
           {a.resolution.unresolved > 0 ? (
-            <details className="edit" open={codes.has("UNASSIGNED")}>
+            <details className="edit" open={codes.has("UNASSIGNED") || Boolean(has("ACCEPT_UNASSIGNED"))}>
               <summary>{a.resolution.unresolved} grupos de origen sin Grupo Cliente ({eur(a.sums.unassigned)}): {DECISION_LABEL.ACCEPT_UNASSIGNED}</summary>
               <ul>{a.unresolvedList.map((u) => <li key={u.key}>{u.label} — {eur(u.income)}</li>)}</ul>
               <p className="muted">Puede completar el maestro (equivalencia BC/GROUP_KEY del grupo) y usar «Reprocesar». Si activa así, quedarán fuera de los informes atribuidos {eur(a.sums.unassigned)} y la cobertura será parcial: la ausencia de un grupo no probará ingreso cero.</p>

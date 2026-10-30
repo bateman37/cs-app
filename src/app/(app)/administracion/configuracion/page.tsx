@@ -2,13 +2,13 @@ import type { Metadata } from "next";
 import { requirePageUser } from "@/lib/session";
 import { listSettingsRevisions } from "@/server/economics/settings";
 import { formatDateTime } from "@/lib/format";
-import { Dec } from "@/domain/finance";
+import { formatDecimalEs } from "@/lib/money";
 import { ActionForm, SubmitButton, TextAreaField, TextField } from "@/components/form-kit";
 import { updateSettingsAction } from "./actions";
 
 export const metadata: Metadata = { title: "Configuración económica" };
 
-const money = (v: string) => `${(Dec.parse(v) as Dec).toFixed(2).replace(".", ",")}`;
+const money = (v: string) => formatDecimalEs(v);
 
 export default async function ConfiguracionPage() {
   const user = await requirePageUser();

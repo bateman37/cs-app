@@ -29,6 +29,14 @@ async function waitDb(fn: () => Promise<boolean>, ms = 60000): Promise<boolean> 
   }
   return false;
 }
+async function waitBody(page: Page, re: RegExp, ms = 20000): Promise<boolean> {
+  const t0 = Date.now();
+  while (Date.now() - t0 < ms) {
+    if (re.test(await body(page))) return true;
+    await page.waitForTimeout(300);
+  }
+  return false;
+}
 const n = async (ctx: Ctx, sql: string) => Number((await ctx.prisma.$queryRawUnsafe<{ n: bigint }[]>(sql))[0].n);
 const total = async (ctx: Ctx, cat: string, year: number) =>
   (await ctx.prisma.$queryRawUnsafe<{ t: string | null }[]>(`SELECT trim_scale(sum(r.income))::text AS t FROM "FinanceScope" s JOIN "FinanceRow" r ON r."batchId" = s."activeBatchId" WHERE s.year = ${year} AND s.category = '${cat}'`))[0].t;
@@ -59,8 +67,23 @@ export async function finanzas(ctx: Ctx): Promise<void> {
       await page.waitForURL(/\/administracion\/cargas\/[^/]+$/, { timeout: 30000 });
       return page.url().split("/").pop() as string;
     };
-    const click = async (name: string | RegExp) => {
-      await page.getByRole("button", { name }).first().click();
+    const click = async (name: string | RegExp, ok?: RegExp) => {
+      try {
+        await page.getByRole("button", { name }).first().click({ timeout: 15000 });
+      } catch (e) {
+        // Diagnóstico: qué botones y qué pendientes veía la página cuando falló el clic.
+        const botones = await page.getByRole("button").allInnerTexts();
+        throw new Error(`No se pudo pulsar «${String(name)}»: botones visibles [${botones.join(" | ")}]; ${(e as Error).message.split("\n")[0]}`);
+      }
+      // Con la acción terminada el servidor devuelve el aviso y la ficha se refresca con la versión nueva: se espera a verlo.
+      if (ok) {
+        try {
+          await page.getByText(ok).first().waitFor({ timeout: 20000 });
+        } catch {
+          const avisos = await page.locator(".notice").allInnerTexts();
+          throw new Error(`Tras pulsar «${String(name)}» no apareció ${String(ok)}; avisos visibles: ${JSON.stringify(avisos).slice(0, 600)}`);
+        }
+      }
       await page.waitForLoadState("networkidle");
     };
     const confirm = async () => {
@@ -78,36 +101,33 @@ export async function finanzas(ctx: Ctx): Promise<void> {
     // ============================================================ Soporte 2026 (para comprobar que otros ámbitos no se tocan)
     await writeFile(file("soporte.xlsx"), await financeXlsx([{ grupo: "ACME SA", vta: 7, dif: 1 }], { category: "SOPORTE", total: { vta: 7, dif: 1 } }));
     await upload("Facturación · soporte", file("soporte.xlsx"), "2026");
-    ctx.check("Soporte 2026: se prepara con el pie verificado y el Total conciliado; es el primer conjunto del ámbito", (await waitStatus(page, "Listo para revisar")) && /verificado/.test(await body(page)) && /concilia/.test(await body(page)));
-    await click("Revisar el impacto frente al conjunto vigente");
+    ctx.check("Soporte 2026: se prepara con el pie verificado y el Total conciliado; es el primer conjunto del ámbito", (await waitStatus(page, "Listo para revisar")) && (await waitBody(page, /verificado/)) && (await waitBody(page, /concilia/)));
+    await click("Revisar el impacto frente al conjunto vigente", /Impacto revisado frente al conjunto vigente/);
     ctx.check("Soporte 2026: tras revisar el impacto se puede confirmar y activar", await confirm());
 
     // ============================================================ Administración delegada 2026: pendientes, decisiones, activación
     await writeFile(file("admin1.xlsx"), await financeXlsx([{ grupo: "ACME SA", vta: 12000, dif: 100 }, { grupo: "BETA SL", vta: 2400, dif: -50 }, { grupo: "GAMMA SA", vta: 600, dif: 0 }], { category: "ADMIN_DELEGADA", total: { vta: 15000, dif: 50 } }));
     const a1 = await upload("Facturación · administración delegada", file("admin1.xlsx"), "2026");
-    ctx.check("Admin delegada 2026: la vista previa muestra año/categoría, conciliación contra el Total y el impacto (primer conjunto)", (await waitStatus(page, "Listo para revisar")) && /Administración delegada 2026/.test(await body(page)) && /15\.000,00 €/.test(await body(page)) && /ninguno/.test(await body(page)));
+    ctx.check("Admin delegada 2026: la vista previa muestra año/categoría, conciliación contra el Total y el impacto (primer conjunto)", (await waitStatus(page, "Listo para revisar")) && (await waitBody(page, /Administración delegada 2026/)) && (await waitBody(page, /15\.000,00 €/)) && (await waitBody(page, /ninguno/)));
     ctx.check("Admin delegada 2026: GAMMA SA sin Grupo Cliente bloquea la confirmación (y el botón está deshabilitado)", /1 grupos? de origen sin Grupo Cliente|1 fila\(s\) sin Grupo Cliente/.test(await body(page)) && (await page.getByRole("button", { name: "Confirmar y activar" }).isDisabled()));
-    await page.getByText(/grupos de origen sin Grupo Cliente/).first().click();
-    await click("Aceptar que queden fuera de los informes atribuidos");
-    await click("Revisar el impacto frente al conjunto vigente");
+    await click("Aceptar que queden fuera de los informes atribuidos", /Decisión guardada y auditada/);
+    await click("Revisar el impacto frente al conjunto vigente", /Impacto revisado frente al conjunto vigente/);
     ctx.check("Admin delegada 2026: con la aceptación expresa y el impacto revisado se confirma; GAMMA queda en el conjunto activo sin grupo (600 €)", (await confirm()) && (await total(ctx, "ADMIN_DELEGADA", 2026)) === "15000" && (await n(ctx, `SELECT count(*) n FROM "FinanceRow" r JOIN "FinanceScope" s ON s."activeBatchId" = r."batchId" WHERE s.category = 'ADMIN_DELEGADA' AND r."groupId" IS NULL`)) === 1);
 
     // ============================================================ Repetir el mismo archivo
     const a2 = await upload("Facturación · administración delegada", file("admin1.xlsx"), "2026");
-    ctx.check("Repetición: el impacto del mismo archivo muestra 0 modificados/nuevos/retirados y 3 sin cambios", (await waitStatus(page, "Listo para revisar")) && /\b0 \/ 0 \/ 0 \/ 3\b/.test(await body(page)), (await body(page)).slice(0, 0));
-    await page.getByText(/grupos de origen sin Grupo Cliente/).first().click();
-    await click("Aceptar que queden fuera de los informes atribuidos");
-    await click("Revisar el impacto frente al conjunto vigente");
+    ctx.check("Repetición: el impacto del mismo archivo muestra 0 modificados/nuevos/retirados y 3 sin cambios", (await waitStatus(page, "Listo para revisar")) && (await waitBody(page, /\b0 \/ 0 \/ 0 \/ 3\b/)));
+    await click("Aceptar que queden fuera de los informes atribuidos", /Decisión guardada y auditada/);
+    await click("Revisar el impacto frente al conjunto vigente", /Impacto revisado frente al conjunto vigente/);
     ctx.check("Repetición: se activa sin duplicar ni dejar a cero (sigue siendo 15.000 €, no 30.000)", (await confirm()) && (await total(ctx, "ADMIN_DELEGADA", 2026)) === "15000");
 
     // ============================================================ Sustitución con retirada (BETA SL desaparece)
     await writeFile(file("admin2.xlsx"), await financeXlsx([{ grupo: "ACME SA", vta: 12000, dif: 100 }, { grupo: "GAMMA SA", vta: 600, dif: 0 }], { category: "ADMIN_DELEGADA", total: { vta: 12600, dif: 100 } }));
     const a3 = await upload("Facturación · administración delegada", file("admin2.xlsx"), "2026");
-    ctx.check("Sustitución: el impacto indica 1 grupo retirado y el total pasa de 15.000 a 12.600 antes de activar", (await waitStatus(page, "Listo para revisar")) && /\b0 \/ 0 \/ 1 \/ 1\b/.test(await body(page)) && /15\.000,00 € → 12\.600,00 €/.test(await body(page)));
+    ctx.check("Sustitución: el impacto indica 1 grupo retirado y el total pasa de 15.000 a 12.600 antes de activar", (await waitStatus(page, "Listo para revisar")) && (await waitBody(page, /\b0 \/ 0 \/ 1 \/ 2\b/)) && (await waitBody(page, /15\.000,00 € → 12\.600,00 €/)));
     ctx.check("Sustitución: preparar y revisar no cambian los hechos activos", (await total(ctx, "ADMIN_DELEGADA", 2026)) === "15000");
-    await page.getByText(/grupos de origen sin Grupo Cliente/).first().click();
-    await click("Aceptar que queden fuera de los informes atribuidos");
-    await click("Revisar el impacto frente al conjunto vigente");
+    await click("Aceptar que queden fuera de los informes atribuidos", /Decisión guardada y auditada/);
+    await click("Revisar el impacto frente al conjunto vigente", /Impacto revisado frente al conjunto vigente/);
     ctx.check("Sustitución: al activar, BETA SL se retira (12.600 €, no 27.600) y soporte 2026 queda intacto", (await confirm()) && (await total(ctx, "ADMIN_DELEGADA", 2026)) === "12600" && (await total(ctx, "SOPORTE", 2026)) === "7" && (await n(ctx, `SELECT count(*) n FROM "FinanceRow" r JOIN "FinanceScope" s ON s."activeBatchId" = r."batchId" WHERE s.category = 'ADMIN_DELEGADA' AND r."sourceKey" = 'beta sl'`)) === 0);
 
     // ============================================================ Reversión: restaura el predecesor completo
@@ -122,14 +142,13 @@ export async function finanzas(ctx: Ctx): Promise<void> {
     // ============================================================ Otros 2026: vacío de ingreso con decisión específica
     await writeFile(file("otros.xlsx"), await financeXlsx([{ grupo: "ACME SA", vta: 100, dif: 5 }, { grupo: "BETA SL", vta: null, dif: 40 }], { category: "OTROS", total: { vta: 100, dif: 45 } }));
     await upload("Facturación · otros", file("otros.xlsx"), "2026");
-    ctx.check("Otros 2026: una Vta Potencial vacía bloquea sin decisión (no usa «Diferencia»)", (await waitStatus(page, "Listo para revisar")) && /Vta Potencial vacía/.test(await body(page)) && (await page.getByRole("button", { name: "Confirmar y activar" }).isDisabled()));
-    await page.getByText(/Vta Potencial vacía \(1 filas\)/).first().click();
+    ctx.check("Otros 2026: una Vta Potencial vacía bloquea sin decisión (no usa «Diferencia»)", (await waitStatus(page, "Listo para revisar")) && (await waitBody(page, /Vta Potencial vacía/)) && (await page.getByRole("button", { name: "Confirmar y activar" }).isDisabled()));
     await click("Tratar los vacíos como cero en este lote");
-    ctx.check("Otros 2026: sin motivo el servidor rechaza la decisión", /Indique el motivo/.test(await body(page)) && (await n(ctx, 'SELECT count(*) n FROM "FinanceDecision"')) === 2);
+    ctx.check("Otros 2026: sin motivo el servidor rechaza la decisión", (await waitBody(page, /Indique el motivo/)) && (await n(ctx, 'SELECT count(*) n FROM "FinanceDecision"')) === 3);
     await reason("El Total del archivo confirma que el vacío es cero");
-    await click("Tratar los vacíos como cero en este lote");
-    await page.getByRole("button", { name: /Revisar el impacto|Actualizar la revisión/ }).first().waitFor();
-    await click(/Revisar el impacto|Actualizar la revisión/);
+    await page.waitForTimeout(500);
+    await click("Tratar los vacíos como cero en este lote", /Decisión guardada y auditada/);
+    await click(/Revisar el impacto|Actualizar la revisión/, /Impacto revisado frente al conjunto vigente/);
     ctx.check("Otros 2026: con motivo y revisión se activa; el vacío conserva su origen y queda como cero derivado (la Diferencia 40 no pasa al ingreso)", (await confirm()) && (await total(ctx, "OTROS", 2026)) === "100" && (await n(ctx, `SELECT count(*) n FROM "FinanceRow" WHERE "incomeDerivedZero" AND "incomeOriginal" IS NULL AND income = 0 AND difference = 40`)) === 1);
 
     // ============================================================ Comprobación económica: 12000 → 500 a 15/30
@@ -174,13 +193,14 @@ export async function finanzas(ctx: Ctx): Promise<void> {
 
     // ============================================================ Servicio económico
     await page.goto(`${ctx.base}/administracion/servicios`);
-    await page.getByText("Añadir asignación").click();
-    const f = page.locator("details[open]").last();
+    await page.locator("summary", { hasText: "Añadir asignación" }).click();
+    const f = page.locator("details[open]").filter({ hasText: "Valor exacto" }).last();
     await f.getByLabel("Valor exacto").fill("Entorno Fin");
     await f.getByRole("button", { name: "Añadir asignación" }).click();
     ctx.check("Servicio económico: la asignación por Entorno y Tipología se guarda con auditoría (sin semillas inventadas)", await waitDb(async () => (await n(ctx, `SELECT count(*) n FROM "ServiceAssignment" WHERE "searchValue" = 'entorno fin'`)) === 1) && (await n(ctx, `SELECT count(*) n FROM "AuditEvent" WHERE "entityType" = 'ServiceAssignment'`)) === 1);
-    await page.getByText("Añadir asignación").click();
-    const f2 = page.locator("details[open]").last();
+    await page.goto(`${ctx.base}/administracion/servicios`);
+    await page.locator("summary", { hasText: "Añadir asignación" }).click();
+    const f2 = page.locator("details[open]").filter({ hasText: "Valor exacto" }).last();
     await f2.getByLabel("Valor exacto").fill("entorno FIN");
     await f2.getByRole("button", { name: "Añadir asignación" }).click();
     ctx.check("Servicio económico: una asignación solapada del mismo valor se rechaza", await page.getByText(/se solapa/).first().waitFor({ timeout: 15000 }).then(() => true, () => false) && (await n(ctx, `SELECT count(*) n FROM "ServiceAssignment" WHERE "searchValue" = 'entorno fin'`)) === 1);

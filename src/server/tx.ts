@@ -29,6 +29,12 @@ const CONSTRAINT_MESSAGES: Record<string, { message: string; field?: string }> =
   UserMatrix_group_year_key: { message: "Otra operación simultánea ha creado ya la matriz de este año. Recargue y vuelva a intentarlo; no se ha guardado nada." },
   UserMatrix_client_year_key: { message: "Otra operación simultánea ha creado ya la matriz de este año. Recargue y vuelva a intentarlo; no se ha guardado nada." },
   UserMatrix_implementation_year_key: { message: "Otra operación simultánea ha creado ya la matriz de este año. Recargue y vuelva a intentarlo; no se ha guardado nada." },
+  ServiceAssignment_no_overlap: {
+    message: "Otra operación simultánea ha asignado este mismo valor con una vigencia solapada. Recargue y revise las asignaciones; no se ha guardado nada.",
+  },
+  EconomicSettingsRevision_revisionNo_key: {
+    message: "Otra persona ha guardado una revisión de la configuración económica mientras editaba. Recargue y vuelva a intentarlo; no se ha guardado nada.",
+  },
   UploadJob_open_per_batch_kind_key: { message: "Esta operación ya está en cola para el lote; no se ha duplicado." },
 };
 

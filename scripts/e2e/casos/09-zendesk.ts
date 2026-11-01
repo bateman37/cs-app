@@ -75,7 +75,7 @@ export async function zendesk(ctx: Ctx): Promise<void> {
 
     await page.goto(B);
     const t0 = await body(page);
-    ctx.check("Zendesk: Cargas ofrece Tickets y Tiempos como fuentes disponibles y deja solo las finanzas como pendientes", (await page.locator("summary", { hasText: "Zendesk · tickets" }).count()) === 1 && (await page.locator("summary", { hasText: "Zendesk · tiempos" }).count()) === 1 && /Facturación · soporte[\s\S]*No disponible · pendiente/.test(t0) && !/Zendesk · tickets\s*No disponible/.test(t0));
+    ctx.check("Zendesk: Cargas ofrece Tickets y Tiempos como fuentes disponibles (las finanzas llegan en CSAPP-05 y también están disponibles)", (await page.locator("summary", { hasText: "Zendesk · tickets" }).count()) === 1 && (await page.locator("summary", { hasText: "Zendesk · tiempos" }).count()) === 1 && !/Zendesk · tickets\s*No disponible/.test(t0));
 
     // ============================================================ Tickets
     const ticketsA: TicketRow[] = [

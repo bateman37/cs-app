@@ -1,6 +1,6 @@
 # Estado de CS App
 
-Actualizado el 30 de octubre de 2026 tras ejecutar [CSAPP-DOC-00-v1](../../prompts/CSAPP-DOC-00-v1.md), [CSAPP-01-v1](../../prompts/CSAPP-01-v1.md), [CSAPP-02-v1](../../prompts/CSAPP-02-v1.md), [CSAPP-03-v1](../../prompts/CSAPP-03-v1.md) y [CSAPP-04-v1](../../prompts/CSAPP-04-v1.md).
+Actualizado el 30 de octubre de 2026 tras ejecutar [CSAPP-DOC-00-v1](../../prompts/CSAPP-DOC-00-v1.md), [CSAPP-01-v1](../../prompts/CSAPP-01-v1.md), [CSAPP-02-v1](../../prompts/CSAPP-02-v1.md), [CSAPP-03-v1](../../prompts/CSAPP-03-v1.md) [CSAPP-04-v1](../../prompts/CSAPP-04-v1.md) y [CSAPP-05-v1](../../prompts/CSAPP-05-v1.md).
 
 ## Resultado de CSAPP-DOC-00
 
@@ -72,6 +72,21 @@ Documentación: [decisiones técnicas](../arquitectura/zendesk-csapp03.md), [tic
 
 Documentación: [decisiones técnicas](../arquitectura/wrike-pap-bugs-csapp04.md), [modelo físico](../arquitectura/modelo-fisico-csapp04.md), [Wrike](../importaciones/wrike.md), [PAP](../importaciones/pap.md), [bugs](../importaciones/bugs-producto.md), [guía PowerShell](guia-powershell-csapp04.md).
 
+## Resultado de CSAPP-05 (facturación anual y motor económico)
+
+| Dato | Valor |
+| --- | --- |
+| Rama / base | claude/new-session-omvsmd (designada; el prompt proponía feature/CSAPP-05-finanzas-motor-economico). Base: main 24d365813ab2ba2703fa911f4e0dacd31fb781fb (merge de la PR 5, **fusionada según Git**: integración, no aceptación manual de Dennis). Push normal, sin force |
+| PR | https://github.com/bateman37/cs-app/pull/6 (base main, sin fusionar) |
+| Migración | `20261031090000_finanzas_motor_economico` |
+| Implementado | Tres perfiles financieros (nueve operativos en total) con sustitución atómica por año/categoría, revisión del impacto y de la versión del conjunto vigente, decisiones, conciliación, reversión y reproceso; motor económico común (periodos, prorrateo, CUM, usuarios, ratios, servicio, cobertura, lectura consistente); comprobación económica, configuración económica y asignaciones de servicio en Administración; equivalencias Wrike/PAP a Grupo (el atajo BC ya no atribuye); vía histórica < 2025 (simulación por defecto) |
+| Probado | Linux (Node 22.22, PostgreSQL 16): `npm test` 23 archivos/338 pruebas, trabajador real, volumen y recorrido de navegador 193/193. Ver [validación](../validacion/csapp-05.md) |
+| No probado | Windows/PowerShell; aceptación de Dennis; archivos reales; `cargas-trabajador` con 300 000 filas excede su límite en este entorno (también en main) |
+| Precarga | **No realizada: falta fuente.** Las cargas reales de 2025 y 2026 las realiza Dennis |
+| Pendiente de Dennis | Revisar la PR, ejecutar la [guía de CSAPP-05](guia-powershell-csapp05.md), cargar 2025/2026 por categoría, repetir, sustituir, revertir y comprobar 12000 → 500 a 15/30; validar las propuestas pendientes (ver [tabla](../arquitectura/finanzas-motor-csapp05.md#10-reglas-propuestas-pendientes-o-heredadas-estado-explícito)) |
+
+Documentación: [finanzas y motor económico](../arquitectura/finanzas-motor-csapp05.md), [facturación](../importaciones/facturacion.md), [catálogo CAL 17-30](../calculos/catalogo.md).
+
 ## Estado por trabajo
 
 Niveles: diseñado, documentado, implementado, probado, aceptado. Un criterio de aceptación escrito no es una prueba ejecutada.
@@ -82,11 +97,12 @@ Niveles: diseñado, documentado, implementado, probado, aceptado. Un criterio de
 | CSAPP-01 | Sí | Sí | Sí (PR 2 fusionada) | Sí en Linux; Windows sin probar | No |
 | CSAPP-02 | Sí | Sí | Sí (PR 3 fusionada) | Sí en Linux con perfil sintético; Windows sin probar | No |
 | CSAPP-03 | Sí | Sí | Sí (PR 4 fusionada) | Sí en Linux con XLSX sintéticos; Windows sin probar | No |
-| CSAPP-04 | Sí | Sí | Sí (PR sin fusionar) | Sí en Linux con datos sintéticos; Windows sin probar | No |
-| CSAPP-05 a CSAPP-10 | Sí, en [roadmap](roadmap.md) y contratos | Sí | No | No | No |
+| CSAPP-04 | Sí | Sí | Sí (PR 5 fusionada según Git) | Sí en Linux con datos sintéticos; Windows sin probar | No |
+| CSAPP-05 | Sí | Sí | Sí (PR 6 sin fusionar) | Sí en Linux con datos sintéticos; Windows sin probar | No |
+| CSAPP-06 a CSAPP-10 | Sí, en [roadmap](roadmap.md) y contratos | Sí | No | No | No |
 | Cargas reales | — | Política en [precarga y pruebas](precarga-y-pruebas.md) | No | No | No; las probará Dennis |
 
-CSAPP-05 a CSAPP-10 siguen sin iniciar y sin prompt redactado. La próxima acción es revisar la PR de CSAPP-04, que Dennis cargue el CSV de Wrike, el XLSX de PAP y los CSV de bugs reales y enviar el prompt de CSAPP-05.
+CSAPP-06 a CSAPP-10 siguen sin iniciar y sin prompt redactado. La próxima acción es revisar la PR 6 de CSAPP-05, que Dennis cargue 2025 y 2026 de cada categoría y repita para validar la sustitución, y enviar el prompt de CSAPP-06.
 
 ## Vigente
 

@@ -45,7 +45,7 @@
     "start": "next start",
     "lint": "eslint .",
     "typecheck": "prisma generate && tsc --noEmit",
-    "test": "vitest run --exclude tests/cargas-trabajador.test.ts --exclude tests/cargas-volumen.test.ts --exclude tests/zendesk-volumen.test.ts --exclude tests/csapp04-volumen.test.ts",
+    "test": "vitest run --exclude tests/cargas-trabajador.test.ts --exclude tests/cargas-volumen.test.ts --exclude tests/zendesk-volumen.test.ts --exclude tests/csapp04-volumen.test.ts --exclude tests/finanzas-trabajador.test.ts --exclude tests/finanzas-volumen.test.ts",
     "e2e:build": "prisma generate && next build && node scripts/build-worker.mjs",
     "e2e": "tsx scripts/e2e/recorrido.ts",
     "postinstall": "prisma generate",
@@ -56,7 +56,7 @@
     "worker:start": "node worker-dist/worker.mjs",
     "worker": "node scripts/build-worker.mjs && node worker-dist/worker.mjs",
     "benchmark:lectores": "tsx scripts/benchmark-lectores.ts",
-    "test:largo": "vitest run tests/cargas-trabajador.test.ts tests/cargas-volumen.test.ts tests/zendesk-volumen.test.ts tests/csapp04-volumen.test.ts",
+    "test:largo": "vitest run tests/cargas-trabajador.test.ts tests/cargas-volumen.test.ts tests/zendesk-volumen.test.ts tests/csapp04-volumen.test.ts tests/finanzas-trabajador.test.ts tests/finanzas-volumen.test.ts",
     "test:todo": "vitest run",
     "e2e:volumen": "tsx scripts/e2e/volumen.ts"
   }

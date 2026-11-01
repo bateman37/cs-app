@@ -30,17 +30,19 @@ model User {
   createdAt     DateTime @default(now())
   updatedAt     DateTime @updatedAt
 
-  sessions         Session[]
-  accounts         Account[]
-  audits           AuditEvent[]
-  matrixMonths     UserMatrixMonth[]
-  uploadsCreated   UploadBatch[]         @relation("UploadCreatedBy")
-  uploadJobs       UploadJob[]
-  zdDecisions      ZdTimeDecision[]
-  zdCorrections    ZdTimeCorrection[]
-  wrikeDecisions   WrikeTimeDecision[]
-  wrikeCorrections WrikeTimeCorrection[]
-  workItemLinks    WorkItemLink[]
+  sessions          Session[]
+  accounts          Account[]
+  audits            AuditEvent[]
+  matrixMonths      UserMatrixMonth[]
+  uploadsCreated    UploadBatch[]              @relation("UploadCreatedBy")
+  uploadJobs        UploadJob[]
+  zdDecisions       ZdTimeDecision[]
+  zdCorrections     ZdTimeCorrection[]
+  wrikeDecisions    WrikeTimeDecision[]
+  wrikeCorrections  WrikeTimeCorrection[]
+  workItemLinks     WorkItemLink[]
+  financeDecisions  FinanceDecision[]
+  settingsRevisions EconomicSettingsRevision[]
 }
 
 model Session {
@@ -575,6 +577,9 @@ model UploadBatch {
   workItemRevs     WorkItemRevision[]
   workItemObs      WorkItemObservation[]
   workItemEvidence WorkItemLinkEvidence[]
+
+  financeBatch     FinanceBatch?
+  financeDecisions FinanceDecision[]
 
   @@index([createdAt])
   @@index([profileId, status])
@@ -1200,4 +1205,128 @@ model WorkItemLinkEvidence {
 
   @@unique([linkId, batchId, source])
   @@index([batchId])
+}
+
+// ---------------------------------------------------------------- CSAPP-05: finanzas y motor económico
+
+/// Cabecera financiera de un lote (año + categoría), sus controles, la tolerancia capturada y la revisión del impacto.
+/// category: SOPORTE | ADMIN_DELEGADA | OTROS. origin: UPLOAD | HISTORICAL.
+model FinanceBatch {
+  batchId               String    @id
+  year                  Int
+  category              String
+  origin                String    @default("UPLOAD")
+  extractionDate        DateTime? @db.Date
+  /// Filtros del pie, hoja, filas de control, verificaciones y declaraciones del lote.
+  controls              Json      @default("{}")
+  controlIncome         Decimal?  @db.Decimal(38, 20)
+  controlDiff           Decimal?  @db.Decimal(38, 20)
+  /// Tolerancia monetaria absoluta con la que se validó este lote (capturada de la configuración).
+  tolerance             Decimal   @db.Decimal(18, 6)
+  settingsRevisionId    BigInt?
+  /// Versión del ámbito (año+categoría) cuando se revisó el impacto; si cambia, la revisión es obsoleta.
+  reviewedScopeVersion  Int?
+  reviewedActiveBatchId String?
+  reviewedAt            DateTime?
+  reviewedById          String?
+  reviewSnapshot        Json?
+  /// Huella de los maestros BC con los que se derivó la atribución; si cambia, el recálculo está pendiente.
+  derivedStamp          String?
+  derivedVersion        Int       @default(1)
+  derivedAt             DateTime  @default(now())
+  createdAt             DateTime  @default(now())
+
+  batch UploadBatch  @relation(fields: [batchId], references: [id], onDelete: Restrict)
+  rows  FinanceRow[]
+
+  @@index([year, category])
+}
+
+/// Línea económica única del lote (una por huella). income es el valor usado; incomeOriginal conserva el vacío fuente.
+model FinanceRow {
+  id                 BigInt   @id @default(autoincrement())
+  batchId            String
+  position           Int
+  sourceRow          Int
+  groupLabel         String
+  sourceKey          String
+  fingerprint        String
+  occurrences        Int      @default(1)
+  incomeOriginal     String?
+  income             Decimal? @db.Decimal(38, 20)
+  incomeDerivedZero  Boolean  @default(false)
+  differenceOriginal String?
+  difference         Decimal? @db.Decimal(38, 20)
+  /// Atribución derivada (se recalcula sin tocar el dinero).
+  groupId            String?
+  resolution         String   @default("UNRESOLVED")
+  resolutionDetail   Json?
+  createdAt          DateTime @default(now())
+
+  batch FinanceBatch @relation(fields: [batchId], references: [batchId], onDelete: Restrict)
+
+  @@unique([batchId, fingerprint])
+  @@index([batchId, groupId])
+  @@index([batchId, sourceKey])
+}
+
+/// Puntero al lote financiero vigente de cada año+categoría. version crece en cada activación o reversión.
+model FinanceScope {
+  year          Int
+  category      String
+  activeBatchId String?
+  version       Int      @default(1)
+  updatedAt     DateTime @default(now())
+
+  @@id([year, category])
+}
+
+/// Decisión explícita del Administrador sobre un lote financiero (EMPTY_AS_ZERO, YEAR_ASSIGNMENT, ACCEPT_UNASSIGNED...).
+model FinanceDecision {
+  id          BigInt   @id @default(autoincrement())
+  batchId     String
+  kind        String
+  key         String   @default("")
+  value       Json?
+  reason      String?
+  decidedById String
+  decidedAt   DateTime @default(now())
+
+  batch     UploadBatch @relation(fields: [batchId], references: [id], onDelete: Restrict)
+  decidedBy User        @relation(fields: [decidedById], references: [id], onDelete: Restrict)
+
+  @@unique([batchId, kind, key])
+}
+
+/// Revisión inmutable de la configuración económica (objetivo, jornada, tolerancia).
+model EconomicSettingsRevision {
+  id                      BigInt   @id @default(autoincrement())
+  revisionNo              Int      @unique
+  targetEurosPerDay       Decimal  @db.Decimal(18, 6)
+  dayHours                Decimal  @db.Decimal(10, 4)
+  reconciliationTolerance Decimal  @db.Decimal(18, 6)
+  reason                  String?
+  activatedAt             DateTime @default(now())
+  activatedById           String?
+
+  activatedBy User? @relation(fields: [activatedById], references: [id], onDelete: Restrict)
+}
+
+/// Asignación mínima de servicio económico por valor exacto de Entorno y Tipología o por proyecto Wrike, con vigencia.
+/// matchKind: ENTORNO | WRIKE_PROJECT. service: SOPORTE | ADMIN_DELEGADA | OTROS.
+model ServiceAssignment {
+  id          String    @id @default(cuid())
+  matchKind   String
+  matchValue  String
+  searchValue String
+  service     String
+  validFrom   DateTime? @db.Date
+  validTo     DateTime? @db.Date
+  note        String?
+  isActive    Boolean   @default(true)
+  version     Int       @default(1)
+  createdAt   DateTime  @default(now())
+  updatedAt   DateTime  @updatedAt
+
+  @@index([matchKind, searchValue])
 }

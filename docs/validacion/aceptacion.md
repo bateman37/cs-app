@@ -110,3 +110,20 @@ Cuatro vistas operativas, Administración, diez entregas validadas y documentaci
 | V04-14 | Cero activos o usuarios sin informar | Conteo cero confirmado o tasa no calculable; edades vacías no aplicables |
 | V04-15 | Parámetros de edad sin calibrar | Magnitudes visibles y estado sin calibrar; sin verde automático |
 | V04-16 | DOC-00 terminado | Solo Markdown, diez entregas sin iniciar, prompt literal, enlaces válidos y sin secretos/fuentes |
+
+## Casos de aceptación manual de CSAPP-05, definidos y no ejecutados por Dennis
+
+Las pruebas automáticas de Linux con datos sintéticos están en la [validación de CSAPP-05](csapp-05.md); estos casos son los que Dennis comprobará con sus archivos reales.
+
+| ID | Caso | Resultado exigido |
+| --- | --- | --- |
+| V05-01 | Cargar 2025 y 2026 de soporte, administración delegada y otros | Tres conjuntos independientes por año y categoría; pie verificado; Total conciliado |
+| V05-02 | Repetir el mismo archivo de una categoría/año | Los mismos ingresos; ni suma ni cero |
+| V05-03 | Sustituir con un fichero con cambios y una fila ausente | Total nuevo (no la suma); el grupo ausente se retira; otras categorías y años intactos |
+| V05-04 | Revertir el lote vigente en un lote de prueba | Se restaura el predecesor completo; un lote sustituido no se puede revertir |
+| V05-05 | Archivo con otra categoría en el pie o con año explícito distinto | Confirmación bloqueada con el motivo |
+| V05-06 | Grupo de origen sin Grupo Cliente | Importe conservado y conciliado; aceptación expresa o completar el maestro y reprocesar |
+| V05-07 | Vta Potencial vacía (caso OTROS) | Bloquea sin decisión; con decisión del lote, cero derivado con motivo; nunca usa Diferencia |
+| V05-08 | Comprobación 12000 anuales, corte 15 de un mes de 30 días | 500 € del mes en Administración › Comprobación económica |
+| V05-09 | Proyecto Wrike/PAP de nombre distinto al grupo | Equivalencia directa a Grupo por fecha del trabajo/producción; el atajo BC ya no atribuye |
+| V05-10 | Cambiar el objetivo de 550 | Nueva revisión con autor y fecha; las consultas identifican la revisión usada |

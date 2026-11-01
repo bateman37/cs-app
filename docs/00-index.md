@@ -18,13 +18,13 @@ Estado de la regla: **Confirmado** = decidido por Dennis; **Propuesto** = parám
 | Seis indicadores de Calidad | [Calidad](producto/calidad.md) | QLT 01-10, QHL 01 | Mixto (color de Incidentes y problemas propuesto) |
 | Stock y antigüedad | [Backlog](producto/backlog-antiguedad.md) | BACK 01-12 | Mixto (BACK 07-08 propuesta a calibrar) |
 | Origen y actuación | [Diagnóstico](producto/diagnostico-origen.md) | DIA 01-07 | Confirmado; catálogo de causas configurable |
-| Fórmulas y denominadores | [Catálogo](calculos/catalogo.md) | CAL 01-16 | Confirmado; tolerancias de conciliación propuestas (CAL 08) |
+| Fórmulas y denominadores | [Catálogo](calculos/catalogo.md) | CAL 01-30 | Confirmado; implementado en CSAPP-05 el motor económico (CAL 17-30); tolerancias de conciliación propuestas (CAL 08) |
 | Importación común y avisos | [Proceso común](importaciones/proceso-comun.md) | IMP 01-07 | Confirmado |
 | Tickets: único perfil de ocho campos | [Tickets](importaciones/zendesk-tickets.md) | ZDT 01-10 (11-13 implementación) | Confirmado; ZDT 11-13 interpretaciones implementadas pendientes de aceptación |
 | Bugs VFS y VSW separados | [Bugs de producto](importaciones/bugs-producto.md) | BUG 01-08 | Confirmado; implementado en CSAPP-04 |
 | Dedicación Zendesk | [Tiempos](importaciones/zendesk-tiempo.md) | ZTM 01-05 (06-08 implementación) | Confirmado; ZTM 06-08 interpretaciones implementadas pendientes de aceptación |
 | Dedicación PMO | [Wrike](importaciones/wrike.md) | WRK 01-07 | Confirmado; implementado en CSAPP-04 |
-| Tres categorías anuales | [Facturación](importaciones/facturacion.md) | FAC 01-08 | Confirmado; vacío monetario como cero (FAC 07) propuesto |
+| Tres categorías anuales | [Facturación](importaciones/facturacion.md) | FAC 01-14 | Confirmado; implementado en CSAPP-05; vacío monetario como cero (FAC 07) propuesto |
 | Pases a producción | [PAP](importaciones/pap.md) | PAP 01-05 | Confirmado; implementado en CSAPP-04 |
 | Arquitectura | [Web y PostgreSQL](arquitectura/propuesta.md) | ARC 01-05 | Propuesto (stack acordado; versiones y rendimiento a verificar) |
 | Entidades, sin esquema implementado | [Modelo lógico](arquitectura/modelo.md) | — | Propuesto |
@@ -47,6 +47,9 @@ Estado de la regla: **Confirmado** = decidido por Dennis; **Propuesto** = parám
 | Implementado en CSAPP-04: modelo físico | [Modelo físico](arquitectura/modelo-fisico-csapp04.md) | — | Implementado |
 | Guía PowerShell de CSAPP-04 | [Guía](plan/guia-powershell-csapp04.md) | — | Sin probar en Windows |
 | Resultados de validación de CSAPP-04 | [Validación](validacion/csapp-04.md) | — | Registro |
+| Implementado en CSAPP-05: finanzas, motor económico, esquema y bloqueos | [Decisiones técnicas](arquitectura/finanzas-motor-csapp05.md) | FAC 09-14, CAL 17-30 | Implementado; probado en Linux |
+| Guía PowerShell de CSAPP-05 | [Guía](plan/guia-powershell-csapp05.md) | — | Sin probar en Windows |
+| Resultados de validación de CSAPP-05 | [Validación](validacion/csapp-05.md) | — | Registro |
 | DOC-00 y diez entregas | [Roadmap](plan/roadmap.md) | — | Confirmado |
 | Precarga futura y pruebas de Dennis | [Política](plan/precarga-y-pruebas.md) | — | Confirmado |
 | Progreso real | [Estado](plan/estado.md) | — | Registro vivo |

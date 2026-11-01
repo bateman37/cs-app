@@ -17,3 +17,8 @@ La relación bug-problemas-incidentes es parcial. La organización no registrada
 ## Decisiones técnicas de la implementación
 
 Versiones compatibles, lector XLSX y benchmark se verifican en CSAPP-01/02. La autenticación corporativa y el entorno de producción se concretan cuando corresponda, sin inventar SSO. DOC-00 documenta estas dependencias, sin instalar ni ejecutar nada.
+
+
+## Pendientes y propuestas tras CSAPP-05
+
+Sin aceptar y pendientes de Dennis: ZDT 11–13 y ZTM 06–08 (CSAPP-04 §2); lista estable de origen PAP (implementada, pendiente de validación); catálogo de estados de bugs, lista de palabras que evita inferencias de tickets y `CSAPP_DEVOPS_PRODUCTS` (propuestas implementadas). Nuevas en CSAPP-05: tolerancia de conciliación de 0,01 € (técnica, CAL 08); vacío de Vta Potencial como cero solo por decisión de lote (FAC 07 propuesto, no regla global); convención de signo de «Diferencia» (sin Budget absoluto); Silver On Demand ECO 08 (sin rentabilidad mensual recurrente); interpretación de la categoría del histórico `DATA FACTURACIÓN` por las columnas «Soporte»/«Admin Delegada» (validar con el libro real). Ver la [tabla de estado](../arquitectura/finanzas-motor-csapp05.md#10-reglas-propuestas-pendientes-o-heredadas-estado-explícito).

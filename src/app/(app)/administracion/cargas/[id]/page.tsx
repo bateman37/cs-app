@@ -13,6 +13,7 @@ import { ActionButtons } from "./action-buttons";
 import { StatusPoller } from "./poller";
 import { ZendeskPanels } from "./zendesk-panels";
 import { Csapp04Panels } from "./csapp04-panels";
+import { FinancePanel } from "./finance-panel";
 
 export const metadata: Metadata = { title: "Ficha de carga" };
 const BASE = "/administracion/cargas";
@@ -164,6 +165,10 @@ export default async function CargaPage({ params, searchParams }: { params: Prom
           <ZendeskPanels userId={user.id} batch={{ id: b.id, profileId: b.profileId, status: st, version: b.version }} base={`${BASE}/${b.id}`} det={det} flag={flag} dp={dp} keep={zdKeep} corr={corr} target={target} tf={tf} />
           <Csapp04Panels userId={user.id} batch={{ id: b.id, profileId: b.profileId, status: st, version: b.version }} base={`${BASE}/${b.id}`} det={det} flag={flag} dp={dp} keep={zdKeep} corr={corr} target={target} tf={tf} />
         </>
+      ) : null}
+
+      {prepared && !["REJECTED", "CANCELLED"].includes(st) ? (
+        <FinancePanel batch={{ id: b.id, profileId: b.profileId, status: st, version: b.version, supersedesBatchId: b.supersedesBatchId, supersededByBatchId: b.supersededByBatchId, declaredExtractionDate: b.declaredExtractionDate, createdAt: b.createdAt }} base={`${BASE}/${b.id}`} />
       ) : null}
 
       {rows ? (

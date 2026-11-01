@@ -57,14 +57,18 @@ export default async function CargasPage({ searchParams }: { searchParams: Promi
             </details>
           ))
         )}
+        {sources.pending.length > 0 ? (
+          <>
         <h3>Fuentes previstas (no disponibles todavía)</h3>
-        <ul aria-label="Fuentes previstas">
-          {sources.pending.map((p) => (
-            <li key={p.id} style={{ color: "var(--muted)" }}>
-              {p.label} <span className="badge badge-warn">No disponible · pendiente ({p.delivery})</span>
-            </li>
-          ))}
-        </ul>
+          <ul aria-label="Fuentes previstas">
+            {sources.pending.map((p) => (
+              <li key={p.id} style={{ color: "var(--muted)" }}>
+                {p.label} <span className="badge badge-warn">No disponible · pendiente ({p.delivery})</span>
+              </li>
+            ))}
+          </ul>
+            </>
+        ) : null}
       </section>
 
       <section aria-labelledby="sec-historial">

@@ -2,7 +2,7 @@
 
 El XLSX de PAP tiene 29 columnas A a AC y la consulta IQY no se ejecuta desde la aplicación. Conservar los campos fuente, fechas, proyecto, Resultado, responsables, plataformas, tipologías, causas, tickets y contexto de despliegue. Dennis probará la carga manualmente.
 
-PAP 01. Identidad única de PAP mediante ID estable de lista o patrón inequívoco con ámbito. Una revisión no añade otra intervención. Proyecto se vincula al Cliente/implantación y desde ahí al Grupo Cliente. Una fuente que solo identifica grupo no se reparte entre los clientes por conjetura.
+PAP 01. Identidad única de PAP mediante ID estable de lista o patrón inequívoco con ámbito. Una revisión no añade otra intervención. Proyecto se vincula al Cliente/implantación y desde ahí al Grupo Cliente, o directamente a un Grupo Cliente mediante una equivalencia PAP de proyecto (CSAPP-05; sustituye al atajo por clave BC), resuelta con la fecha de producción. Una fuente que solo identifica grupo no se reparte entre los clientes por conjetura.
 
 PAP 02. Causa raíz admite una o varias selecciones, con separador observado ;#. El PAP es correctivo si cualquiera contiene correctivo, aunque otras sean evolutivas. Mantener todas las pertenencias y una sola identidad. Contar DISTINCT pap_id en totales; no sumar desgloses que se solapan.
 

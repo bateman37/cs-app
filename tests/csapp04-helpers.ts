@@ -59,14 +59,14 @@ export async function addWrikePerson(opts: { name: string; alias: string; pmo?: 
 }
 
 /**
- * Equivalencia de proyecto Wrike/PAP. Un proyecto que solo identifica un Grupo Cliente se declara, como en los maestros, con la
- * clave BC del grupo (sistema BC, GROUP_KEY): las equivalencias de Wrike y PAP solo apuntan a Cliente o implantación.
+ * Equivalencia de proyecto Wrike/PAP. Desde CSAPP-05 un proyecto puede identificar directamente un Grupo Cliente
+ * (equivalencia WRIKE/PAP con destino de grupo); la clave BC ya no atribuye proyectos.
  */
 export async function addProjectEquivalence(system: "WRIKE" | "PAP", name: string, target: { groupId?: string; clientId?: string; implementationId?: string }, kind: "PROJECT_NAME" | "PROJECT_ID" = "PROJECT_NAME") {
-  if (target.groupId) {
-    return prisma.externalIdentity.create({ data: { system: "BC", kind: "GROUP_KEY", rawValue: name, searchValue: name.toLowerCase(), groupId: target.groupId } });
-  }
   return prisma.externalIdentity.create({
-    data: { system, kind, rawValue: name, searchValue: kind === "PROJECT_NAME" ? name.toLowerCase() : name, clientId: target.clientId ?? null, implementationId: target.implementationId ?? null },
+    data: {
+      system, kind, rawValue: name, searchValue: kind === "PROJECT_NAME" ? name.toLowerCase() : name,
+      groupId: target.groupId ?? null, clientId: target.clientId ?? null, implementationId: target.implementationId ?? null,
+    },
   });
 }

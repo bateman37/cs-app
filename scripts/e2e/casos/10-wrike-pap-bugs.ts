@@ -72,7 +72,7 @@ export async function wrikePapBugs(ctx: Ctx): Promise<void> {
 
     await page.goto(B);
     const home = await body(page);
-    ctx.check("CSAPP-04: Cargas ofrece Wrike, PAP, Bugs VFS y Bugs VSW como fuentes disponibles; las finanzas siguen pendientes", (await page.locator("summary", { hasText: /^Wrike$/ }).count()) === 1 && (await page.locator("summary", { hasText: "Bugs VFS" }).count()) === 1 && (await page.locator("summary", { hasText: "Bugs VSW" }).count()) === 1 && (await page.locator("summary", { hasText: /^PAP$/ }).count()) === 1 && /Facturación · soporte[\s\S]*No disponible · pendiente/.test(home));
+    ctx.check("CSAPP-04: Cargas ofrece Wrike, PAP, Bugs VFS y Bugs VSW como fuentes disponibles (y las tres financieras de CSAPP-05 también)", (await page.locator("summary", { hasText: /^Wrike$/ }).count()) === 1 && (await page.locator("summary", { hasText: "Bugs VFS" }).count()) === 1 && (await page.locator("summary", { hasText: "Bugs VSW" }).count()) === 1 && (await page.locator("summary", { hasText: /^PAP$/ }).count()) === 1 && (await page.locator("summary", { hasText: "Facturación · soporte" }).count()) === 1 && !/No disponible · pendiente/.test(home));
 
     // ============================================================ Tickets de apoyo (los pone el circuito de Zendesk)
     await writeTickets(file("tickets.xlsx"), [ticket({ ticket_id: "123456", organization_id: "7001" }), ticket({ ticket_id: "222222", organization_id: "7002", type: "problem" })]);

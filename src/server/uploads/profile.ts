@@ -13,7 +13,7 @@ export type Issue = { severity: "error" | "warning"; code: string; message: stri
 export type MetadataField = {
   name: string;
   label: string;
-  type: "text" | "select" | "date";
+  type: "text" | "select" | "date" | "checkbox";
   required: boolean;
   options?: { value: string; label: string }[];
 };
@@ -37,6 +37,8 @@ export type ParsedRow = {
   derived?: Record<string, Json>;
   /** Fila válida pero fuera del cálculo por una relación no resuelta (conserva el bruto). */
   exclude?: { code: string; message: string };
+  /** Fila de control (Total, pie...): no es un registro de datos; queda excluida sin aviso y se conserva para conciliar. */
+  control?: { kind: string };
 };
 
 export type Db = PrismaClient | Prisma.TransactionClient;
@@ -82,6 +84,16 @@ export interface ImportProfile {
   blocksConfirmOnErrors?: boolean;
   /** XLSX: con varias hojas compatibles se exige la hoja explícita (metadato «hoja»); nunca se elige una al azar. */
   selectsSheet?: boolean;
+  /**
+   * Motivo por el que el lote listo no puede confirmarse todavía (decisiones pendientes, controles, revisión obsoleta...).
+   * Se comprueba en servidor al confirmar y en la ficha; undefined = confirmable.
+   */
+  confirmGate?(db: Db, batchId: string): Promise<string | undefined>;
+  /**
+   * Comprobación dentro de la transacción de activación, tras bloquear el ámbito y antes de escribir. Un motivo devuelve el lote
+   * a «listo para revisar» sin aplicar nada (p. ej. otra carga sustituyó el conjunto que se revisó).
+   */
+  checkActivation?(tx: Prisma.TransactionClient, ctx: ActivationContext): Promise<string | null>;
   /** Se ejecuta dentro de la transacción de preparación, tras las disposiciones y antes de los contadores. */
   postPrepare?(tx: Prisma.TransactionClient, batchId: string): Promise<void>;
   /** Recalcula lo derivado de un lote completado (relaciones tardías, maestros nuevos) sin releer el archivo. */

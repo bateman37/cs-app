@@ -226,7 +226,7 @@ export async function* readXlsx(path: string, opts: ReaderOptions): AsyncGenerat
       let curRow = 0;
       let cells: Cell[] = [];
       let nextCol = 0;
-      let c: { col: number; t: string; s: number; v: string; inline: string } | null = null;
+      let c: { col: number; t: string; s: number; v: string; inline: string; f: boolean } | null = null;
       let inV = false;
       let inIs = false;
       let inT = false;
@@ -245,9 +245,12 @@ export async function* readXlsx(path: string, opts: ReaderOptions): AsyncGenerat
         } else if (n === "c") {
           const r = attr(t, "r");
           const col = r ? colIndex(r) : nextCol;
-          c = { col, t: attr(t, "t") ?? "n", s: Number(attr(t, "s") ?? 0), v: "", inline: "" };
+          c = { col, t: attr(t, "t") ?? "n", s: Number(attr(t, "s") ?? 0), v: "", inline: "", f: false };
         } else if (n === "v") inV = true;
-        else if (n === "f") inF = true;
+        else if (n === "f") {
+          inF = true;
+          if (c) c.f = true;
+        }
         else if (n === "is") inIs = true;
         else if (n === "rPh") skip++;
         else if (n === "t" && inIs && skip === 0) inT = true;
@@ -282,12 +285,13 @@ export async function* readXlsx(path: string, opts: ReaderOptions): AsyncGenerat
             const d = serialToIso(raw, date1904);
             cell = d ? { v: raw, k: "date", d } : { v: raw, k: "number" };
           } else cell = { v: raw, k: "number" };
+          if (c.f) cell.f = true;
           while (cells.length < c.col) cells.push({ v: "", k: "empty" });
           cells[c.col] = cell;
           nextCol = c.col + 1;
           c = null;
         } else if (n === "row") {
-          while (cells.length > 0 && cells[cells.length - 1].k === "empty") cells.pop();
+          while (cells.length > 0 && cells[cells.length - 1].k === "empty" && !cells[cells.length - 1].f) cells.pop();
           if (cells.length > 0) queue.push({ sheet: sh.name, rowNumber: curRow, cells });
         }
       });

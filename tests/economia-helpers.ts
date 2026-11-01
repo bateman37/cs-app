@@ -40,17 +40,17 @@ export const tkey = (label: string): string => {
   return ticketIds.get(label) as string;
 };
 
-export type Tk = { ticketId: string; entorno?: string | null; adminDelegada?: boolean | null };
+export type Tk = { ticketId: string; entorno?: string | null; adminDelegada?: boolean | null; org?: string | null; cause?: string | null; type?: string; status?: string; created?: string; destinations?: string[]; tags?: string[] };
 export async function addTicket(batchId: string, t: Tk) {
   const id = tkey(t.ticketId);
   await prisma.zdTicket.create({ data: { ticketId: id, firstBatchId: batchId } });
   const rev = await prisma.zdTicketRevision.create({
-    data: { ticketId: id, fingerprint: `fp-${id}`, revisionNo: 1, entorno: t.entorno ?? null, createdOn: d("2026-01-01"), ticketType: "incident", status: "open", typeKnown: true, statusKnown: true, adminDelegada: t.adminDelegada ?? null, batchId },
+    data: { ticketId: id, fingerprint: `fp-${id}`, revisionNo: 1, entorno: t.entorno ?? null, organizationId: t.org ?? null, causaRaiz: t.cause ?? null, destinations: t.destinations ?? [], tags: t.tags ?? [], createdOn: d(t.created ?? "2026-01-01"), ticketType: t.type ?? "incident", status: t.status ?? "open", typeKnown: true, statusKnown: true, adminDelegada: t.adminDelegada ?? null, batchId },
   });
   await prisma.zdTicket.update({ where: { ticketId: id }, data: { currentRevisionId: rev.id } });
 }
 
-export type Zd = { batchId: string; date: string; minutes: number | string; groupId?: string | null; clientId?: string | null; ticketId?: string; eligibility?: string; bucket?: string; pmo?: boolean | null; teamId?: string | null };
+export type Zd = { batchId: string; date: string; minutes: number | string; groupId?: string | null; clientId?: string | null; ticketId?: string; eligibility?: string; bucket?: string; pmo?: boolean | null; teamId?: string | null; levelId?: string | null; personId?: string | null };
 let seq = 0;
 export async function addZd(z: Zd) {
   seq++;
@@ -58,19 +58,19 @@ export async function addZd(z: Zd) {
     data: {
       originFingerprint: `zd-${seq}-${randomUUID()}`, firstBatchId: z.batchId, ticketId: z.ticketId ? tkey(z.ticketId) : String(920000 + seq), workDate: d(z.date), loggedHours: 0, loggedMinutes: z.minutes as never,
       minutes: z.minutes as never, fingerprint: `f${seq}`, drvGroupId: z.groupId ?? null, drvClientId: z.clientId ?? null, drvEligibility: z.eligibility ?? "ELIGIBLE", drvBucket: z.bucket ?? "ATTRIBUTABLE",
-      drvPmo: z.pmo ?? null, drvTeamId: z.teamId ?? null,
+      drvPmo: z.pmo ?? null, drvTeamId: z.teamId ?? null, drvLevelId: z.levelId ?? null, drvPersonId: z.personId ?? null,
     },
   });
 }
 
-export type Wr = { batchId: string; date: string; minutes: number | string; groupId?: string | null; clientId?: string | null; implId?: string | null; project?: string | null; ticketId?: string | null; eligibility?: string; bucket?: string; conflict?: boolean; pmo?: boolean | null };
+export type Wr = { batchId: string; date: string; minutes: number | string; groupId?: string | null; clientId?: string | null; implId?: string | null; project?: string | null; ticketId?: string | null; eligibility?: string; bucket?: string; conflict?: boolean; pmo?: boolean | null; teamId?: string | null; levelId?: string | null; roleId?: string | null };
 export async function addWrike(w: Wr) {
   seq++;
   await prisma.wrikeTimeEntry.create({
     data: {
       originFingerprint: `wr-${seq}-${randomUUID()}`, firstBatchId: w.batchId, taskName: `tarea ${seq}`, projectName: w.project ?? null, explicitState: "NONE", workDate: d(w.date), hours: (Number(w.minutes) / 60).toString(), minutes: w.minutes as never,
       fingerprint: `wf${seq}`, drvGroupId: w.groupId ?? null, drvClientId: w.clientId ?? null, drvImplementationId: w.implId ?? null, drvTicketId: w.ticketId ? tkey(w.ticketId) : null,
-      drvEligibility: w.eligibility ?? "ELIGIBLE", drvBucket: w.bucket ?? "GROUP_ONLY", drvConflict: w.conflict ?? false, drvPmo: w.pmo ?? null,
+      drvEligibility: w.eligibility ?? "ELIGIBLE", drvBucket: w.bucket ?? "GROUP_ONLY", drvConflict: w.conflict ?? false, drvPmo: w.pmo ?? null, drvTeamId: w.teamId ?? null, drvLevelId: w.levelId ?? null, drvRoleId: w.roleId ?? null,
     },
   });
 }

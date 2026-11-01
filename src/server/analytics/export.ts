@@ -38,7 +38,7 @@ const periodCells = (p: PeriodSeries): CsvValue[] => [
 ];
 const PERIOD_COLS = ["desde", "hasta", "estado_periodo", "validado", "horas", "ingreso_imputado_eur", "estado_ingreso", "ingreso_conocido_eur", "eur_jornada", "estado_ratio", "motivo_ratio", "desv_objetivo", "estado_desv_objetivo", "motivo_desv_objetivo", "desv_cartera", "estado_desv_cartera", "motivo_desv_cartera", "desv_horas", "estado_desv_horas", "motivo_desv_horas", "horas_objetivo", "usuarios_corte", "usuarios_medios", "usuarios_mes", "tarifa_usuario_anio", "estado_tarifa", "motivo_tarifa"];
 
-export type CsvResult = { filename: string; body: string; rows: number };
+export type CsvResult = { filename: string; body: string; rows: number; stamp: string };
 
 /** Cartera COMPLETA filtrada (todas las filas, en el orden de la tabla, no solo la página) con la fila de cartera de cada periodo. */
 export async function portfolioCsv(actorId: string, query: AnalysisQuery): Promise<CsvResult> {
@@ -68,7 +68,7 @@ export async function portfolioCsv(actorId: string, query: AnalysisQuery): Promi
       ]);
     }
   }
-  return { filename: `comparativa_${query.date}_${query.service.toLowerCase()}.csv`, body: csvDocument(header, rows), rows: v.allRows.length };
+  return { filename: `comparativa_${query.date}_${query.service.toLowerCase()}.csv`, body: csvDocument(header, rows), rows: v.allRows.length, stamp: ctx.reference.dataStamp.stamp };
 }
 
 export const FICHA_TABLES = ["series", "dedicacion", "pap", "tickets"] as const;
@@ -109,7 +109,7 @@ export async function fichaCsv(actorId: string, query: AnalysisQuery, ref: Entit
       rows.push([...base(), PERIOD_NAME[pk as PeriodKey], String(t.total), String(t.incident), String(t.problem), String(t.other), String(t.escalations.n2), String(t.escalations.n3), String(t.escalations.pmoN3), String(t.escalations.itN3), String(t.escalations.n4), String(t.escalations.vfsN4), String(t.escalations.arqN4), String(t.escalations.vswN4), "Cohorte por fecha de creación del ticket; no es la fecha del escalado. Desgloses no aditivos."]);
     }
   }
-  return { filename: `ficha_${table}_${v.context.name.replace(/[^A-Za-z0-9._-]+/g, "_").slice(0, 40)}_${query.date}.csv`, body: csvDocument(header, rows), rows: rows.length };
+  return { filename: `ficha_${table}_${v.context.name.replace(/[^A-Za-z0-9._-]+/g, "_").slice(0, 40)}_${query.date}.csv`, body: csvDocument(header, rows), rows: rows.length, stamp: ctx.reference.dataStamp.stamp };
 }
 
 export { BLOCK_PERIOD };

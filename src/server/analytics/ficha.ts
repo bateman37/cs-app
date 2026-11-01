@@ -122,6 +122,8 @@ export type FichaView = {
   tickets: { supported: boolean; periods: Record<string, TicketPeriod> } | null;
   bugs: BugSummary | null;
   sources: { profileId: string; status: string; extraction: string | null; received: string; rows: number }[] | null;
+  /** Hitos (arranque, migración CLOUD, cambio mayor de versión) con fecha y ámbito; solo los que existen en los maestros. */
+  milestones: { type: string; date: string; scope: string; scopeName: string; note: string | null }[];
 };
 
 function ranges(e: EconomicResult): PeriodRange[] {
@@ -179,8 +181,8 @@ export async function getFicha(actorId: string, query: AnalysisQuery, ref: Entit
 
     const periods = ranges(econ);
     const monthlyDed: PeriodRange[] = entity.monthly.map((m) => ({ key: m.label, from: m.from, to: m.to }));
-    const needsOps = query.tab !== "resumen" || true; // la dedicación mensual alimenta las gráficas del resumen
-    const dedication = needsOps ? await loadDedication(tx, ref, [...periods, ...monthlyDed], query.service) : null;
+    // La dedicación mensual alimenta las gráficas del resumen y la tabla de equipos; los perfiles se calculan siempre sobre el mismo perímetro.
+    const dedication = await loadDedication(tx, ref, [...periods, ...monthlyDed], query.service);
     const pap = query.tab === "pap" || query.tab === "resumen" ? await loadPap(tx, ref, [...periods, ...entity.monthly.map((m) => ({ key: m.label, from: m.from, to: m.to }))]) : null;
     const tickets = query.tab === "tickets" ? await loadTickets(tx, ref, periods) : null;
     const bugs = query.tab === "tickets" ? await loadBugs(tx, ref, periods) : null;
@@ -193,8 +195,20 @@ export async function getFicha(actorId: string, query: AnalysisQuery, ref: Entit
               FROM "UploadBatch" WHERE status = 'COMPLETED' ORDER BY "profileId", "createdAt" DESC`)
           )
         : null;
+    const gid = context.group?.id ?? null;
+    const cid = context.client?.id ?? (ref.type === "client" ? ref.id : null);
+    const ms = await tx.$queryRaw<{ type: string; date: string; note: string | null; gname: string | null; cname: string | null; iname: string | null }[]>(Prisma.sql`
+      SELECT m.type::text AS type, to_char(m.date, 'YYYY-MM-DD') AS date, m.note, g.name AS gname, c.name AS cname, i.name AS iname
+      FROM "Milestone" m LEFT JOIN "ClientGroup" g ON g.id = m."groupId" LEFT JOIN "Client" c ON c.id = m."clientId" LEFT JOIN "Implementation" i ON i.id = m."implementationId"
+      WHERE (${gid}::text IS NOT NULL AND m."groupId" = ${gid})
+        OR (${ref.type === "group"} AND m."clientId" IN (SELECT id FROM "Client" WHERE "groupId" = ${ref.id}))
+        OR (${cid}::text IS NOT NULL AND m."clientId" = ${cid})
+        OR (${ref.type === "implementation"} AND m."implementationId" = ${ref.id})
+        OR (${ref.type === "client"} AND m."implementationId" IN (SELECT id FROM "Implementation" WHERE "clientId" = ${ref.id}))
+      ORDER BY m.date, m.type`);
     return {
       query, context, cut, entity, groupContext, cohort,
+      milestones: ms.map((m) => ({ type: m.type, date: m.date, note: m.note, scope: m.iname ? "implantación" : m.cname ? "cliente" : "grupo", scopeName: m.iname ?? m.cname ?? m.gname ?? "" })),
       economics: { periodsDefinition: econ.periodsDefinition, settings: econ.settings, recalculatedWithOlderSettings: econ.recalculatedWithOlderSettings, reference: econ.reference, input: econ.input, unattributed: econ.unattributed },
       dedication, pap, tickets, bugs, sources,
     };

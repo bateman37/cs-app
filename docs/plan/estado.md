@@ -92,7 +92,7 @@ Documentación: [finanzas y motor económico](../arquitectura/finanzas-motor-csa
 | Dato | Valor |
 | --- | --- |
 | Rama / base | claude/new-session-omvsmd (designada; el prompt proponía feature/CSAPP-06-comparativa-analisis-cliente), reiniciada con `checkout -B` desde main f71b5b7 (PR 6 fusionada); push normal, sin force |
-| PR | Propia, base main, **sin fusionar** (número en el [índice de prompts](../../prompts/README.md)) |
+| PR | https://github.com/bateman37/cs-app/pull/7 (base main, **sin fusionar**) |
 | Migración | **Ninguna** |
 | Implementado | `/comparativa` y `/analisis-cliente` sobre el motor `eco-v2` corregido; contrato de consulta compartido; ficha con cinco secciones, gráficos y detalle que concilia; CSV de cartera y de la ficha; lectura coherente con sello de datos |
 | Probado | Linux: `npm test` 392 pruebas, trabajador real 300 000 filas (260 s), recorrido de navegador 238 comprobaciones, volumen 1 500 grupos/250 000 tiempos. Ver [validación](../validacion/csapp-06.md) |

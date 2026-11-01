@@ -20,7 +20,7 @@ import { performance } from "node:perf_hooks";
   const admin = await prisma.user.findFirstOrThrow();
   const { todayMadrid } = await import("../src/domain/vigencia");
   const today = todayMadrid();
-  let t0 = performance.now();
+  const t0 = performance.now();
   const { seedVolumen } = await import("../tests/generators/analitica-volumen");
   await seedVolumen(admin.id, today, groups, times);
   console.log(`Siembra: ${groups} grupos, ${times} tiempos en ${((performance.now() - t0) / 1000).toFixed(1)} s`);

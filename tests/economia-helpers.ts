@@ -1,6 +1,7 @@
 import { prisma } from "@/lib/db";
 import { randomUUID } from "node:crypto";
 import type { FinanceCategory } from "@/domain/finance";
+import { financeMasterStamp } from "@/server/finance/resolve";
 
 const d = (v: string) => new Date(`${v}T00:00:00Z`);
 
@@ -18,9 +19,9 @@ export async function addClient(name: string, groupId: string | null, internal =
 }
 
 /** Activa un conjunto financiero sintético directamente (lote COMPLETED + FinanceBatch/FinanceRow + puntero); no usa el importador. */
-export async function seedFinance(adminId: string, cat: FinanceCategory, year: number, rows: { groupId: string | null; income: string; label?: string }[], opts: { origin?: "UPLOAD" | "HISTORICAL" } = {}) {
+export async function seedFinance(adminId: string, cat: FinanceCategory, year: number, rows: { groupId: string | null; income: string; label?: string }[], opts: { origin?: "UPLOAD" | "HISTORICAL"; stale?: boolean } = {}) {
   const b = await fakeBatch(adminId, cat === "SOPORTE" ? "facturacion-soporte" : cat === "ADMIN_DELEGADA" ? "facturacion-admin-delegada" : "facturacion-otros");
-  await prisma.financeBatch.create({ data: { batchId: b.id, year, category: cat, origin: opts.origin ?? "UPLOAD", tolerance: "0.01", derivedStamp: "x" } });
+  await prisma.financeBatch.create({ data: { batchId: b.id, year, category: cat, origin: opts.origin ?? "UPLOAD", tolerance: "0.01", derivedStamp: opts.stale ? "x" : await financeMasterStamp(prisma) } });
   let i = 0;
   for (const r of rows) {
     i++;

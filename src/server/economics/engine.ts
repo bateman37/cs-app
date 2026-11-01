@@ -7,8 +7,9 @@ import {
   FINANCE_CATEGORIES,
   Dec,
   buildPeriods,
-  deviationVsPortfolio,
-  deviationVsTarget,
+  deviationHoursParts,
+  deviationPortfolioParts,
+  deviationTargetParts,
   effectiveCut,
   eurosPerDay,
   monthsBetween,
@@ -16,6 +17,7 @@ import {
   proratedMonthIncome,
   sumDec,
   targetHours,
+  tariffRun,
   ymdToIso,
   lastDayOfMonth,
   type CutMode,
@@ -24,18 +26,21 @@ import {
   type Period,
   type ResultStatus,
 } from "@/domain/finance";
+import { aggregatePortfolio, type PortfolioPeriodResult } from "@/domain/portfolio";
 import { isIsoDate, todayMadrid } from "@/domain/vigencia";
 import { authorize } from "@/server/authorize";
 import { DomainError } from "@/server/errors";
 import { financeMasterStamp } from "@/server/finance/resolve";
+import { readDataStamp, type DataStamp } from "@/server/analytics/stamp";
 import { getSettings, type EconomicSettings } from "./settings";
 
 type Tx = Prisma.TransactionClient;
 
 /**
- * Motor económico común (CSAPP-05 §8-§9). Las pantallas futuras (Comparativa, Análisis Cliente) lo consumen; no reconstruyen
- * fórmulas, SQL ni lecturas del Excel. Una ejecución lee un estado coherente: una única transacción de lectura REPEATABLE READ
- * (instantánea de hechos financieros, tiempos, usuarios, atribuciones y configuración) y devuelve la referencia de lo leído.
+ * Motor económico común (CSAPP-05 §8-§9, corregido en CSAPP-06). Las pantallas (Comparativa, Análisis Cliente, detalle y CSV) lo consumen;
+ * no reconstruyen fórmulas, SQL ni lecturas del Excel. Una ejecución lee un estado coherente: una única transacción de lectura
+ * REPEATABLE READ (instantánea de hechos financieros, tiempos, usuarios, atribuciones y configuración) y devuelve la referencia de lo leído.
+ * `economicsInTx` permite que servicios que añaden consultas auxiliares compartan esa MISMA instantánea (no usan el `prisma` global).
  * Todos los importes y horas viajan como texto decimal exacto.
  */
 
@@ -63,21 +68,32 @@ export type EconomicInput = {
   filters?: { teamId?: string; levelId?: string; projectName?: string };
   page?: number;
   pageSize?: number;
+  /** Devuelve todas las entidades (la cartera ya se calculó con todas); el servicio analítico ordena y pagina. */
+  unpaged?: boolean;
+  /** Entidad para la que se preparan las series mensuales (año seleccionado y comparable anterior). Sin ella no se calculan series por entidad. */
+  detailFor?: string;
 };
 
-export type Amount = { value: string | null; status: ResultStatus; reason: string | null; known: string };
+export type Amount = { value: string | null; status: ResultStatus; reason: string | null; known: string; validated: boolean };
 
 export type PeriodSeries = {
   key: string;
   label: string;
   from: string;
   to: string;
+  /** Mes en curso / corte aún no cerrado por el reloj. */
   provisional: boolean;
+  /** El último mes del periodo no está incluido entero (corte a mitad de mes). */
+  partial: boolean;
+  /** Los derivados usados no están pendientes de reproceso. Si es falso se conserva la magnitud, pero no se presenta como validada. */
+  validated: boolean;
   revenue: Amount;
   incomeByCategory: Partial<Record<FinanceCategory, { value: string | null; state: string; reason: string | null }>>;
   hours: {
     /** Horas elegibles del perímetro del servicio seleccionado. */
     inPerimeter: string;
+    /** Minutos exactos del perímetro (las horas se derivan al presentar). */
+    perimeterMinutes: string;
     eligible: string;
     byService: Record<"SOPORTE" | "ADMIN_DELEGADA" | "OTROS" | "SIN_CLASIFICAR" | "CONFLICTO", string>;
     excluded: string;
@@ -88,6 +104,8 @@ export type PeriodSeries = {
   targetHours: Formula;
   deviationVsTarget: Formula;
   deviationVsPortfolio: Formula | null;
+  /** (horas reales − horas objetivo) / horas objetivo. Distinta de la desviación de €/jornada. */
+  deviationHours: Formula;
   perUserPerYear: Formula;
 };
 
@@ -102,19 +120,13 @@ export type EntityResult = {
   metadata: { support: string; hosting: string };
   eco08: boolean;
   periods: Record<PeriodKey, PeriodSeries>;
-  /** Serie mensual del año seleccionado (hasta el corte). */
+  /** Serie mensual del año seleccionado (hasta el corte); solo para `detailFor`. */
   monthly: PeriodSeries[];
+  /** Serie mensual del año anterior COMPARABLE (mismos meses, último mes cortado según el modo); solo para `detailFor`. */
+  prevMonthly: PeriodSeries[];
 };
 
-export type PortfolioPeriod = {
-  revenue: string | null;
-  hours: string;
-  perDay: Formula;
-  groupsWithIncome: number;
-  groupsUnknownIncome: number;
-  groupsNotComputable: { count: number; incomeAtStake: string };
-  deviationVsTarget: Formula;
-};
+export type PortfolioPeriod = PortfolioPeriodResult;
 
 export type EconomicResult = {
   input: { service: ServiceSelection; date: string; cut: string; mode: CutMode; scopeType: string };
@@ -133,17 +145,22 @@ export type EconomicResult = {
     readAt: string;
     finance: { year: number; category: FinanceCategory; batchId: string | null; version: number; extractionDate: string | null; origin: string | null; unassigned: number; coverage: string }[];
     time: { zendeskMaxDerivationVersion: number; wrikeMaxDerivationVersion: number };
+    /** Sello del estado completo leído (por dominio): MAX(drvVersion) por sí solo no identifica el estado. */
+    dataStamp: DataStamp;
     pendingRecalc: { finance: boolean; bcFallback: { wrike: number; pap: number }; reason: string | null };
+    /** Estado de validación de los derivados: con reproceso pendiente las magnitudes se conservan pero no están validadas. */
+    validation: { state: "VALIDATED" | "PENDING_RECALC"; staleFinance: { year: number; category: FinanceCategory }[]; timeAttribution: boolean };
   };
 };
 
 const ZERO = Dec.ZERO;
 const H = (minutes: Dec) => minutes.divInt(60).toString();
 
-function formula(value: Dec | null, num: Dec | null, den: Dec | null, unit: string, status: ResultStatus, reason: string | null): Formula {
-  return { value: value?.toString() ?? null, numerator: num?.toString() ?? null, denominator: den?.toString() ?? null, unit, status, reason };
+type FormulaExtra = Partial<Pick<Formula, "code" | "operands" | "expression" | "validated">>;
+function formula(value: Dec | null, num: Dec | null, den: Dec | null, unit: string, status: ResultStatus, reason: string | null, extra: FormulaExtra = {}): Formula {
+  return { value: value?.toString() ?? null, numerator: num?.toString() ?? null, denominator: den?.toString() ?? null, unit, status, reason, ...extra };
 }
-const na = (unit: string, status: ResultStatus, reason: string): Formula => ({ value: null, numerator: null, denominator: null, unit, status, reason });
+const na = (unit: string, status: ResultStatus, reason: string, code: string): Formula => ({ value: null, numerator: null, denominator: null, unit, status, reason, code });
 
 // ---------------------------------------------------------------- SQL de servicio (compartido con el detalle)
 
@@ -163,7 +180,7 @@ export const SERVICE_OF_SQL = Prisma.sql`(
   SELECT CASE count(DISTINCT ev.service) WHEN 0 THEN 'SIN_CLASIFICAR' WHEN 1 THEN min(ev.service) ELSE 'CONFLICTO' END
   FROM (${SERVICE_EVIDENCE_SQL}) ev)`;
 
-const CLASS_OF_SQL = Prisma.sql`CASE a.eligibility WHEN 'ELIGIBLE' THEN 'ELIGIBLE' WHEN 'PENDING_ELIGIBILITY' THEN 'PENDING' ELSE 'EXCLUDED' END`;
+export const CLASS_OF_SQL = Prisma.sql`CASE a.eligibility WHEN 'ELIGIBLE' THEN 'ELIGIBLE' WHEN 'PENDING_ELIGIBILITY' THEN 'PENDING' ELSE 'EXCLUDED' END`;
 
 // ---------------------------------------------------------------- Lectura
 
@@ -172,14 +189,21 @@ type HoursIndex = Map<string, Map<string, Map<string, MinutesCell>>>; // periodK
 
 export async function runEconomics(actorId: string, input: EconomicInput): Promise<EconomicResult> {
   await authorize(prisma, actorId, "READ");
+  // Una única transacción de lectura consistente: un cambio concurrente no mezcla el ingreso de un lote con su predecesor.
+  return prisma.$transaction((tx) => economicsInTx(tx, input), { isolationLevel: "RepeatableRead", maxWait: 10_000, timeout: 120_000 });
+}
+
+/** Ejecuta el motor dentro de la transacción de lectura del llamador (que ya autorizó y fijó REPEATABLE READ). */
+export async function economicsInTx(tx: Tx, input: EconomicInput): Promise<EconomicResult> {
   const now = input.now ?? new Date();
   const date = input.date ?? todayMadrid(now);
   if (!isIsoDate(date)) throw new DomainError("Fecha de análisis no válida (AAAA-MM-DD).");
   const mode: CutMode = input.mode ?? "CUTOFF";
   if (!SERVICES.includes(input.service)) throw new DomainError("Servicio económico no válido.");
-  // Una única transacción de lectura consistente: un cambio concurrente no mezcla el ingreso de un lote con su predecesor.
-  return prisma.$transaction((tx) => compute(tx, input, date, mode, now), { isolationLevel: "RepeatableRead", maxWait: 10_000, timeout: 120_000 });
+  return compute(tx, input, date, mode, now);
 }
+
+type Plan = { values: string; from: string | null; to: string | null };
 
 async function compute(tx: Tx, input: EconomicInput, date: string, mode: CutMode, now: Date): Promise<EconomicResult> {
   const readAt = (await tx.$queryRaw<{ t: Date }[]>(Prisma.sql`SELECT now() AS t`))[0].t.toISOString();
@@ -190,49 +214,68 @@ async function compute(tx: Tx, input: EconomicInput, date: string, mode: CutMode
   const today = todayMadrid(now);
   const cut = effectiveCut(date, mode);
   const periods = buildPeriods(date, mode, today);
-  const cutY = parseYmd(cut).y;
+  const cutP = parseYmd(cut);
+  const cutY = cutP.y;
 
   // 1. Entidades del ámbito (todas, antes de paginar: la cartera usa el conjunto filtrado completo).
   const ents = await loadEntities(tx, input.scope);
   const groupIds = [...new Set(ents.map((e) => e.groupId).filter((g): g is string => Boolean(g)))];
+  const focus = input.detailFor ? ents.find((e) => e.id === input.detailFor) ?? null : null;
 
   // 2. Hechos financieros vigentes de los años implicados (una consulta por conjuntos).
   const years = [cutY, cutY - 1];
   const finance = await loadFinance(tx, years, groupIds);
 
-  // 3. Horas: una pasada por TimeActivity con un join de periodos (sin consulta por grupo/mes).
-  const monthlyPeriods: { key: string; from: string; to: string }[] = [];
-  for (let m = 1; m <= parseYmd(cut).m; m++) {
-    monthlyPeriods.push({ key: `m${m}`, from: ymdToIso({ y: cutY, m, d: 1 }), to: m === parseYmd(cut).m ? cut : ymdToIso({ y: cutY, m, d: lastDayOfMonth(cutY, m) }) });
+  // 3. Horas: una pasada por TimeActivity con un join de periodos (sin consulta por grupo/mes). Las series mensuales solo de la entidad en foco.
+  const monthlyPeriods: { key: string; from: string; to: string; y: number; m: number }[] = [];
+  const prevMonthlyPeriods: { key: string; from: string; to: string; y: number; m: number }[] = [];
+  for (let m = 1; m <= cutP.m; m++) {
+    monthlyPeriods.push({ key: `m${m}`, y: cutY, m, from: ymdToIso({ y: cutY, m, d: 1 }), to: m === cutP.m ? cut : ymdToIso({ y: cutY, m, d: lastDayOfMonth(cutY, m) }) });
+    prevMonthlyPeriods.push({ key: `p${m}`, y: cutY - 1, m, from: ymdToIso({ y: cutY - 1, m, d: 1 }), to: m === cutP.m ? periods.prevCum.to : ymdToIso({ y: cutY - 1, m, d: lastDayOfMonth(cutY - 1, m) }) });
   }
-  const periodRows = [...PERIOD_KEYS.map((k) => ({ key: k as string, from: periods[k].from, to: periods[k].to })), ...monthlyPeriods];
+  const periodRows = PERIOD_KEYS.map((k) => ({ key: k as string, from: periods[k].from, to: periods[k].to }));
   const hours = await loadHours(tx, input.scope, ents, periodRows, input.filters);
+  const monthlyHours = focus ? await loadHours(tx, input.scope, [focus], [...monthlyPeriods, ...prevMonthlyPeriods], input.filters) : (new Map() as HoursIndex);
   const unattributed = await loadUnattributed(tx, periods.cum);
 
   // 4. Usuarios: un único acceso a la matriz de todas las entidades y años.
   const usersLookup = await loadUsers(tx, ents, [cutY, cutY - 1]);
 
-  // 5. Metadatos con vigencia a la fecha de corte (sin multiplicar filas por tramos).
+  // 5. Metadatos con vigencia a la fecha de corte y tramos de plan del periodo valorado (sin multiplicar filas por tramos).
   const meta = await loadMetadata(tx, ents, cut);
+  const plans = await loadPlanTerms(tx, ents, periods.prevYear.from, cut);
+
+  // 6. Estado de validación: derivados pendientes de reproceso (se conservan las magnitudes, sin presentarlas como validadas).
+  const stampNow = await financeMasterStamp(tx);
+  const staleScopes = finance.scopes.filter((s) => s.batchId !== null && s.derivedStamp !== null && s.derivedStamp !== stampNow);
+  const staleKey = new Set(staleScopes.map((s) => `${s.year}|${s.category}`));
+  const fb = await bcFallbackImpact(tx);
+  const timeAttributionStale = fb.wrike > 0;
 
   const partialFilter = Boolean(input.filters && (input.filters.teamId || input.filters.levelId || input.filters.projectName));
   const services: FinanceCategory[] = input.service === "TOTAL" ? [...FINANCE_CATEGORIES] : [input.service];
 
-  const build = (e: Ent, key: string, p: { from: string; to: string; label: string; provisional: boolean; months?: Period["months"] }, isMonthly: boolean): PeriodSeries => {
+  type P = { from: string; to: string; label: string; provisional: boolean; months?: Period["months"] };
+  const build = (e: Ent, key: string, p: P, kind: "period" | "monthly", idx: HoursIndex): PeriodSeries => {
     const months = p.months ?? monthsBetween(p.from, p.to);
+    const lastMo = months[months.length - 1];
+    const partial = lastMo.days < lastMo.daysInMonth;
     // Ingreso: solo al nivel Grupo Cliente.
     const incomeByCategory: PeriodSeries["incomeByCategory"] = {};
     let revenue: Amount;
+    let validated = !timeAttributionStale;
     if (e.type !== "group") {
-      revenue = { value: null, status: "NOT_COMPUTABLE", reason: "Ingreso agrupado en Grupo Cliente: sin ingreso propio ni ratio atribuido a este nivel.", known: "0" };
+      revenue = { value: null, status: "NOT_COMPUTABLE", reason: "Ingreso agrupado en Grupo Cliente: sin ingreso propio ni ratio atribuido a este nivel.", known: "0", validated: true };
     } else {
       const parts: Dec[] = [];
       let missing = 0;
+      let stale = false;
       for (const cat of services) {
         let sum = ZERO;
         let state = "AVAILABLE";
         let reason: string | null = null;
         for (const mo of months) {
+          if (staleKey.has(`${mo.y}|${cat}`)) stale = true;
           const f = finance.income(e.id, mo.y, cat);
           if (f.state !== "AVAILABLE") {
             state = f.state;
@@ -246,13 +289,14 @@ async function compute(tx: Tx, input: EconomicInput, date: string, mode: CutMode
         parts.push(sum);
       }
       const known = sumDec(parts);
+      if (stale) validated = false;
       revenue =
         missing === 0
-          ? { value: known.toString(), status: "AVAILABLE", reason: null, known: known.toString() }
-          : { value: null, status: missing === services.length ? "NO_SOURCE" : "PARTIAL", reason: `Falta el conjunto financiero de ${services.filter((c) => incomeByCategory[c]?.state !== "AVAILABLE").map((c) => CATEGORY_LABEL[c]).join(", ")} del periodo.`, known: known.toString() };
+          ? { value: known.toString(), status: "AVAILABLE", reason: stale ? "Atribución financiera pendiente de reproceso (maestros BC cambiados): magnitud conservada, no validada." : null, known: known.toString(), validated: !stale }
+          : { value: null, status: missing === services.length ? "NO_SOURCE" : "PARTIAL", reason: `Falta el conjunto financiero de ${services.filter((c) => incomeByCategory[c]?.state !== "AVAILABLE").map((c) => CATEGORY_LABEL[c]).join(", ")} del periodo.`, known: known.toString(), validated: !stale };
     }
     // Horas del periodo.
-    const cell = hours.get(key)?.get(e.id);
+    const cell = idx.get(key)?.get(e.id);
     const get = (svc: string, cls: "ELIGIBLE" | "PENDING" | "EXCLUDED") => cell?.get(svc)?.[cls] ?? ZERO;
     const svcs = ["SOPORTE", "ADMIN_DELEGADA", "OTROS", "SIN_CLASIFICAR", "CONFLICTO"] as const;
     const elig: Record<string, Dec> = Object.fromEntries(svcs.map((s) => [s, get(s, "ELIGIBLE")]));
@@ -284,70 +328,106 @@ async function compute(tx: Tx, input: EconomicInput, date: string, mode: CutMode
       missingMonths,
     };
 
+    // Plan del PERIODO valorado (no el actual): un cambio de plan posterior no habilita retrospectivamente otro método.
+    const planSet = e.type === "group" ? plans.valuesIn(e.id, p.from, p.to) : new Set<string>();
+    const hasSod = planSet.has("SILVER_ON_DEMAND");
+    const mixedPlan = hasSod && planSet.size > 1;
+    const monthlyMetric = kind === "monthly" || key === "month" || key === "prevMonth";
+    const eco08 = monthlyMetric && hasSod;
+    const eco08Reason = mixedPlan
+      ? "El periodo mezcla tramos de plan Silver On Demand y otro plan, sin método aprobado: ECO 08 pendiente; se informa el límite y se muestran ingreso y horas conocidos."
+      : "ECO 08 pendiente: la rentabilidad mensual recurrente de Silver On Demand no está activada; use el análisis anual o CUM. Ingreso y horas conocidos se muestran.";
+
     // Ratios (la falta de usuarios NO impide €/jornada).
     let perDay: Formula;
     const unit = "€/jornada";
-    const eco08 = (isMonthly || key === "month" || key === "prevMonth") && meta.get(e.id)?.support === "SILVER_ON_DEMAND";
     const minutesPerimeter = perimeter;
-    if (e.type !== "group") perDay = na(unit, "NOT_COMPUTABLE", "Ingreso agrupado en Grupo Cliente: el ratio se calcula al nivel del grupo.");
-    else if (partialFilter) perDay = na(unit, "NOT_COMPUTABLE", "El filtro recorta solo las horas: sin el ingreso de ese subconjunto no hay rentabilidad; se usa el perímetro económico completo.");
-    else if (eco08) perDay = na(unit, "NOT_COMPUTABLE", "ECO 08 pendiente: la rentabilidad mensual recurrente de Silver On Demand no está activada; use el análisis anual.");
-    else if (revenue.value === null) perDay = na(unit, revenue.status, revenue.reason ?? "Sin ingreso.");
-    else if (input.service !== "TOTAL" && unknownService.sign() > 0) {
-      perDay = formula(null, Dec.parse(revenue.value), minutesPerimeter.divInt(60), unit, "PARTIAL", `Hay ${H(unknownService)} h elegibles sin servicio o con servicios en conflicto en este ámbito y periodo: podrían cambiar el perímetro; no se presenta el ratio como completo.`);
-    } else if (pending.sign() > 0) {
-      perDay = formula(null, Dec.parse(revenue.value), minutesPerimeter.divInt(60), unit, "PARTIAL", `Hay ${H(pending)} h con elegibilidad pendiente (PMO desconocido) que podrían entrar en el perímetro.`);
+    const uncertain = input.service !== "TOTAL" && unknownService.sign() > 0;
+    const uncertainPending = pending.sign() > 0;
+    if (e.type !== "group") perDay = na(unit, "NOT_COMPUTABLE", "Ingreso agrupado en Grupo Cliente: el ratio se calcula al nivel del grupo.", "NOT_GROUP_LEVEL");
+    else if (partialFilter) perDay = na(unit, "NOT_COMPUTABLE", "El filtro recorta solo las horas: sin el ingreso de ese subconjunto no hay rentabilidad; se usa el perímetro económico completo.", "HOURS_FILTER");
+    else if (eco08) perDay = na(unit, "NOT_COMPUTABLE", eco08Reason, mixedPlan ? "PLAN_MIXED" : "SILVER_ON_DEMAND");
+    else if (revenue.value === null) perDay = na(unit, revenue.status, revenue.reason ?? "Sin ingreso.", "INCOME_UNKNOWN");
+    else if (uncertain) {
+      perDay = formula(null, Dec.parse(revenue.value), minutesPerimeter.divInt(60), unit, "PARTIAL", `Hay ${H(unknownService)} h elegibles sin servicio o con servicios en conflicto en este ámbito y periodo: podrían cambiar el perímetro; no se presenta el ratio como completo.`, { code: "PERIMETER_PARTIAL" });
+    } else if (uncertainPending) {
+      perDay = formula(null, Dec.parse(revenue.value), minutesPerimeter.divInt(60), unit, "PARTIAL", `Hay ${H(pending)} h con elegibilidad pendiente (PMO desconocido) que podrían entrar en el perímetro.`, { code: "PERIMETER_PARTIAL" });
     } else {
       const r = Dec.parse(revenue.value) as Dec;
       const ed = eurosPerDay(r, minutesPerimeter, dayHours);
-      if (ed.ratio === null) perDay = formula(null, r, ed.hours, unit, "NOT_COMPUTABLE", r.sign() > 0 ? "Ingreso positivo con cero horas: no hay ratio (nunca infinito)." : "Sin horas en el periodo: ratio no calculable.");
-      else perDay = formula(ed.ratio, r, ed.hours, unit, "AVAILABLE", null);
+      if (ed.ratio === null) {
+        perDay = formula(null, r, ed.hours, unit, "NOT_COMPUTABLE", r.sign() > 0 ? "Ingreso positivo con cero horas: no hay ratio (nunca infinito). El ingreso permanece en la cartera." : "Sin horas en el periodo: ratio no calculable.", { code: r.sign() > 0 ? "ZERO_HOURS" : "NO_HOURS" });
+      } else perDay = formula(ed.ratio, r, ed.hours, unit, "AVAILABLE", null, { expression: "R / H × jornada" });
     }
     const th: Formula =
-      revenue.value !== null && e.type === "group" ? formula(targetHours(Dec.parse(revenue.value) as Dec, target, dayHours), Dec.parse(revenue.value), target, "horas", "AVAILABLE", null) : na("horas", revenue.status === "AVAILABLE" ? "NOT_COMPUTABLE" : revenue.status, revenue.reason ?? "Sin ingreso.");
-    const dev: Formula =
-      perDay.value !== null
-        ? formula(deviationVsTarget(target, Dec.parse(perDay.value) as Dec), target, Dec.parse(perDay.value), "fracción", "AVAILABLE", "Positivo = rendimiento por debajo del objetivo.")
-        : na("fracción", perDay.status, perDay.reason ?? "Sin ratio.");
-    // Tarifa anual por usuario: usuarios medios de los doce meses; en periodo parcial, equivalente anual identificado.
-    let tariff: Formula;
-    if (e.type !== "group" || revenue.value === null) tariff = na("€/usuario·año", e.type !== "group" ? "NOT_COMPUTABLE" : revenue.status, "Sin ingreso del grupo.");
-    else if (!users.complete || users.averageUsers === null) tariff = na("€/usuario·año", "NOT_COMPUTABLE", "Usuarios del periodo incompletos o sin informar: la tarifa por usuario no es calculable (el ratio €/jornada sí).");
-    else if (Dec.parse(users.averageUsers)?.isZero()) tariff = na("€/usuario·año", "NOT_COMPUTABLE", "Usuarios medios cero: no se divide.");
-    else {
-      const days = months.reduce((s, mo) => s + mo.days, 0);
-      const full = months.length === 12 && months.every((mo) => mo.days === mo.daysInMonth);
-      const annualEq = full ? (Dec.parse(revenue.value) as Dec) : (Dec.parse(revenue.value) as Dec).ratio(365, Math.max(days, 1));
-      tariff = formula(annualEq.div(Dec.parse(users.averageUsers) as Dec), annualEq, Dec.parse(users.averageUsers), "€/usuario·año", "AVAILABLE", full ? null : "Equivalente anual del periodo parcial (no es una tarifa contractual).");
+      revenue.value !== null && e.type === "group"
+        ? formula(targetHours(Dec.parse(revenue.value) as Dec, target, dayHours), Dec.parse(revenue.value), target, "horas", "AVAILABLE", null, { expression: "R / objetivo × jornada", operands: { jornada: dayHours.toString() } })
+        : na("horas", e.type !== "group" ? "NOT_COMPUTABLE" : revenue.status, e.type !== "group" ? "Sin ingreso propio: no hay horas objetivo a este nivel (el ingreso está agrupado en el Grupo Cliente)." : (revenue.reason ?? "Sin ingreso."), e.type !== "group" ? "NOT_GROUP_LEVEL" : "INCOME_UNKNOWN");
+    let dev: Formula;
+    if (perDay.value !== null) {
+      const d = deviationTargetParts(target, Dec.parse(perDay.value) as Dec);
+      dev = formula(d.value, d.numerator, d.denominator, "fracción", "AVAILABLE", "Positivo = rendimiento por debajo del objetivo.", { operands: { objetivo: target.toString(), ratio: perDay.value }, expression: "(objetivo − ratio) / objetivo" });
+    } else dev = { ...na("fracción", perDay.status, perDay.reason ?? "Sin ratio.", perDay.code ?? "NO_RATIO"), operands: { objetivo: target.toString(), ratio: null } };
+    // Desviación de horas: (reales − objetivo) / objetivo; depende del mismo perímetro y de las mismas restricciones que el ratio.
+    let devHours: Formula;
+    const realH = minutesPerimeter.divInt(60);
+    if (th.value === null) devHours = na("fracción", th.status, th.reason ?? "Sin horas objetivo.", th.code ?? "NO_TARGET_HOURS");
+    else if (partialFilter || eco08 || uncertain || uncertainPending) {
+      devHours = { ...formula(null, null, Dec.parse(th.value), "fracción", "PARTIAL", partialFilter ? "El filtro recorta solo las horas: no es comparable con las horas objetivo del ingreso completo." : eco08 ? eco08Reason : "Perímetro de horas incompleto (servicio sin clasificar, en conflicto o elegibilidad pendiente).", { code: partialFilter ? "HOURS_FILTER" : eco08 ? (mixedPlan ? "PLAN_MIXED" : "SILVER_ON_DEMAND") : "PERIMETER_PARTIAL" }), operands: { horasReales: realH.toString(), horasObjetivo: th.value } };
+    } else {
+      const d = deviationHoursParts(realH, Dec.parse(th.value) as Dec);
+      devHours = d
+        ? formula(d.value, d.numerator, d.denominator, "fracción", "AVAILABLE", "Positivo = más horas que las objetivo (por encima de lo que el ingreso sostiene).", { operands: { horasReales: realH.toString(), horasObjetivo: th.value }, expression: "(horas reales − horas objetivo) / horas objetivo" })
+        : { ...na("fracción", "NOT_COMPUTABLE", "Las horas objetivo son cero (ingreso cero): la desviación relativa no se calcula.", "ZERO_TARGET_HOURS"), operands: { horasReales: realH.toString(), horasObjetivo: th.value } };
     }
+    // Tarifa anual por usuario (TAR RUN) = 12 × R_periodo / usuarios mes expuestos.
+    let tariff: Formula;
+    const fullYear = months.length === 12 && months.every((mo) => mo.days === mo.daysInMonth);
+    if (e.type !== "group" || revenue.value === null) tariff = na("€/usuario·año", e.type !== "group" ? "NOT_COMPUTABLE" : revenue.status, e.type !== "group" ? "Sin ingreso propio en este nivel." : (revenue.reason ?? "Sin ingreso."), e.type !== "group" ? "NOT_GROUP_LEVEL" : "INCOME_UNKNOWN");
+    else if (!users.complete || users.userMonths === null) tariff = na("€/usuario·año", "NOT_COMPUTABLE", "Usuarios del periodo incompletos o sin informar: la tarifa por usuario no es calculable (el ratio €/jornada sí).", "USERS_MISSING");
+    else if (hasSod && !fullYear) tariff = na("€/usuario·año", "NOT_COMPUTABLE", "ECO 08 pendiente: no se anualiza por defecto un Silver On Demand en un periodo parcial (equivalente anual no aprobado). Con doce meses completos sí se calcula.", "SILVER_ON_DEMAND");
+    else {
+      const t = tariffRun(Dec.parse(revenue.value) as Dec, Dec.parse(users.userMonths) as Dec);
+      tariff = t
+        ? formula(t.value, t.numerator, t.denominator, "€/usuario·año", "AVAILABLE", fullYear ? null : "Equivalente anual del periodo parcial: 12 × R / usuarios mes expuestos (no es una tarifa contractual).", { expression: "12 × R / usuarios mes expuestos", operands: { ingresoPeriodo: revenue.value, usuariosMes: users.userMonths } })
+        : na("€/usuario·año", "NOT_COMPUTABLE", "Usuarios mes cero: no se divide.", "USERS_ZERO");
+    }
+    const v = validated;
+    const mark = (f: Formula): Formula => ({ ...f, validated: v });
     return {
       key,
       label: p.label,
       from: p.from,
       to: p.to,
       provisional: p.provisional,
-      revenue,
+      partial,
+      validated: v,
+      revenue: { ...revenue, validated: v },
       incomeByCategory,
       hours: {
         inPerimeter: H(minutesPerimeter),
+        perimeterMinutes: minutesPerimeter.toString(),
         eligible: H(eligibleAll),
         byService: Object.fromEntries(svcs.map((s) => [s, H(elig[s])])) as PeriodSeries["hours"]["byService"],
         excluded: H(excluded),
         pendingEligibility: H(pending),
       },
       users,
-      perDay,
-      targetHours: th,
-      deviationVsTarget: dev,
+      perDay: mark(perDay),
+      targetHours: mark(th),
+      deviationVsTarget: mark(dev),
       deviationVsPortfolio: null,
-      perUserPerYear: tariff,
+      deviationHours: mark(devHours),
+      perUserPerYear: mark(tariff),
     };
   };
 
   const results: EntityResult[] = ents.map((e) => {
     const m = meta.get(e.id) ?? { support: "SIN_INFORMAR", hosting: "SIN_INFORMAR" };
-    const per = Object.fromEntries(PERIOD_KEYS.map((k) => [k, build(e, k, periods[k], false)])) as Record<PeriodKey, PeriodSeries>;
-    const monthly = monthlyPeriods.map((mp) => build(e, mp.key, { from: mp.from, to: mp.to, label: `Mes ${mp.key.slice(1)}`, provisional: false }, true));
+    const per = Object.fromEntries(PERIOD_KEYS.map((k) => [k, build(e, k, periods[k], "period", hours)])) as Record<PeriodKey, PeriodSeries>;
+    const isFocus = focus?.id === e.id;
+    const monthly = isFocus ? monthlyPeriods.map((mp) => build(e, mp.key, { from: mp.from, to: mp.to, label: `${mp.y}-${String(mp.m).padStart(2, "0")}`, provisional: mp.m === cutP.m && periods.cum.provisional }, "monthly", monthlyHours)) : [];
+    const prevMonthly = isFocus ? prevMonthlyPeriods.map((mp) => build(e, mp.key, { from: mp.from, to: mp.to, label: `${mp.y}-${String(mp.m).padStart(2, "0")}`, provisional: false }, "monthly", monthlyHours)) : [];
     return {
       id: e.id,
       type: e.type,
@@ -359,77 +439,57 @@ async function compute(tx: Tx, input: EconomicInput, date: string, mode: CutMode
       eco08: m.support === "SILVER_ON_DEMAND",
       periods: per,
       monthly,
+      prevMonthly,
     };
   });
 
-  // 6. Cartera: ratio ponderado del conjunto filtrado COMPLETO (antes de paginar), nunca la media de ratios.
+  // 7. Cartera: ratio ponderado del conjunto filtrado COMPLETO (antes de paginar), nunca la media de ratios. Hereda las restricciones de las filas.
   let portfolio: EconomicResult["portfolio"] = null;
   if (input.scope.type === "groups") {
     portfolio = {} as Record<PeriodKey, PortfolioPeriod>;
     for (const k of PERIOD_KEYS) {
-      let rev = ZERO;
-      let min = ZERO;
-      let withIncome = 0;
-      let unknown = 0;
-      let nc = 0;
-      let ncIncome = ZERO;
-      for (const r of results) {
-        const p = r.periods[k];
-        if (p.revenue.value === null) {
-          unknown++;
-          continue;
-        }
-        withIncome++;
-        rev = rev.add(Dec.parse(p.revenue.value) as Dec);
-        const mins = (Dec.parse(p.hours.inPerimeter) as Dec).mulInt(60);
-        min = min.add(mins);
-        if (p.perDay.status !== "AVAILABLE") {
-          nc++;
-          ncIncome = ncIncome.add(Dec.parse(p.revenue.value) as Dec);
-        }
-      }
-      const ed = min.isZero() ? null : eurosPerDay(rev, min, dayHours);
-      const perDay = withIncome === 0 ? na("€/jornada", "NO_SOURCE", "Ningún grupo del conjunto tiene ingreso conocido.") : ed?.ratio ? formula(ed.ratio, rev, ed.hours, "€/jornada", "AVAILABLE", null) : na("€/jornada", "NOT_COMPUTABLE", "Sin horas en el conjunto filtrado.");
-      portfolio[k] = {
-        revenue: withIncome === 0 ? null : rev.toString(),
-        hours: H(min),
-        perDay,
-        groupsWithIncome: withIncome,
-        groupsUnknownIncome: unknown,
-        groupsNotComputable: { count: nc, incomeAtStake: ncIncome.toString() },
-        deviationVsTarget: perDay.value ? formula(deviationVsTarget(target, Dec.parse(perDay.value) as Dec), target, Dec.parse(perDay.value), "fracción", "AVAILABLE", "Positivo = por debajo del objetivo.") : na("fracción", perDay.status, perDay.reason ?? ""),
-      };
+      portfolio[k] = aggregatePortfolio(
+        results.map((r) => {
+          const p = r.periods[k];
+          return { id: r.id, revenue: p.revenue.value === null ? null : (Dec.parse(p.revenue.value) as Dec), minutes: Dec.parse(p.hours.perimeterMinutes) as Dec, status: p.perDay.status, code: p.perDay.code ?? null };
+        }),
+        target,
+        dayHours,
+      );
     }
     for (const r of results) {
       for (const k of PERIOD_KEYS) {
-        const pr = portfolio[k].perDay.value;
-        const own = r.periods[k].perDay.value;
-        r.periods[k].deviationVsPortfolio =
-          pr && own
-            ? (() => {
-                const d = deviationVsPortfolio(Dec.parse(pr) as Dec, Dec.parse(own) as Dec);
-                return d ? formula(d, Dec.parse(pr), Dec.parse(own), "fracción", "AVAILABLE", null) : na("fracción", "NOT_COMPUTABLE", "La cartera tiene ratio cero: no se divide.");
-              })()
-            : na("fracción", "NOT_COMPUTABLE", pr ? "El grupo no tiene ratio propio calculable." : "La cartera no tiene ratio.");
+        const pr = portfolio[k].perDay;
+        const own = r.periods[k].perDay;
+        const dv = (f: Formula) => ({ ...f, validated: r.periods[k].validated });
+        if (pr.value && own.value) {
+          const d = deviationPortfolioParts(Dec.parse(pr.value) as Dec, Dec.parse(own.value) as Dec);
+          r.periods[k].deviationVsPortfolio = d
+            ? dv(formula(d.value, d.numerator, d.denominator, "fracción", "AVAILABLE", "Positivo = por debajo de la cartera filtrada.", { operands: { cartera: pr.value, grupo: own.value }, expression: "(cartera − grupo) / cartera" }))
+            : dv({ ...na("fracción", "NOT_COMPUTABLE", "La cartera tiene ratio cero: no se divide.", "ZERO_PORTFOLIO"), operands: { cartera: pr.value, grupo: own.value } });
+        } else if (!pr.value) {
+          r.periods[k].deviationVsPortfolio = dv({ ...na("fracción", pr.status === "AVAILABLE" ? "NOT_COMPUTABLE" : pr.status, `La cartera filtrada no se publica como completa: ${pr.reason ?? "sin ratio."}`, pr.code ?? "PORTFOLIO_PARTIAL"), operands: { cartera: null, grupo: own.value } });
+        } else {
+          r.periods[k].deviationVsPortfolio = dv({ ...na("fracción", "NOT_COMPUTABLE", "El grupo no tiene ratio propio calculable.", own.code ?? "NO_RATIO"), operands: { cartera: pr.value, grupo: null } });
+        }
       }
     }
   }
 
   // Referencia reproducible.
-  const stampNow = await financeMasterStamp(tx);
-  const stale = finance.scopes.some((s) => s.batchId !== null && s.derivedStamp !== null && s.derivedStamp !== stampNow);
-  const fb = await bcFallbackImpact(tx);
   const timeRef = (await tx.$queryRaw<{ z: number; w: number }[]>(Prisma.sql`
     SELECT (SELECT COALESCE(max("drvVersion"), 0) FROM "ZdTimeEntry")::int AS z, (SELECT COALESCE(max("drvVersion"), 0) FROM "WrikeTimeEntry")::int AS w`))[0];
+  const dataStamp = await readDataStamp(tx);
   const pageSize = Math.min(Math.max(input.pageSize ?? 50, 1), 500);
   const page = Math.max(input.page ?? 1, 1);
+  const stale = staleScopes.length > 0;
 
   return {
     input: { service: input.service, date, cut, mode, scopeType: input.scope.type },
     settings,
     recalculatedWithOlderSettings: settings.revisionNo !== latest.revisionNo,
     periodsDefinition: periods,
-    entities: results.slice((page - 1) * pageSize, page * pageSize),
+    entities: input.unpaged ? results : results.slice((page - 1) * pageSize, page * pageSize),
     totalEntities: results.length,
     portfolio,
     unattributed,
@@ -440,15 +500,17 @@ async function compute(tx: Tx, input: EconomicInput, date: string, mode: CutMode
       readAt,
       finance: finance.scopes.map((x) => ({ year: x.year, category: x.category, batchId: x.batchId, version: x.version, extractionDate: x.extractionDate, origin: x.origin, unassigned: x.unassigned, coverage: x.coverage })),
       time: { zendeskMaxDerivationVersion: timeRef.z, wrikeMaxDerivationVersion: timeRef.w },
+      dataStamp,
       pendingRecalc: {
         finance: stale,
         bcFallback: fb,
         reason: stale
-          ? "Los maestros BC cambiaron desde la atribución de algún lote financiero: reprocese esos lotes para recalcular su atribución."
+          ? "Los maestros BC cambiaron desde la atribución de algún lote financiero: reprocese esos lotes para recalcular su atribución. Las magnitudes afectadas se conservan pero no están validadas."
           : fb.wrike + fb.pap > 0
             ? "Hay tiempos o PAP atribuidos por el antiguo atajo de clave BC: la atribución anterior se conserva como evidencia pero no está validada; cree equivalencias Wrike/PAP a Grupo y reprocese."
             : null,
       },
+      validation: { state: stale || timeAttributionStale ? "PENDING_RECALC" : "VALIDATED", staleFinance: staleScopes.map((s) => ({ year: s.year, category: s.category })), timeAttribution: timeAttributionStale },
     },
   };
 }
@@ -587,6 +649,33 @@ async function loadUsers(tx: Tx, ents: Ent[], years: number[]) {
   return (entityId: string) => {
     const mp = maps.get(entityId);
     return { at: (y: number, m: number): number | null => mp?.get(`${y}-${m}`) ?? null };
+  };
+}
+
+/**
+ * Tramos de plan de soporte de los Grupos Cliente que solapan el rango consultado (una sola lectura). `valuesIn` devuelve los planes
+ * vigentes DURANTE un periodo: un cambio actual de plan no habilita retrospectivamente otro método. Un grupo con tramos propios usa
+ * esos; sin ellos, los de sus Clientes.
+ */
+async function loadPlanTerms(tx: Tx, ents: Ent[], from: string, to: string) {
+  const groupIds = ents.filter((e) => e.type === "group").map((e) => e.id);
+  type T = { ent: string; level: string; value: string; vf: string | null; vt: string | null };
+  const rows = groupIds.length
+    ? await tx.$queryRaw<T[]>(Prisma.sql`
+        SELECT COALESCE(t."groupId", c."groupId") AS ent, CASE WHEN t."groupId" IS NOT NULL THEN 'group' ELSE 'client' END AS level, t.value,
+          to_char(t."validFrom", 'YYYY-MM-DD') AS vf, to_char(t."validTo", 'YYYY-MM-DD') AS vt
+        FROM "ServiceTerm" t LEFT JOIN "Client" c ON c.id = t."clientId"
+        WHERE t.attribute = 'SUPPORT' AND (t."validFrom" IS NULL OR t."validFrom" <= ${to}::date) AND (t."validTo" IS NULL OR ${from}::date < t."validTo")
+          AND (t."groupId" = ANY(${groupIds}) OR c."groupId" = ANY(${groupIds}))`)
+    : [];
+  const byGroup = new Map<string, T[]>();
+  for (const r of rows) byGroup.set(r.ent, [...(byGroup.get(r.ent) ?? []), r]);
+  return {
+    valuesIn(groupId: string, pFrom: string, pTo: string): Set<string> {
+      const hit = (byGroup.get(groupId) ?? []).filter((t) => (t.vf === null || t.vf <= pTo) && (t.vt === null || pFrom < t.vt));
+      const own = hit.filter((t) => t.level === "group");
+      return new Set((own.length > 0 ? own : hit).map((t) => t.value));
+    },
   };
 }
 

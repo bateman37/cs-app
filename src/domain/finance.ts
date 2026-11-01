@@ -166,7 +166,7 @@ export const CATEGORY_OF_PROFILE: Record<string, FinanceCategory> = Object.fromE
 export const FINANCE_RULES = "fin-v1";
 /** Identificador versionado del método de imputación y de las fórmulas del motor. */
 export const ECONOMIC_METHOD = "anual/12 × días incluidos / días reales del mes";
-export const ECONOMIC_ENGINE_VERSION = "eco-v1";
+export const ECONOMIC_ENGINE_VERSION = "eco-v2";
 
 export const HEADERS = { group: "Grupo cliente", income: "Vta Potencial", diff: "Diferencia" } as const;
 
@@ -356,7 +356,9 @@ export function buildPeriods(analysisDate: string, mode: CutMode, today: string)
   const monthEnd = lastDayOfMonth(c.y, c.m);
   const provisional = c.d < monthEnd || today <= cut; // un mes parcial, o un corte que todavía no ha pasado, es provisional
   const pm = previousMonth(c.y, c.m);
-  const prevCut = shiftYearBack(cut);
+  // Modo mes completo: el comparable cierra el MISMO mes del año anterior (febrero 2025 → 29/02/2024). Modo corte: mismo día, limitado al fin de ese mes
+  // (28/02/2025 → 28/02/2024; 29/02/2024 → 28/02/2023). No son el año anterior completo.
+  const prevCut = mode === "FULL_MONTH" ? ymdToIso({ y: c.y - 1, m: c.m, d: lastDayOfMonth(c.y - 1, c.m) }) : shiftYearBack(cut);
   return {
     month: mk("Mes seleccionado", ymdToIso({ y: c.y, m: c.m, d: 1 }), cut, provisional),
     prevMonth: mk("Mes anterior completo", ymdToIso({ y: pm.y, m: pm.m, d: 1 }), ymdToIso({ y: pm.y, m: pm.m, d: lastDayOfMonth(pm.y, pm.m) })),
@@ -385,6 +387,14 @@ export type Formula = {
   unit: string;
   status: ResultStatus;
   reason: string | null;
+  /** Motivo codificado (estable, para agregar la cartera sin interpretar texto). */
+  code?: string | null;
+  /** Operandos reales que reconstruyen el valor (p. ej. objetivo y ratio de una desviación). */
+  operands?: Record<string, string | null>;
+  /** Expresión legible de la fórmula aplicada. */
+  expression?: string;
+  /** Falso si algún derivado usado está pendiente de reproceso: se conserva la magnitud, no se presenta como validada. */
+  validated?: boolean;
 };
 
 /** Euros por jornada dedicada: R / H × jornada, con H = minutos / 60. Con H = 0 no hay ratio (nunca infinito). */
@@ -408,4 +418,38 @@ export function deviationVsTarget(target: Dec, perDay: Dec): Dec {
 /** Desviación contra cartera = (ratio_cartera − ratio_grupo) / ratio_cartera. Con cartera de ratio cero no es calculable. */
 export function deviationVsPortfolio(portfolio: Dec, group: Dec): Dec | null {
   return portfolio.isZero() ? null : portfolio.sub(group).div(portfolio);
+}
+
+/**
+ * Desviación contra objetivo con sus componentes reales: (objetivo − ratio) / objetivo. Numerador = objetivo − ratio, denominador = objetivo.
+ * Con objetivo 550 y ratio 400 reconstruye 150/550.
+ */
+export function deviationTargetParts(target: Dec, perDay: Dec): { value: Dec; numerator: Dec; denominator: Dec } {
+  const numerator = target.sub(perDay);
+  return { value: numerator.div(target), numerator, denominator: target };
+}
+
+/** Desviación contra cartera con componentes reales: (cartera − grupo) / cartera. Con 500 y 400 reconstruye 100/500. Cartera cero: no calculable. */
+export function deviationPortfolioParts(portfolio: Dec, group: Dec): { value: Dec; numerator: Dec; denominator: Dec } | null {
+  if (portfolio.isZero()) return null;
+  const numerator = portfolio.sub(group);
+  return { value: numerator.div(portfolio), numerator, denominator: portfolio };
+}
+
+/** Desviación de horas = (horas reales − horas objetivo) / horas objetivo. Distinta de la desviación de €/jornada. Objetivo cero: no calculable. */
+export function deviationHoursParts(real: Dec, target: Dec): { value: Dec; numerator: Dec; denominator: Dec } | null {
+  if (target.isZero()) return null;
+  const numerator = real.sub(target);
+  return { value: numerator.div(target), numerator, denominator: target };
+}
+
+/**
+ * Tarifa anual por usuario (TAR RUN) = 12 × R_periodo / usuarios_mes_expuestos. Con R = 500 y 5 usuarios mes → 1200 €/usuario·año
+ * (anual 12000, diez usuarios, corte 15/30). En doce meses completos equivale a ingreso anual / usuarios medios anuales.
+ * Usuarios mes cero no es calculable (nunca se divide).
+ */
+export function tariffRun(revenue: Dec, userMonths: Dec): { value: Dec; numerator: Dec; denominator: Dec } | null {
+  if (userMonths.sign() <= 0) return null;
+  const numerator = revenue.mulInt(12);
+  return { value: numerator.div(userMonths), numerator, denominator: userMonths };
 }

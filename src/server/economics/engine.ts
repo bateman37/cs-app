@@ -203,8 +203,6 @@ export async function economicsInTx(tx: Tx, input: EconomicInput): Promise<Econo
   return compute(tx, input, date, mode, now);
 }
 
-type Plan = { values: string; from: string | null; to: string | null };
-
 async function compute(tx: Tx, input: EconomicInput, date: string, mode: CutMode, now: Date): Promise<EconomicResult> {
   const readAt = (await tx.$queryRaw<{ t: Date }[]>(Prisma.sql`SELECT now() AS t`))[0].t.toISOString();
   const latest = await getSettings(tx);

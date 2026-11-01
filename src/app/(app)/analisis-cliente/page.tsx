@@ -28,7 +28,7 @@ export default async function Page({ searchParams }: { searchParams: Promise<Sea
     <>
       <h1>Análisis Cliente</h1>
       {invalid.length > 0 ? <Notice kind="warn">Se han ignorado parámetros no válidos de la dirección ({invalid.join(", ")}).</Notice> : null}
-      {ref ? <FichaPage userId={user.id} isAdmin={user.role === "ADMIN"} query={query} ref={ref} back={back} sp={sp} /> : <Selector userId={user.id} query={query} back={back} sp={sp} />}
+      {ref ? <FichaPage userId={user.id} isAdmin={user.role === "ADMIN"} query={query} target={ref} back={back} sp={sp} /> : <Selector userId={user.id} query={query} back={back} sp={sp} />}
     </>
   );
 }
@@ -71,7 +71,8 @@ async function Selector({ userId, query, back, sp }: { userId: string; query: An
   );
 }
 
-async function FichaPage({ userId, isAdmin, query, ref, back, sp }: { userId: string; isAdmin: boolean; query: AnalysisQuery; ref: { type: "group" | "client" | "implementation"; id: string }; back: string; sp: SearchParams }) {
+async function FichaPage({ userId, isAdmin, query, target, back, sp }: { userId: string; isAdmin: boolean; query: AnalysisQuery; target: { type: "group" | "client" | "implementation"; id: string }; back: string; sp: SearchParams }) {
+  const ref = target;
   let f: FichaView | null = null;
   let error: string | null = null;
   try {

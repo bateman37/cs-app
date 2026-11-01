@@ -20,7 +20,20 @@ export async function Detail({ actorId, f, back, kind, period, metric, mode, pag
   const ref: EntityRef = f.context.ref;
   const close = fichaHref(q, ref, back, { pestana: q.tab === "resumen" ? undefined : q.tab });
   const hrefTo = (extra: Record<string, string | number | undefined>) => fichaHref(q, ref, back, { pestana: q.tab === "resumen" ? undefined : q.tab, ...extra });
+  const hoursMode = (HOURS_MODES as readonly string[]).includes(mode) ? (mode as HoursMode) : "incluidas";
+  // Lecturas dentro del try; el JSX se construye fuera (un error de lectura se muestra con una acción útil).
+  type Data = Awaited<ReturnType<typeof incomeDetail>> | Awaited<ReturnType<typeof hoursDetail>> | Awaited<ReturnType<typeof papDetail>> | Awaited<ReturnType<typeof ticketsDetail>> | Awaited<ReturnType<typeof bugsDetail>> | null;
+  let data: Data = null;
   try {
+    if (kind === "ingreso" && ref.type === "group") data = await incomeDetail(actorId, q, ref.id, period, page);
+    else if (kind === "horas") data = await hoursDetail(actorId, q, ref, period, hoursMode, page);
+    else if (kind === "pap") data = await papDetail(actorId, q, ref, period, page);
+    else if (kind === "tickets") data = await ticketsDetail(actorId, q, ref, period, page);
+    else if (kind === "bugs") data = await bugsDetail(actorId, q, ref, period, page);
+  } catch (e) {
+    return <Notice kind="error"><strong>No se pudo abrir el detalle.</strong> {e instanceof Error ? e.message : "Error inesperado."} <Link href={close}>Volver a la ficha</Link></Notice>;
+  }
+  {
     if (kind === "ratio") {
       const key = (metric in METRICS ? metric : "perDay") as MetricKey;
       const pk = (["month", "prevMonth", "cum", "prevYear", "prevCum"] as const).find((k) => k === period) ?? "month";
@@ -35,7 +48,7 @@ export async function Detail({ actorId, f, back, kind, period, metric, mode, pag
     const staleNotice = (stamp: string) => (q.stamp && q.stamp !== stamp ? <Notice kind="warn">Los datos han cambiado desde la lectura de la que partió (referencia <code>{q.stamp}</code> → <code>{stamp}</code>). Este detalle es una <strong>nueva lectura</strong>; <Link href={close}>actualice la ficha</Link> para ver las cifras al día. No concilia con la pantalla anterior.</Notice> : null);
     if (kind === "ingreso") {
       if (ref.type !== "group") return <Notice kind="info">El ingreso se atribuye al Grupo Cliente: <Link href={f.context.group ? fichaHref(q, { type: "group", id: f.context.group.id }, back, { det: "ingreso", periodo: period }) : close}>abra el detalle en el grupo</Link>.</Notice>;
-      const d = await incomeDetail(actorId, q, ref.id, period, page);
+      const d = data as Awaited<ReturnType<typeof incomeDetail>>;
       return (
         <section className="card" aria-label="Detalle del ingreso">
           <p><Link href={close}>← Cerrar detalle</Link></p>
@@ -57,8 +70,8 @@ export async function Detail({ actorId, f, back, kind, period, metric, mode, pag
       );
     }
     if (kind === "horas") {
-      const m = (HOURS_MODES as readonly string[]).includes(mode) ? (mode as HoursMode) : "incluidas";
-      const d = await hoursDetail(actorId, q, ref, period, m, page);
+      const m = hoursMode;
+      const d = data as Awaited<ReturnType<typeof hoursDetail>>;
       const params = Object.fromEntries(new URLSearchParams(hrefTo({ det: "horas", periodo: period, modoh: m }).split("?")[1]));
       return (
         <section className="card" aria-label="Detalle de las horas">
@@ -76,7 +89,7 @@ export async function Detail({ actorId, f, back, kind, period, metric, mode, pag
       );
     }
     if (kind === "pap") {
-      const d = await papDetail(actorId, q, ref, period, page);
+      const d = data as Awaited<ReturnType<typeof papDetail>>;
       return (
         <section className="card" aria-label="Detalle PAP">
           <p><Link href={close}>← Cerrar detalle</Link></p>
@@ -90,7 +103,7 @@ export async function Detail({ actorId, f, back, kind, period, metric, mode, pag
       );
     }
     if (kind === "tickets") {
-      const d = await ticketsDetail(actorId, q, ref, period, page);
+      const d = data as Awaited<ReturnType<typeof ticketsDetail>>;
       return (
         <section className="card" aria-label="Detalle de tickets">
           <p><Link href={close}>← Cerrar detalle</Link></p>
@@ -107,7 +120,7 @@ export async function Detail({ actorId, f, back, kind, period, metric, mode, pag
         </section>
       );
     }
-    const d = await bugsDetail(actorId, q, ref, period, page);
+    const d = data as Awaited<ReturnType<typeof bugsDetail>>;
     return (
       <section className="card" aria-label="Detalle de bugs vinculados">
         <p><Link href={close}>← Cerrar detalle</Link></p>
@@ -123,8 +136,6 @@ export async function Detail({ actorId, f, back, kind, period, metric, mode, pag
         )}
       </section>
     );
-  } catch (e) {
-    return <Notice kind="error"><strong>No se pudo abrir el detalle.</strong> {e instanceof Error ? e.message : "Error inesperado."} <Link href={close}>Volver a la ficha</Link></Notice>;
   }
 }
 export { qs };

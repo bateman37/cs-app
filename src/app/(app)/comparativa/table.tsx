@@ -1,8 +1,8 @@
 import Link from "next/link";
-import { BLOCK_PERIOD, PERIOD_BLOCKS, cohortParams, queryToParams, type AnalysisQuery, type PeriodBlock } from "@/domain/analytics-query";
+import { BLOCK_PERIOD, PERIOD_BLOCKS, cohortParams, queryToParams, type PeriodBlock } from "@/domain/analytics-query";
 import type { PeriodKey } from "@/server/economics/engine";
 import type { MetaCell, PortfolioRow, PortfolioView } from "@/server/analytics/portfolio";
-import { Missing, Money, Pct, PeriodBadges, Ratio, fdate, hrs, label } from "@/components/analytics/ui";
+import { Money, Pct, PeriodBadges, Ratio, fdate, label } from "@/components/analytics/ui";
 import { formatDecimalEs } from "@/lib/money";
 import { qs } from "@/lib/format";
 
@@ -49,8 +49,8 @@ export function ComparativeTable({ view, base }: { view: PortfolioView; base: st
   const sortHref = (key: string) => `${base}${qs({ ...queryToParams({ ...q, page: 1, sort: key, dir: q.sort === key && q.dir === "asc" ? "desc" : "asc" }) })}`;
   const arrow = (key: string) => (q.sort === key ? (q.dir === "asc" ? " ▲" : " ▼") : "");
   const ariaSort = (key: string) => (q.sort === key ? (q.dir === "asc" ? "ascending" : "descending") : "none");
-  const SortTh = ({ k, children, cls }: { k: string; children: React.ReactNode; cls?: string }) => (
-    <th scope="col" className={cls} aria-sort={ariaSort(k)}><Link href={sortHref(k)} title="Ordenar (los vacíos van siempre al final)">{children}{arrow(k)}</Link></th>
+  const sortTh = (k: string, children: React.ReactNode, cls?: string) => (
+    <th key={k} scope="col" className={cls} aria-sort={ariaSort(k)}><Link href={sortHref(k)} title="Ordenar (los vacíos van siempre al final)">{children}{arrow(k)}</Link></th>
   );
   const toggle = (b: PeriodBlock) => {
     const next = q.blocks.includes(b) ? q.blocks.filter((x) => x !== b) : [...q.blocks, b];
@@ -80,10 +80,10 @@ export function ComparativeTable({ view, base }: { view: PortfolioView; base: st
               })}
             </tr>
             <tr className="cols">
-              <SortTh k="name" cls="sticky-col">Grupo Cliente (BC)</SortTh>
-              <SortTh k="support">Plan de soporte</SortTh>
+              {sortTh("name", "Grupo Cliente (BC)", "sticky-col")}
+              {sortTh("support", "Plan de soporte")}
               <th scope="col">CLOUD / OP</th><th scope="col">Producto(s)</th><th scope="col">Complejidad</th><th scope="col">Estado y cobertura</th>
-              {blocks.flatMap((b) => COLS[BLOCK_PERIOD[b]].map((c) => <SortTh key={`${b}-${c.key}`} k={`${BLOCK_PERIOD[b]}.${c.sort}`} cls="num">{c.head}</SortTh>))}
+              {blocks.flatMap((b) => COLS[BLOCK_PERIOD[b]].map((c) => sortTh(`${BLOCK_PERIOD[b]}.${c.sort}`, c.head, "num")))}
             </tr>
           </thead>
           <tbody>
@@ -136,4 +136,3 @@ export function ComparativeTable({ view, base }: { view: PortfolioView; base: st
   );
 }
 
-export { Missing, hrs };

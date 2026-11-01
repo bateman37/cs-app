@@ -109,7 +109,7 @@ details.edit[open] { background: #fafaff; border: 1px solid var(--border); borde
 .analytics-wide { max-width: none; }
 .filters-card { display: grid; gap: 0.75rem; }
 .filters-grid { display: grid; grid-template-columns: repeat(auto-fit, minmax(10.5rem, 1fr)); gap: 0.6rem 0.9rem; align-items: end; }
-.filters-grid .field { min-width: 0; margin: 0; }
+.filters-grid .field { min-width: 0; margin: 0; align-self: start; }
 .filters-grid select[multiple] { min-height: 5.2rem; }
 .quick { display: flex; flex-wrap: wrap; gap: 0.5rem; align-items: center; }
 .cards { display: grid; grid-template-columns: repeat(auto-fit, minmax(13rem, 1fr)); gap: 0.75rem; margin-bottom: 1rem; }

@@ -103,9 +103,16 @@ export async function loadDedication(tx: Tx, ref: EntityRef, periods: PeriodRang
       const label = profileLabel({ pmo: r.pmo, team: r.team, level: r.level, role: r.role });
       const cur = prof.get(label) ?? { m: ZERO, i: ZERO, o: ZERO, u: ZERO };
       cur.m = cur.m.add(m);
-      if (r.cls === "INCIDENTE_VINCLE") (cur.i = cur.i.add(m), (cls.i = cls.i.add(m)));
-      else if (r.cls === "OTRO_SOPORTE") (cur.o = cur.o.add(m), (cls.o = cls.o.add(m)));
-      else (cur.u = cur.u.add(m), (cls.u = cls.u.add(m)));
+      if (r.cls === "INCIDENTE_VINCLE") {
+        cur.i = cur.i.add(m);
+        cls.i = cls.i.add(m);
+      } else if (r.cls === "OTRO_SOPORTE") {
+        cur.o = cur.o.add(m);
+        cls.o = cls.o.add(m);
+      } else {
+        cur.u = cur.u.add(m);
+        cls.u = cls.u.add(m);
+      }
       prof.set(label, cur);
       const ck = `${r.cause ?? "(sin causa informada)"}|${r.cls}`;
       const cc = caus.get(ck) ?? { cls: r.cls, m: ZERO };

@@ -190,7 +190,7 @@ export async function runAll(casos: ((ctx: Ctx) => Promise<void>)[]): Promise<nu
       try {
         await caso(ctx);
       } catch (e) {
-        ctx.check(`El caso ${caso.name || "(anónimo)"} terminó sin error inesperado`, false, e instanceof Error ? e.message.split("\n")[0] : "error");
+        ctx.check(`El caso ${caso.name || "(anónimo)"} terminó sin error inesperado`, false, e instanceof Error ? (e.message.split("\n").map((l) => l.trim()).filter(Boolean).slice(-2).join(" · ") || e.name) : "error");
       }
     }
   } finally {

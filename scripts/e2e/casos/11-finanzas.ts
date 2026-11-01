@@ -160,7 +160,7 @@ export async function finanzas(ctx: Ctx): Promise<void> {
     await page.getByRole("button", { name: "Calcular" }).click();
     await page.waitForLoadState("networkidle");
     const eco = await body(page);
-    ctx.check("Comprobación económica: anual 12.000 €, corte 15 de un mes de 30 días → 500,00 € del mes (motor de producción)", /Mes seleccionado[\s\S]{0,200}500,00 €/.test(eco) && /eco-v1/.test(eco));
+    ctx.check("Comprobación económica: anual 12.000 €, corte 15 de un mes de 30 días → 500,00 € del mes (motor de producción)", /Mes seleccionado[\s\S]{0,200}500,00 €/.test(eco) && /eco-v2/.test(eco));
     ctx.check("Comprobación económica: muestra periodos, referencia de configuración y lotes vigentes con enlaces", /CUM actual/.test(eco) && /Año anterior completo/.test(eco) && /CUM anterior comparable/.test(eco) && /revisión 1: objetivo 550,00 €\/jornada/.test(eco) && (await page.locator('a[href*="/administracion/cargas/"]').count()) > 0);
     ctx.check("Comprobación económica: sin horas sin servicio, un ingreso conocido y cero horas no inventa un ratio (no calculable, nunca infinito)", /cero horas|Sin horas/.test(eco));
     await page.getByLabel("Modo").selectOption("FULL_MONTH");

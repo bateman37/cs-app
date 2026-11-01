@@ -11,7 +11,7 @@ Todas las entregas parten de las lecturas comunes (AGENTS, CLAUDE, [índice](../
 | CSAPP-03 | Tickets canónicos con tags/creación/type/status y tiempos Zendesk | Revisiones/deduplicación, tickets sin horas, estado observado y corte PMO; Dennis prueba ambos XLSX |
 | CSAPP-04 | Wrike, PAP y cargas separadas bugs VFS/VSW | CSV sin pérdida, horas correctas, PAP multicausa único, vínculos explícitos, reimportación sin duplicar ni cerrar por ausencia; Dennis carga |
 | CSAPP-05 | Tres importaciones financieras y motor económico (implementado; PR sin fusionar) | Sustitución atómica año/categoría, prorrateo y CUM; históricos permitidos; Dennis carga 2025/2026 y repite |
-| CSAPP-06 | Comparativa y Análisis Cliente | Tabla/ficha/curvas coherentes, mes anterior y año anterior completo/comparable, detalle integrado |
+| CSAPP-06 | Comparativa y Análisis Cliente | Tabla/ficha/curvas coherentes, mes anterior y año anterior completo/comparable, detalle integrado. **Ejecutada** (PR sin fusionar; ver [estado](estado.md)) |
 | CSAPP-07 | Pulse Rent y configuración de Administración | Catálogo, media/mediana/percentiles y bandas, pesos exactos 100, umbrales/referencias versionados |
 | CSAPP-08 | Calidad, Client Health, diagnóstico, afectación estándar y backlog/antigüedad | Seis indicadores explicables en ambos ámbitos; stocks/flujo separados, sin historia inventada; configuración visible |
 | CSAPP-09 | Conciliación, fiabilidad, rendimiento, exportaciones y recuperación | Reimportación/reversión, volumen medido, permisos y cifras conciliadas con cargas reales de Dennis |

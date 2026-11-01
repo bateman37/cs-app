@@ -1,6 +1,6 @@
 # Estado de CS App
 
-Actualizado el 30 de octubre de 2026 tras ejecutar [CSAPP-DOC-00-v1](../../prompts/CSAPP-DOC-00-v1.md), [CSAPP-01-v1](../../prompts/CSAPP-01-v1.md), [CSAPP-02-v1](../../prompts/CSAPP-02-v1.md), [CSAPP-03-v1](../../prompts/CSAPP-03-v1.md) [CSAPP-04-v1](../../prompts/CSAPP-04-v1.md) y [CSAPP-05-v1](../../prompts/CSAPP-05-v1.md).
+Actualizado el 1 de noviembre de 2026 tras ejecutar [CSAPP-DOC-00-v1](../../prompts/CSAPP-DOC-00-v1.md), [CSAPP-01-v1](../../prompts/CSAPP-01-v1.md), [CSAPP-02-v1](../../prompts/CSAPP-02-v1.md), [CSAPP-03-v1](../../prompts/CSAPP-03-v1.md) [CSAPP-04-v1](../../prompts/CSAPP-04-v1.md) [CSAPP-05-v1](../../prompts/CSAPP-05-v1.md) y [CSAPP-06-v1](../../prompts/CSAPP-06-v1.md).
 
 ## Resultado de CSAPP-DOC-00
 
@@ -77,7 +77,7 @@ Documentación: [decisiones técnicas](../arquitectura/wrike-pap-bugs-csapp04.md
 | Dato | Valor |
 | --- | --- |
 | Rama / base | claude/new-session-omvsmd (designada; el prompt proponía feature/CSAPP-05-finanzas-motor-economico). Base: main 24d365813ab2ba2703fa911f4e0dacd31fb781fb (merge de la PR 5, **fusionada según Git**: integración, no aceptación manual de Dennis). Push normal, sin force |
-| PR | https://github.com/bateman37/cs-app/pull/6 (base main, sin fusionar) |
+| PR | https://github.com/bateman37/cs-app/pull/6 (**fusionada** en main, merge f71b5b7283ab1081802cc6256899a02f70460a74, según Git; corregido al preparar CSAPP-06: integración, no aceptación) |
 | Migración | `20261031090000_finanzas_motor_economico` |
 | Implementado | Tres perfiles financieros (nueve operativos en total) con sustitución atómica por año/categoría, revisión del impacto y de la versión del conjunto vigente, decisiones, conciliación, reversión y reproceso; motor económico común (periodos, prorrateo, CUM, usuarios, ratios, servicio, cobertura, lectura consistente); comprobación económica, configuración económica y asignaciones de servicio en Administración; equivalencias Wrike/PAP a Grupo (el atajo BC ya no atribuye); vía histórica < 2025 (simulación por defecto) |
 | Probado | Linux (Node 22.22, PostgreSQL 16): `npm test` 23 archivos/338 pruebas, trabajador real, volumen y recorrido de navegador 193/193. Ver [validación](../validacion/csapp-05.md) |
@@ -86,6 +86,21 @@ Documentación: [decisiones técnicas](../arquitectura/wrike-pap-bugs-csapp04.md
 | Pendiente de Dennis | Revisar la PR, ejecutar la [guía de CSAPP-05](guia-powershell-csapp05.md), cargar 2025/2026 por categoría, repetir, sustituir, revertir y comprobar 12000 → 500 a 15/30; validar las propuestas pendientes (ver [tabla](../arquitectura/finanzas-motor-csapp05.md#10-reglas-propuestas-pendientes-o-heredadas-estado-explícito)) |
 
 Documentación: [finanzas y motor económico](../arquitectura/finanzas-motor-csapp05.md), [facturación](../importaciones/facturacion.md), [catálogo CAL 17-30](../calculos/catalogo.md).
+
+## Resultado de CSAPP-06 (Comparativa y Análisis Cliente)
+
+| Dato | Valor |
+| --- | --- |
+| Rama / base | claude/new-session-omvsmd (designada; el prompt proponía feature/CSAPP-06-comparativa-analisis-cliente), reiniciada con `checkout -B` desde main f71b5b7 (PR 6 fusionada); push normal, sin force |
+| PR | Propia, base main, **sin fusionar** (número en el [índice de prompts](../../prompts/README.md)) |
+| Migración | **Ninguna** |
+| Implementado | `/comparativa` y `/analisis-cliente` sobre el motor `eco-v2` corregido; contrato de consulta compartido; ficha con cinco secciones, gráficos y detalle que concilia; CSV de cartera y de la ficha; lectura coherente con sello de datos |
+| Probado | Linux: `npm test` 392 pruebas, trabajador real 300 000 filas (260 s), recorrido de navegador 238 comprobaciones, volumen 1 500 grupos/250 000 tiempos. Ver [validación](../validacion/csapp-06.md) |
+| No probado | Windows/PowerShell; aceptación de Dennis; archivos reales |
+| Precarga | No realizada |
+| Pendiente de Dennis | Revisar la PR, ejecutar la [guía](guia-powershell-csapp06.md), cargar sus fuentes y recorrer las pantallas; aceptar o ajustar ECO 08, ZDT 11-13, ZTM 06-08, lista de origen PAP y estados de bugs; decidir la limpieza de dos cuentas sintéticas en la base `cs_app` del contenedor |
+
+Documentación: [analítica](../arquitectura/analitica-csapp06.md), [Comparativa](../producto/comparativa.md), [Análisis Cliente](../producto/analisis-cliente.md), [catálogo CAL 31-36](../calculos/catalogo.md).
 
 ## Estado por trabajo
 
@@ -99,6 +114,7 @@ Niveles: diseñado, documentado, implementado, probado, aceptado. Un criterio de
 | CSAPP-03 | Sí | Sí | Sí (PR 4 fusionada) | Sí en Linux con XLSX sintéticos; Windows sin probar | No |
 | CSAPP-04 | Sí | Sí | Sí (PR 5 fusionada según Git) | Sí en Linux con datos sintéticos; Windows sin probar | No |
 | CSAPP-05 | Sí | Sí | Sí (PR 6 sin fusionar) | Sí en Linux con datos sintéticos; Windows sin probar | No |
+| CSAPP-06 | Sí | Sí | Sí (PR sin fusionar) | Sí en Linux con datos sintéticos; Windows sin probar | No |
 | CSAPP-06 a CSAPP-10 | Sí, en [roadmap](roadmap.md) y contratos | Sí | No | No | No |
 | Cargas reales | — | Política en [precarga y pruebas](precarga-y-pruebas.md) | No | No | No; las probará Dennis |
 

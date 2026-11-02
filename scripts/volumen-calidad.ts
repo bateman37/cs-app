@@ -164,6 +164,23 @@ import { performance } from "node:perf_hooks";
     if (!(e instanceof Error) || !/Cannot find module|Failed to load url/i.test(e.message)) throw e;
     console.log("(conciliación/exportación no existen en esta versión)");
   }
+  // CSAPP-09 §7: planes con EXPLAIN (ANALYZE, BUFFERS) SOLO en esta base de test (la guarda ya lo garantizó). Se resumen nodos de lectura y tiempos.
+  try {
+    const { readDataStamp } = await import("../src/server/analytics/stamp");
+    await run("Sello de datos (lectura sobre la instantánea)", () => prisma.$transaction((tx) => readDataStamp(tx), { isolationLevel: "RepeatableRead" }), json);
+    const { DATASETS } = await import("../src/server/exports/datasets");
+    const { resolveParams } = await import("../src/server/exports/service");
+    const params = (await prisma.$transaction((tx) => resolveParams(tx, { dataset: "tickets", scope: "group", sel: "", desde: "2026-01-01", hasta: "2026-10-31", servicio: "TOTAL" }), { isolationLevel: "RepeatableRead" })).params;
+    for (const [dsKey, fileKey] of [["tickets", "tickets"], ["horas", "horas"], ["pap", "pap"], ["bugs", "problemas_bugs"]] as const) {
+      const f = DATASETS.find((d) => d.key === dsKey)!.files.find((x) => x.fileKey === fileKey)!;
+      const plan = await prisma.$queryRaw<{ "QUERY PLAN": string }[]>(Prisma.sql`EXPLAIN (ANALYZE, BUFFERS) ${f.sql(params)}`);
+      const lines = plan.map((r) => r["QUERY PLAN"]);
+      const scans = [...new Set(lines.map((l) => /(Seq Scan on \S+|Index (?:Only )?Scan using \S+ on \S+|Bitmap Heap Scan on \S+|Parallel Seq Scan on \S+)/.exec(l)?.[1]).filter(Boolean))];
+      console.log(`EXPLAIN ${fileKey}: ${lines.find((l) => /Execution Time/.test(l))?.trim()}; ${lines.find((l) => /Planning Time/.test(l))?.trim()}; nodos de lectura: ${scans.join(" | ")}; ${lines.find((l) => /^\s*Buffers:/.test(l))?.trim() ?? ""}`);
+    }
+  } catch (e) {
+    console.log(`(sello/EXPLAIN no disponibles: ${e instanceof Error ? e.message.split("\n")[0] : "error"})`);
+  }
   console.log(`\n| Medida | s: mediana (rango; 1.ª fría) | sentencias | KB | RSS Δ / total MB |\n| --- | --- | --- | --- | --- |\n${rows.join("\n")}`);
   await prisma.$disconnect();
 })();

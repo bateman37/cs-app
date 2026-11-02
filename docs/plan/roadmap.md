@@ -13,11 +13,11 @@ Todas las entregas parten de las lecturas comunes (AGENTS, CLAUDE, [índice](../
 | CSAPP-05 | Tres importaciones financieras y motor económico (implementado; PR 6 fusionada según Git) | Sustitución atómica año/categoría, prorrateo y CUM; históricos permitidos; Dennis carga 2025/2026 y repite |
 | CSAPP-06 | Comparativa y Análisis Cliente | Tabla/ficha/curvas coherentes, mes anterior y año anterior completo/comparable, detalle integrado. **Ejecutada** (PR sin fusionar; ver [estado](estado.md)) |
 | CSAPP-07 | Pulse Rent y configuración de Administración | Catálogo, media/mediana/percentiles y bandas, pesos exactos 100, umbrales/referencias versionados. **Ejecutada** (PR apilada sobre la de CSAPP-06, sin fusionar; ver [estado](estado.md)) |
-| CSAPP-08 | Calidad, Client Health, diagnóstico, afectación estándar y backlog/antigüedad | Seis indicadores explicables en ambos ámbitos; stocks/flujo separados, sin historia inventada; configuración visible |
+| CSAPP-08 | Calidad, Client Health, diagnóstico, afectación estándar y backlog/antigüedad | Seis indicadores explicables en ambos ámbitos; stocks/flujo separados, sin historia inventada; configuración visible. **Ejecutada** (PR apilada sobre la cabeza de la PR 7, sin fusionar; ver [estado](estado.md)) |
 | CSAPP-09 | Conciliación, fiabilidad, rendimiento, exportaciones y recuperación | Reimportación/reversión, volumen medido, permisos y cifras conciliadas con cargas reales de Dennis |
 | CSAPP-10 | Aceptación, guías y preparación/ejecución del despliegue autorizado | Instalación y copia recuperable, guía Windows/IT, aceptación registrada y despliegue solo en entorno autorizado |
 
-Estado de las diez entregas: ver [estado](estado.md). CSAPP-01 a CSAPP-05 implementadas y fusionadas según Git (integración, no aceptación de Dennis); CSAPP-06 implementada en la PR 7 sin fusionar; CSAPP-07 implementada en una PR apilada sobre la anterior, sin fusionar; CSAPP-08 a CSAPP-10 no han empezado.
+Estado de las diez entregas: ver [estado](estado.md). CSAPP-01 a CSAPP-05 implementadas y fusionadas según Git (integración, no aceptación de Dennis); CSAPP-06 implementada en la PR 7 sin fusionar; CSAPP-07 implementada (PR 8, integrada en la rama de la PR 7, no en `main`); CSAPP-08 implementada en una PR apilada contra la rama de la PR 7, sin fusionar; CSAPP-09 y CSAPP-10 no han empezado.
 
 ## CSAPP-DOC-00 Arranque documental, fuera del roadmap
 

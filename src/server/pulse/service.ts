@@ -17,7 +17,9 @@ import { DomainError } from "@/server/errors";
 import { filterGroups, loadGroupMeta, type GroupMeta } from "@/server/analytics/portfolio";
 import { readSnapshot, snapshotPoint, type Tx } from "@/server/analytics/snapshot";
 import { getActive, getManifest } from "./config";
-import { CLS_VALUE, classifiedActivitySql, configuredProfiles, papPredicate, papSetSql, selectorsOf, sourceCoverageSql, ticketPredicate, ticketSetSql } from "./sql";
+import { CLS_VALUE, classifiedActivitySql, configuredProfiles, papPredicate, papSetSql, selectorsOf, ticketPredicate, ticketSetSql } from "./sql";
+import { coverageOf } from "@/domain/quality-coverage";
+import { loadDeclarations } from "@/server/quality/coverage";
 
 /**
  * Servicio analítico de Pulse Rent (CSAPP-07 §4-§7, §11). Una sola instantánea REPEATABLE READ de 06 lee datos y configuración; las agregaciones
@@ -218,7 +220,7 @@ function settle(c: Cell, raw: Dec | null, nv: NormalizedValue, flags: { gap?: st
   if (flags.gap && flags.gap.length > 0) {
     // Una fuente relevante ausente impide publicar un cero (o cualquier valor) como evidencia.
     c.state = raw.isZero() ? "NO_DATA" : "PARTIAL";
-    c.reason = `Sin datos de ${flags.gap.join(" y ")} en el periodo: ${raw.isZero() ? "el cero no es evidencia" : "valor conocido incompleto"}.`;
+    c.reason = `Sin cobertura declarada de ${flags.gap.join(" y ")} en el periodo (Administración › Cargas): ${raw.isZero() ? "el cero no es evidencia" : "valor conocido incompleto"}.`;
     c.value = raw.isZero() ? null : nv.value?.toString() ?? null;
     return c;
   }
@@ -357,7 +359,7 @@ function computeCell(m: PulseMetric, e: EntityResult, ctx: Ctx, wanted: Normaliz
       c.numerator = String(t.n2n3);
       c.denominator = String(t.n2);
       if (!ops.coverage.tickets) {
-        c.reason = "Sin tickets Zendesk del periodo: no se publica un porcentaje.";
+        c.reason = "Sin cobertura declarada de tickets Zendesk en el periodo: no se publica un porcentaje.";
         return c;
       }
       if (t.n2 === 0) {
@@ -381,7 +383,7 @@ function computeCell(m: PulseMetric, e: EntityResult, ctx: Ctx, wanted: Normaliz
       c.numerator = String(t.n3);
       c.denominator = String(t.total);
       if (!ops.coverage.tickets) {
-        c.reason = "Sin tickets Zendesk del periodo.";
+        c.reason = "Sin cobertura declarada de tickets Zendesk en el periodo.";
         return c;
       }
       if (t.total === 0) {
@@ -444,7 +446,10 @@ function hoursValue(raw: Dec, variant: Normalization, ex: { userMonths: Dec | nu
 // ---------------------------------------------------------------- Lecturas por conjuntos
 
 async function loadOps(tx: Tx, q: PulseQuery, cfg: PulseConfig, ids: string[], from: string, to: string, metricIds: string[]): Promise<Ops> {
-  const cov = (await tx.$queryRaw<Ops["coverage"][]>(sourceCoverageSql(from, to)))[0];
+  // Cobertura compartida con Calidad (CSAPP-08 §6): una declaración vigente de un lote completado, no la mera presencia de filas fechadas.
+  const decls = await loadDeclarations(tx);
+  const complete = (s: "zd_time" | "wrike_time" | "tickets" | "pap") => coverageOf(s, decls, from, to, "FLOW").state === "COMPLETE";
+  const cov: Ops["coverage"] = { zd_time: complete("zd_time"), wrike_time: complete("wrike_time"), tickets: complete("tickets"), pap: complete("pap") };
   const ops: Ops = { coverage: cov, minutes: new Map(), tickets: new Map(), pap: new Map() };
   if (ids.length === 0) return ops;
   const metrics = metricIds.map((m) => METRIC_BY_ID.get(m) as PulseMetric);

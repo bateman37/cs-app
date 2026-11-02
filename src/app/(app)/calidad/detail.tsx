@@ -15,7 +15,7 @@ import { ColorBadge, KpiCell, STATUS_TEXT, num } from "./ui";
 
 const pct = (v: string | null | undefined) => (v === null || v === undefined ? "—" : `${num(v, 2)} %`);
 
-export function EntityDetail({ r, q, cfg, basePath, evolution, notes, isAdmin }: { r: QualityRow; q: QualityQuery; cfg: QualityConfig; basePath: string; evolution: Evolution | null; notes: QualityNoteView[]; isAdmin: boolean }) {
+export function EntityDetail({ r, q, cfg, basePath, evolution, notes, isAdmin, milestones }: { r: QualityRow; q: QualityQuery; cfg: QualityConfig; basePath: string; evolution: Evolution | null; notes: QualityNoteView[]; isAdmin: boolean; milestones: { date: string; type: string; note: string | null; where: string }[] }) {
   const w = r.evaluation.weights;
   const g = r.evaluation.global;
   const href = (extra: Partial<QualityQuery>) => `${basePath}${qs(qualityToParams({ ...q, ...extra }))}`;
@@ -84,6 +84,7 @@ export function EntityDetail({ r, q, cfg, basePath, evolution, notes, isAdmin }:
 
       <h3>Evolución mensual</h3>
       {evolution ? <Evo e={evolution} /> : <p className="muted">Sin datos de evolución.</p>}
+      {milestones.length ? <p className="hint">Hitos del año (anotados; no se excluyen eventos automáticamente): {milestones.map((m) => `${fdate(m.date)} · ${m.type}${m.note ? ` (${m.note})` : ""} · ${m.where}`).join(" — ")}.</p> : null}
 
       <h3>Notas de revisión de calidad</h3>
       {notes.length === 0 ? <p className="muted">Sin notas.</p> : <ul>{notes.map((n) => <li key={n.id}><strong>{DIAGNOSIS_LABEL[n.topic as keyof typeof DIAGNOSIS_LABEL] ?? INDICATOR_NAME[n.topic as keyof typeof INDICATOR_NAME] ?? n.topic}</strong> · {n.month}/{n.year}{n.evidence ? ` · evidencia: ${n.evidence}` : ""} — {n.text} <small>({n.author}, {fdate(n.createdAt.slice(0, 10))})</small></li>)}</ul>}

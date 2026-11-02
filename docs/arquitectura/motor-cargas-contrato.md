@@ -105,3 +105,7 @@ Opción añadida en CSAPP-04 sin cambiar las garantías anteriores: `ParsedRow.d
 ## Ampliación acotada en CSAPP-05
 
 Se añaden, sin cambiar el comportamiento de los seis perfiles anteriores ni del sintético (regresión en `cargas*.test.ts`, `zendesk-*.test.ts` y `csapp04-*.test.ts`): `ParsedRow.control` (fila de control excluida sin aviso: Total, pie), `ImportProfile.confirmGate` (motivos que impiden confirmar; se aplican al confirmar y en la ficha), `ImportProfile.checkActivation` (dentro de la transacción de activación y con el ámbito bloqueado; un motivo devuelve el lote a «listo para revisar» sin aplicar nada, con la versión incrementada y la confirmación retirada), el metadato de formulario `checkbox` y `Cell.f` en el lector XLSX (celda con fórmula; una fórmula sin valor se conserva y no se evalúa). Los perfiles financieros las usan: ver [finanzas y motor económico](finanzas-motor-csapp05.md).
+
+## CSAPP-08: cobertura declarada de un lote
+
+Administración › Cargas añade a la ficha de un lote **completado** una declaración de cobertura tipada y versionada (población, estados contenidos en tickets, alcance temporal, extracción revisada, motivo y autor; auditada). No cambia filas, la extracción original ni las observaciones; no exige columnas nuevas a los perfiles de origen y las cargas anteriores permanecen «desconocidas». Los lotes revertidos, cancelados o fallidos no prueban cobertura. Contrato en [calidad-csapp08](calidad-csapp08.md).

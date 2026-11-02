@@ -62,7 +62,7 @@ describe("migración CSAPP-02 → CSAPP-03 sobre datos existentes", () => {
           VALUES ('f','b1','1','2024-01-01',-1,0,-60,'f',now())`),
       ).rejects.toThrow(/duration_non_negative/);
       const applied = await db.query(`SELECT migration_name FROM _prisma_migrations ORDER BY migration_name`);
-      expect(applied.rows.map((r) => r.migration_name)).toEqual([
+      expect(applied.rows.map((r) => r.migration_name).slice(0, 6)).toEqual([ // las posteriores las cubre su propia prueba
         "20261029200318_base_acceso_y_maestros",
         "20261029220244_personal_usuarios_cargas",
         "20261030080000_zendesk_tickets_y_tiempos",

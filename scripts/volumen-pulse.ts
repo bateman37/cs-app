@@ -44,6 +44,7 @@ import { performance } from "node:perf_hooks";
   const cfg = { ...defaultPulseConfig(), profiles: { CS_N1: [{ teamId: cs.id, levelId: n1.id, pmo: null }], CS_N2: [{ teamId: cs.id, levelId: n2.id, pmo: null }] } };
   const d = await saveDraft(admin.id, "PULSE", cfg, { expectedVersion: null });
   await activateDraft(admin.id, "PULSE", { expectedRevisionNo: 1, expectedDraftVersion: d.version, reason: "volumen" });
+  await (await import("../tests/calidad-helpers")).declareAllSources(admin.id, `${Number(today.slice(0, 4)) - 1}-01-01`, today); // cobertura declarada (CSAPP-08)
   console.log(`Siembra: ${groups} grupos, ${times} tiempos, ${groups * 3} PAP en ${((performance.now() - t0) / 1000).toFixed(1)} s`);
   await prisma.$executeRawUnsafe("ANALYZE");
   const { parsePulseQuery } = await import("../src/domain/pulse-query");

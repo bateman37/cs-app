@@ -35,3 +35,19 @@ BACK 11. Al actualizar un ticket de open a solved desaparece del stock activo de
 ## Diagnóstico y acción
 
 BACK 12. El detalle permite ver ID, Cliente/Grupo Cliente, type, status, creación, días, origen, escalados y vínculos conocidos a producto. Mantener Sistemas del Cliente y Uso Indebido: un rojo orienta a actuar y la causa explica si corresponde producto, implantación, infraestructura, formación o sistemas del cliente. No confundir workaround con solución definitiva ni crear un gestor de acciones de QA fuera de alcance.
+
+## CSAPP-08: selección de fotografía, cobertura y límites históricos (implementado)
+
+Arquitectura: [calidad-csapp08](../arquitectura/calidad-csapp08.md).
+
+BACK 13. **Escala.** El stock se expresa en **envejecidos por 100 usuarios al corte** (100 × envejecidos / usuarios al corte, BACK 06). La escala por usuario de CSAPP-07 (envejecidos/usuarios) solo existe para adaptar reglas v1, convirtiendo los límites ×100 de forma explícita y registrada. Con 2 envejecidos y 10 usuarios el resultado es 20 por 100, aunque la exposición mensual sea otra.
+
+BACK 14. **Consulta específica.** El stock no reutiliza el filtro de creación dentro del mes: usa las observaciones de UNA fotografía (`ZdTicketObservation` y la revisión que ese lote observó, no `currentRevisionId`). Activos `new/open/pending/hold` por ticket distinto; solved/closed separados; question/task fuera del envejecimiento; estado desconocido limita la cobertura. Edad = días naturales entre creación y la observación usada; una creación posterior es error. Envejecido = edad **>** umbral del tipo. Por tipo: cantidad, bandas, mediana, P90, máxima, envejecidos, % envejecido y tasas por 100 usuarios; sin activos confirmados: conteo 0 y edades «no aplicable».
+
+BACK 15. **Fotografía compatible.** Lote de tickets completado y no revertido, con extracción conocida (declarada al cargar o revisada por el Administrador), población «todos los clientes» y estados «todos» o «solo sin resolver». Una unión de tickets abiertos vistos en fechas distintas no es una fotografía completa; una ausencia en otra selección no cierra ni borra. Sin extracción declarada la recepción es una observación de importación con **frescura desconocida**: ni `MAX(creación)`, ni el nombre/fecha del archivo, ni la fecha del servidor la sustituyen, y no sustenta fotografía.
+
+BACK 16. **Política para un corte R.** Inicial y conservadora: la fotografía del propio día. Si solo existe una anterior D, su stock se muestra aparte como «observado en D» (con la edad y los usuarios de D) y el stock exacto de R es no disponible. El Administrador puede elegir expresamente «última anterior dentro de X días» (sin máximo por defecto): se usa como provisional y siempre rotulada «observado en D». Nunca una fotografía futura.
+
+BACK 17. **Cobertura declarada.** En Administración › Cargas, el Administrador declara (versión, motivo y auditoría) población, estados contenidos, alcance temporal y, en tickets, la extracción revisada de un lote completado. No cambia filas, extracción original, observaciones ni estados históricos; las cargas antiguas sin declaración permanecen «desconocidas» sin aprobación automática; no se exigen columnas nuevas al XLSX de ocho campos. Una fuente completa sin altas en el periodo sí sustenta un cero de flujo; una fila de otro cliente o un lote revertido no.
+
+BACK 18. Open → solved: sale del nuevo stock sin ser un ticket nuevo ni probar la fecha de resolución; un export antiguo no pisa el reciente; revertir restaura las observaciones aplicables; sin fotografía la serie tiene hueco (no relleno hacia atrás ni interpolación).

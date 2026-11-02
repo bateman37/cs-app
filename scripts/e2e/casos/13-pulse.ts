@@ -35,6 +35,8 @@ export async function pulse(ctx: Ctx): Promise<void> {
   await guardedTruncate(ctx.prisma, resolveTestTarget(), MASTERS);
   const { seedAnalitica } = await import("../../../tests/generators/analitica");
   const w = await seedAnalitica(admin.id, today);
+  // Cobertura declarada de las cuatro fuentes (contrato compartido con Calidad, CSAPP-08): sin ella un cero de Pulse no está sustentado.
+  await (await import("../../../tests/calidad-helpers")).declareAllSources(admin.id, `${Number(today.slice(0, 4)) - 1}-01-01`, today);
   const shots = process.env.E2E_CAPTURAS;
   if (shots) await mkdir(shots, { recursive: true });
   const shot = async (page: Page, name: string) => {

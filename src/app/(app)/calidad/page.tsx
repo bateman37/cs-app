@@ -79,6 +79,12 @@ async function Cartera({ v, q, isAdmin, userId, today }: { v: QualityView; q: Qu
   const params = qualityToParams(q);
   const csv = (tabla: string) => `/api/analitica/calidad.csv${qs({ ...params, pagina: undefined, tabla, sello: v.stamp })}`;
   const sel = q.sel ? v.rows.find((r) => r.id === q.sel) : null;
+  const milestones = sel
+    ? (await prisma.milestone.findMany({
+        where: { isActive: true, date: { gte: new Date(`${q.base.date.slice(0, 4)}-01-01T00:00:00Z`), lte: new Date(`${q.base.date.slice(0, 4)}-12-31T00:00:00Z`) }, ...(q.scope === "group" ? { OR: [{ groupId: sel.id }, { client: { groupId: sel.id } }] } : { clientId: sel.id }) },
+        include: { client: { select: { name: true } }, group: { select: { name: true } } }, orderBy: { date: "asc" },
+      })).map((m) => ({ date: m.date.toISOString().slice(0, 10), type: m.type, note: m.note, where: m.client?.name ?? m.group?.name ?? "" }))
+    : [];
   const [evolution, notes] = sel
     ? await Promise.all([
         readSnapshot(userId, (tx) => evolutionIn(tx, q, sel.id, v.config_payload, today)).catch(() => null),
@@ -105,7 +111,7 @@ async function Cartera({ v, q, isAdmin, userId, today }: { v: QualityView; q: Qu
           {isAdmin && v.notes.length ? <p className="hint">Siguientes acciones: calibrar umbrales y mapeo de Client Health, elegir perfiles de Dedicación y plantilla del global en <Link href="/administracion/configuracion?seccion=calidad">Administración › Configuración</Link>; declarar la cobertura de los lotes en <Link href="/administracion/cargas">Cargas</Link>.</p> : v.notes.length ? <p className="hint">Los pendientes de calibración y cobertura los resuelve un Administrador; usted puede consultar los motivos y descargar el CSV.</p> : null}
         </>
       )}
-      {sel ? <EntityDetail r={sel} q={q} cfg={v.config_payload} basePath={BASE} evolution={evolution} notes={notes} isAdmin={isAdmin} /> : q.sel ? <Notice kind="warn">La entidad seleccionada no está en este ámbito o no existe.</Notice> : null}
+      {sel ? <EntityDetail r={sel} q={q} cfg={v.config_payload} basePath={BASE} evolution={evolution} notes={notes} isAdmin={isAdmin} milestones={milestones} /> : q.sel ? <Notice kind="warn">La entidad seleccionada no está en este ámbito o no existe.</Notice> : null}
     </>
   );
 }

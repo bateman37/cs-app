@@ -12,6 +12,7 @@ import { pulseDetail } from "@/server/pulse/detail";
 import { pulseCsv } from "@/server/pulse/export";
 import { resetDatabase, makeUsers } from "./helpers";
 import { addClient, addGroup, addTicket, addWrike, addZd, fakeBatch, seedFinance, serviceAssignment, setUsers } from "./economia-helpers";
+import { declareAllSources } from "./calidad-helpers";
 
 /**
  * Pulse Rent (CSAPP-07): servicio analítico sobre PostgreSQL real con datos SINTÉTICOS. Corte 31/10/2026 (mes completo, CUM enero-octubre).
@@ -23,6 +24,7 @@ beforeEach(async () => {
   await resetDatabase();
   ({ admin, reader } = await makeUsers());
   bid = (await fakeBatch(admin.id)).id;
+  await declareAllSources(admin.id); // cobertura declarada de las cuatro fuentes (contrato compartido con Calidad, CSAPP-08)
 });
 
 const NOW = new Date("2026-11-02T09:00:00Z");
@@ -131,10 +133,14 @@ describe("perfiles, fuentes y cobertura", () => {
     expect(a.cells.M24.state).toBe("UNCONFIGURED"); // IT N3 sin selección
     expect(a.cells.M24.value).toBeNull();
     expect(v.unconfiguredProfiles).toEqual(expect.arrayContaining(["IT_N3", "PLATAFORMA_N4"]));
-    // PMO configurado pero sin tiempos Wrike en 2026: 0 NO es evidencia (fuente ausente).
-    expect(a.cells.M07.state).toBe("NO_DATA");
-    expect(a.cells.M07.value).toBeNull();
-    expect(a.cells.M07.reason).toMatch(/Wrike/);
+    // PMO configurado pero sin cobertura declarada de Wrike en 2026 (aquí su lote queda revertido: no prueba cobertura): 0 NO es evidencia.
+    await prisma.uploadBatch.updateMany({ where: { profileId: "wrike" }, data: { status: "REVERTED" } });
+    const v2 = await getPulse(admin.id, Q({ m: "M01,M24,M07" }));
+    const a2 = row(v2, "Atlas");
+    expect(a.cells.M07.state).toBe("ZERO"); // con la cobertura declarada, el cero sí está sustentado
+    expect(a2.cells.M07.state).toBe("NO_DATA");
+    expect(a2.cells.M07.value).toBeNull();
+    expect(a2.cells.M07.reason).toMatch(/Wrike/);
   });
   it("PMO elegible con rol desconocido permanece en el total PMO; sin clasificar: total completo y variantes como cota", async () => {
     const w = await world();

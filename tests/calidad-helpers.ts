@@ -48,3 +48,11 @@ export async function seedBugLink(batchId: string, o: { bugId: string; product?:
   if (o.evidence !== false) await prisma.workItemLinkEvidence.create({ data: { linkId: link.id, batchId, source: "ZENDESK_TICKET_ID", rawRef: tkey(o.ticket), observedOn: d("2026-10-01") } });
   return link;
 }
+
+/** Declara cobertura completa (todos los clientes y estados) de las cuatro fuentes para un rango: cuatro lotes completados sintéticos y sus declaraciones. */
+export async function declareAllSources(adminId: string, from = "2020-01-01", to = "2026-12-31") {
+  for (const profile of ["zendesk-tickets", "zendesk-tiempo", "wrike", "pap"]) {
+    const b = await batchOf(adminId, profile, profile === "zendesk-tickets" ? to : null);
+    await declare(adminId, b.id, { from, to: to > "2026-11-02" ? "2026-11-02" : to }, profile);
+  }
+}

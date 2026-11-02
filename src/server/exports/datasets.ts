@@ -55,7 +55,7 @@ const HORAS: FileDef = {
     return Prisma.sql`
       WITH a0 AS (SELECT t.* FROM "TimeActivity" t WHERE t."workDate" BETWEEN ${p.from}::date AND ${p.to}::date ${filter}),
       a AS (SELECT a.*, ${SERVICE_OF_SQL} AS svc FROM a0 a)
-      SELECT a.source AS fuente, a."entryId"::text AS id_entrada, a."workDate"::text AS fecha_trabajo, a.minutes::text AS minutos, (a.minutes / 60)::text AS horas,
+      SELECT a.source AS fuente, a."entryId"::text AS id_entrada, a."workDate"::text AS fecha_trabajo, trim_scale(a.minutes)::text AS minutos, trim_scale(a.minutes / 60)::text AS horas,
         a."ticketId" AS ticket_id, a."groupId" AS grupo_id, a."clientId" AS cliente_id, a.svc AS servicio,
         CASE a.eligibility WHEN 'ELIGIBLE' THEN 'ELEGIBLE' WHEN 'PENDING_ELIGIBILITY' THEN 'PENDIENTE' ELSE 'EXCLUIDA' END AS clase_particion,
         a.eligibility AS elegibilidad, a.bucket AS motivo_particion, a.pmo::text AS pmo, a."isInternal"::text AS interno
@@ -186,7 +186,7 @@ const FINANZAS: FileDef = {
   reconciliation: "Σ ingreso por anio+categoria = ingreso de las líneas activas (Total de origen se concilia en Administración). El importe anual no se suma otra vez con sus meses; Vta Potencial y Budget no forman parte de este archivo.",
   columns: [n("anio", "año", "año del conjunto vigente"), t("categoria", "SOPORTE | ADMIN_DELEGADA | OTROS"), n("posicion", "n", "posición de la línea en el lote"), t("etiqueta_origen", "etiqueta de Grupo en la fuente"), t("grupo_id", "Grupo Cliente atribuido o vacío"), n("ingreso", "€", "ingreso anual de la línea (decimal exacto)"), t("atribucion", "RESOLVED | UNRESOLVED | …"), b("ingreso_cero_derivado", "cero derivado por la regla de importación")],
   sql: (p) => Prisma.sql`
-    SELECT s.year::text AS anio, s.category AS categoria, r.position::text AS posicion, r."groupLabel" AS etiqueta_origen, r."groupId" AS grupo_id, r.income::text AS ingreso, r.resolution AS atribucion, r."incomeDerivedZero"::text AS ingreso_cero_derivado
+    SELECT s.year::text AS anio, s.category AS categoria, r.position::text AS posicion, r."groupLabel" AS etiqueta_origen, r."groupId" AS grupo_id, trim_scale(r.income)::text AS ingreso, r.resolution AS atribucion, r."incomeDerivedZero"::text AS ingreso_cero_derivado
     FROM "FinanceScope" s JOIN "FinanceRow" r ON r."batchId" = s."activeBatchId"
     WHERE s.year BETWEEN extract(year FROM ${p.from}::date)::int AND extract(year FROM ${p.to}::date)::int ${p.sel && p.scope === "group" ? Prisma.sql`AND r."groupId" = ${p.sel}` : Prisma.empty}`,
 };

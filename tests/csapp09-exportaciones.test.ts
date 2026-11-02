@@ -9,7 +9,7 @@ import { STANDARD_CAUSE } from "@/domain/zendesk";
 import { cancelExport, createExport, getExport, listMyExports, retryExport, authorizeDownload, superviseExports } from "@/server/exports/service";
 import { claimNextExport, exportFilePath, expireExports, processExport, runExportOnce, sweepExportOrphans } from "@/server/exports/run";
 import { resetDatabase, makeUsers } from "./helpers";
-import { addClient, addGroup, addZd, setUsers } from "./economia-helpers";
+import { addClient, addGroup, addZd, seedFinance, setUsers } from "./economia-helpers";
 import { batchOf, seedBugLink, seedPap, seedTicket } from "./calidad-helpers";
 
 /**
@@ -147,6 +147,29 @@ describe("exportación completa de hechos", () => {
     expect(pap.rows.filter((r) => r.es_correctivo === "sí")).toHaveLength(1);
     expect(pap.rows.find((r) => r.pap_id === "8")).toMatchObject({ fecha_produccion: "", en_periodo: "" }); // sin fecha: conservado, sin ubicar
     expect(causes.rows).toHaveLength(2);
+  });
+});
+
+describe("formato CSV", () => {
+  it("neutraliza fórmulas en texto no confiable pero conserva el negativo numérico válido con coma decimal; vacío y cero son distintos", async () => {
+    const { g, c } = await world();
+    const tb = await batchOf(admin.id, "zendesk-tickets", "2026-10-31");
+    await seedTicket(tb.id, { id: "FX", org: "701", type: "incident", created: "2026-10-05", cause: "=HYPERLINK(\"http://x\")", entorno: "+SUM(1)", observedOn: "2026-10-31" });
+    await seedFinance(admin.id, "SOPORTE", 2026, [{ groupId: g.id, income: "-100.50" }, { groupId: g.id, income: "0", label: "cero" }, { groupId: null, income: "7.25", label: "sin grupo" }]);
+    void c;
+    const t = await createExport(admin.id, req({ dataset: "tickets" }));
+    const f = await createExport(admin.id, req({ dataset: "finanzas" }));
+    await runExportOnce(WK);
+    await runExportOnce(WK);
+    const tj = await getExport(admin.id, t.id);
+    const { raw: traw } = await csvOf((await authorizeDownload(admin.id, t.id, tj.files.find((x) => x.fileKey === "tickets")!.id)).storageId);
+    expect(traw).toContain("\"'=HYPERLINK(\"\"http://x\"\")\""); // texto con fórmula: apóstrofo y comillas escapadas
+    const fj = await getExport(admin.id, f.id);
+    const { raw: fraw, rows } = await csvOf((await authorizeDownload(admin.id, f.id, fj.files.find((x) => x.fileKey === "finanzas_lineas")!.id)).storageId);
+    expect(fraw).toContain(";-100,5;"); // negativo numérico válido: sin apóstrofo, coma decimal
+    expect(fraw).not.toContain("'-100");
+    expect(rows.map((r) => r.ingreso).sort()).toEqual(["-100,5", "0", "7,25"]); // el cero es explícito
+    expect(rows.find((r) => r.etiqueta_origen === "sin grupo")?.grupo_id).toBe(""); // vacío = sin atribución, no cero
   });
 });
 

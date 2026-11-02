@@ -70,6 +70,8 @@
     "start:todo": "tsx scripts/ops.ts iniciar",
     "stop:todo": "tsx scripts/ops.ts parar",
     "e2e:grandes": "tsx scripts/e2e/grandes.ts",
-    "ensayo:instalacion": "tsx scripts/ensayo-instalacion.ts"
+    "ensayo:instalacion": "tsx scripts/ensayo-instalacion.ts",
+    "ensayo:actualizacion": "tsx scripts/ensayo-actualizacion.ts",
+    "huella": "tsx scripts/huella-datos.ts"
   }
 }

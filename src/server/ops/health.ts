@@ -130,42 +130,45 @@ export async function collectHealth(opts: { now?: Date; thresholds?: ReturnType<
     else if (s.state === "adelantado") add("ESQUEMA_ADELANTADO", "warn", `La base tiene migraciones que este código no conoce (${s.unexpected.join(", ")}): código más antiguo que el esquema. Compatibilidad no garantizada (ver guía de vuelta atrás).`);
     else if (s.state === "desconocido") add("ESQUEMA_DESCONOCIDO", "warn", "Sin build-info.json no puede compararse el esquema con el código compilado.");
 
-    const inst = await prisma.workerInstance.findMany({ where: { lastSeenAt: { gt: new Date(now.getTime() - th.instanceHistoryMs) } }, orderBy: { lastSeenAt: "desc" }, take: 50 });
-    const rows: WorkerRow[] = inst.map((w) => {
-      const alive = w.state !== "STOPPED" && now.getTime() - w.lastSeenAt.getTime() < th.workerAliveMs;
-      const progressAgeSec = w.progressAt ? sec(w.progressAt) : null;
-      const stalled = alive && w.state === "BUSY" && progressAgeSec !== null && progressAgeSec * 1000 > th.stallMs;
-      return { id: w.id, pid: w.pid, host: w.host, version: w.version, sha: w.sha, state: w.state, currentKind: w.currentKind, startedAt: w.startedAt.toISOString(), lastSeenAt: w.lastSeenAt.toISOString(), ageSec: sec(w.lastSeenAt), alive, progressAgeSec, stalled, stopRequested: !!w.stopRequestedAt, versionMatches: w.sha === b.sha || !b.known };
-    });
-    report.workers = { verdict: classifyWorkers(rows), instances: rows, thresholds: report.workers.thresholds };
-    const v = report.workers.verdict;
-    if (v === "ausente") add("TRABAJADOR_AUSENTE", "error", "No hay ningún trabajador vivo: las cargas y exportaciones no avanzarán hasta arrancarlo («npm run worker:start»).");
-    if (v === "presente_sin_avance") add("TRABAJADOR_SIN_AVANCE", "error", "Hay un trabajador vivo pero su trabajo en curso no confirma bloques desde hace más de lo esperado.");
-    for (const r of rows) if (r.alive && !r.versionMatches) add("TRABAJADOR_OTRA_VERSION", "warn", `El trabajador ${r.id} ejecuta otra versión (${r.sha.slice(0, 8)}) que la web (${b.sha.slice(0, 8)}).`);
+    // Con migraciones pendientes las tablas de operación pueden no existir: se informa del esquema en lugar de fallar (el diagnóstico debe poder ejecutarse siempre).
+    if (report.schema.state !== "pendiente" && report.schema.state !== "fallida") try {
+      const inst = await prisma.workerInstance.findMany({ where: { lastSeenAt: { gt: new Date(now.getTime() - th.instanceHistoryMs) } }, orderBy: { lastSeenAt: "desc" }, take: 50 });
+      const rows: WorkerRow[] = inst.map((w) => {
+        const alive = w.state !== "STOPPED" && now.getTime() - w.lastSeenAt.getTime() < th.workerAliveMs;
+        const progressAgeSec = w.progressAt ? sec(w.progressAt) : null;
+        const stalled = alive && w.state === "BUSY" && progressAgeSec !== null && progressAgeSec * 1000 > th.stallMs;
+        return { id: w.id, pid: w.pid, host: w.host, version: w.version, sha: w.sha, state: w.state, currentKind: w.currentKind, startedAt: w.startedAt.toISOString(), lastSeenAt: w.lastSeenAt.toISOString(), ageSec: sec(w.lastSeenAt), alive, progressAgeSec, stalled, stopRequested: !!w.stopRequestedAt, versionMatches: w.sha === b.sha || !b.known };
+      });
+      report.workers = { verdict: classifyWorkers(rows), instances: rows, thresholds: report.workers.thresholds };
+      const v = report.workers.verdict;
+      if (v === "ausente") add("TRABAJADOR_AUSENTE", "error", "No hay ningún trabajador vivo: las cargas y exportaciones no avanzarán hasta arrancarlo («npm run worker:start»).");
+      if (v === "presente_sin_avance") add("TRABAJADOR_SIN_AVANCE", "error", "Hay un trabajador vivo pero su trabajo en curso no confirma bloques desde hace más de lo esperado.");
+      for (const r of rows) if (r.alive && !r.versionMatches) add("TRABAJADOR_OTRA_VERSION", "warn", `El trabajador ${r.id} ejecuta otra versión (${r.sha.slice(0, 8)}) que la web (${b.sha.slice(0, 8)}).`);
 
-    const q = async (table: "UploadJob" | "ExportJob") => {
-      const pend = table === "UploadJob" ? Prisma.sql`status = 'PENDING'` : Prisma.sql`status = 'QUEUED'`;
-      const run = table === "UploadJob" ? Prisma.sql`status = 'RUNNING'` : Prisma.sql`status IN ('PREPARING', 'GENERATING')`;
-      const rowsQ = await prisma.$queryRaw<{ pending: bigint; running: bigint; oldest: Date | null; expired: bigint }[]>(Prisma.sql`
-        SELECT count(*) FILTER (WHERE ${pend}) AS pending, count(*) FILTER (WHERE ${run}) AS running,
-          min("createdAt") FILTER (WHERE ${pend}) AS oldest, count(*) FILTER (WHERE ${run} AND "leaseExpiresAt" < ${now}) AS expired
-        FROM ${Prisma.raw(`"${table}"`)}`);
-      const r = rowsQ[0];
-      return { pending: Number(r.pending), running: Number(r.running), oldestPendingAgeSec: r.oldest ? sec(r.oldest) : null, expiredLeases: Number(r.expired) } satisfies QueueRow;
-    };
-    report.queues = { uploads: await q("UploadJob"), exports: await q("ExportJob") };
-    for (const [name, qr] of Object.entries(report.queues) as ["uploads" | "exports", QueueRow][]) {
-      const label = name === "uploads" ? "cargas" : "exportaciones";
-      if (qr.oldestPendingAgeSec !== null && qr.oldestPendingAgeSec * 1000 > th.queueAgeMs && !report.workers.instances.some((w) => w.alive)) {
-        add("COLA_DESATENDIDA", "error", `Hay trabajos de ${label} en cola desde hace ${Math.round(qr.oldestPendingAgeSec / 60)} min y ningún trabajador vivo.`);
-        report.stuck.push({ kind: `cola:${name}`, id: "-", reason: "En cola sin trabajador vivo", ageSec: qr.oldestPendingAgeSec });
+      const q = async (table: "UploadJob" | "ExportJob") => {
+        const pend = table === "UploadJob" ? Prisma.sql`status = 'PENDING'` : Prisma.sql`status = 'QUEUED'`;
+        const run = table === "UploadJob" ? Prisma.sql`status = 'RUNNING'` : Prisma.sql`status IN ('PREPARING', 'GENERATING')`;
+        const rowsQ = await prisma.$queryRaw<{ pending: bigint; running: bigint; oldest: Date | null; expired: bigint }[]>(Prisma.sql`
+          SELECT count(*) FILTER (WHERE ${pend}) AS pending, count(*) FILTER (WHERE ${run}) AS running,
+            min("createdAt") FILTER (WHERE ${pend}) AS oldest, count(*) FILTER (WHERE ${run} AND "leaseExpiresAt" < ${now}) AS expired
+          FROM ${Prisma.raw(`"${table}"`)}`);
+        const r = rowsQ[0];
+        return { pending: Number(r.pending), running: Number(r.running), oldestPendingAgeSec: r.oldest ? sec(r.oldest) : null, expiredLeases: Number(r.expired) } satisfies QueueRow;
+      };
+      report.queues = { uploads: await q("UploadJob"), exports: await q("ExportJob") };
+      for (const [name, qr] of Object.entries(report.queues) as ["uploads" | "exports", QueueRow][]) {
+        const label = name === "uploads" ? "cargas" : "exportaciones";
+        if (qr.oldestPendingAgeSec !== null && qr.oldestPendingAgeSec * 1000 > th.queueAgeMs && !report.workers.instances.some((w) => w.alive)) {
+          add("COLA_DESATENDIDA", "error", `Hay trabajos de ${label} en cola desde hace ${Math.round(qr.oldestPendingAgeSec / 60)} min y ningún trabajador vivo.`);
+          report.stuck.push({ kind: `cola:${name}`, id: "-", reason: "En cola sin trabajador vivo", ageSec: qr.oldestPendingAgeSec });
+        }
+        if (qr.expiredLeases > 0) {
+          const alive = report.workers.instances.some((w) => w.alive);
+          add("LEASE_VENCIDO", alive ? "warn" : "error", `${qr.expiredLeases} trabajo(s) de ${label} con lease vencido: ${alive ? "el trabajador vivo los reclamará" : "no hay trabajador vivo que los reclame"}.`);
+        }
       }
-      if (qr.expiredLeases > 0) {
-        const alive = report.workers.instances.some((w) => w.alive);
-        add("LEASE_VENCIDO", alive ? "warn" : "error", `${qr.expiredLeases} trabajo(s) de ${label} con lease vencido: ${alive ? "el trabajador vivo los reclamará" : "no hay trabajador vivo que los reclame"}.`);
-      }
-    }
-    for (const w of report.workers.instances.filter((x) => x.stalled)) report.stuck.push({ kind: w.currentKind ?? "trabajo", id: w.id, reason: "Trabajador vivo sin avance", ageSec: w.progressAgeSec ?? 0 });
+      for (const w of report.workers.instances.filter((x) => x.stalled)) report.stuck.push({ kind: w.currentKind ?? "trabajo", id: w.id, reason: "Trabajador vivo sin avance", ageSec: w.progressAgeSec ?? 0 });
+    } catch { add("OPERACION_NO_LEGIBLE", "error", "No se pudieron leer los trabajadores y las colas (¿esquema incompleto?)."); }
   }
 
   const err = problems.some((p) => p.level === "error");

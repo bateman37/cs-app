@@ -113,7 +113,7 @@ export async function checkTargetDirs(o: { uploads: string; exports: string; bac
   if (o.originDirs) avoid.push(["el almacén de originales del origen", o.originDirs.uploads], ["el almacén de exportaciones del origen", o.originDirs.exports]);
   for (const [name, dir] of [["--uploads", o.uploads], ["--exports", o.exports]] as const) {
     for (const [what, other] of avoid) {
-      if ((await isWithinReal(dir, other)) || (await isWithinReal(other, dir))) problems.push(`${name} (${dir}) está dentro de ${what} (${other}) o la contiene: se rechaza.`);
+      if ((await isWithinReal(dir, other)) || (await isWithinReal(other, dir))) problems.push(`${name} (${dir}) se superpone con ${what} (${other}): está dentro o la contiene. Se rechaza.`);
     }
   }
   return problems;

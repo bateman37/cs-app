@@ -130,6 +130,12 @@ export async function dropOwnDb(name: string): Promise<void> {
   const c = await adminClient();
   try { await c.query(`DROP DATABASE IF EXISTS "${name}" WITH (FORCE)`); } finally { await c.end(); }
 }
+/** Crea una base PROPIA vacía (para comprobar que la restauración acepta una base preexistente vacía). */
+export async function createOwnDb(name: string): Promise<void> {
+  if (!OWN.test(name)) throw new Error("Solo se crean bases propias cs_app_bk…_test.");
+  const c = await adminClient();
+  try { await c.query(`CREATE DATABASE "${name}"`); } finally { await c.end(); }
+}
 export async function dbExists(name: string): Promise<boolean> {
   const c = await adminClient();
   try { return (await c.query("SELECT 1 FROM pg_database WHERE datname = $1", [name])).rowCount === 1; } finally { await c.end(); }

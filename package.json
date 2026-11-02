@@ -41,18 +41,18 @@
   },
   "scripts": {
     "dev": "next dev",
-    "build": "prisma generate && next build",
+    "build": "prisma generate && next build && node scripts/build-info.mjs",
     "start": "next start",
     "lint": "eslint .",
     "typecheck": "prisma generate && tsc --noEmit",
     "test": "vitest run --exclude tests/cargas-trabajador.test.ts --exclude tests/cargas-volumen.test.ts --exclude tests/zendesk-volumen.test.ts --exclude tests/csapp04-volumen.test.ts --exclude tests/finanzas-trabajador.test.ts --exclude tests/finanzas-volumen.test.ts --exclude tests/csapp09-exportacion-trabajador.test.ts",
-    "e2e:build": "prisma generate && next build && node scripts/build-worker.mjs",
+    "e2e:build": "prisma generate && next build && node scripts/build-worker.mjs && node scripts/build-info.mjs",
     "e2e": "tsx scripts/e2e/recorrido.ts",
     "postinstall": "prisma generate",
     "db:comprobar": "tsx scripts/check-env.ts",
     "db:migrar": "prisma migrate deploy",
     "cuenta:crear": "tsx scripts/crear-cuenta.ts",
-    "worker:build": "node scripts/build-worker.mjs",
+    "worker:build": "node scripts/build-worker.mjs && node scripts/build-info.mjs",
     "worker:start": "node worker-dist/worker.mjs",
     "worker": "node scripts/build-worker.mjs && node worker-dist/worker.mjs",
     "benchmark:lectores": "tsx scripts/benchmark-lectores.ts",
@@ -61,6 +61,13 @@
     "e2e:volumen": "tsx scripts/e2e/volumen.ts",
     "benchmark:analitica": "tsx scripts/volumen-analitica.ts",
     "benchmark:pulse": "tsx scripts/volumen-pulse.ts",
-    "benchmark:calidad": "tsx scripts/volumen-calidad.ts"
+    "benchmark:calidad": "tsx scripts/volumen-calidad.ts",
+    "build:todo": "npm run build && node scripts/build-worker.mjs",
+    "ops": "tsx scripts/ops.ts",
+    "ops:verificar": "tsx scripts/ops.ts verificar",
+    "ops:preparar": "tsx scripts/ops.ts preparar",
+    "ops:salud": "tsx scripts/ops.ts salud",
+    "start:todo": "tsx scripts/ops.ts iniciar",
+    "stop:todo": "tsx scripts/ops.ts parar"
   }
 }

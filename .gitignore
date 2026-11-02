@@ -15,3 +15,6 @@ fuentes-privadas/
 worker-dist/
 almacen-cargas/
 almacen-exportaciones/
+estado-runtime/
+build-info.json
+respaldos/

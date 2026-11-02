@@ -14,7 +14,7 @@ export default async function AdminLayout({ children }: { children: React.ReactN
     { href: "/administracion/economia", label: "Comprobación económica" },
     { href: "/administracion/configuracion", label: "Configuración" },
     // Conciliación y supervisión de exportaciones: solo Administrador.
-    ...(user.role === "ADMIN" ? [{ href: "/administracion/conciliacion", label: "Conciliación" }, { href: "/administracion/exportaciones", label: "Exportaciones" }] : []),
+    ...(user.role === "ADMIN" ? [{ href: "/administracion/conciliacion", label: "Conciliación" }, { href: "/administracion/exportaciones", label: "Exportaciones" }, { href: "/administracion/operacion", label: "Operación" }] : []),
   ];
   return (
     <>

@@ -11,6 +11,7 @@ import { AccessError } from "@/lib/access";
 import { readDataStamp } from "@/server/analytics/stamp";
 import { getManifest } from "@/server/pulse/config";
 import { uploadConfig } from "@/server/uploads/config";
+import { noteProgress, setActivity } from "@/server/ops/worker-instance";
 import { LostLeaseError, NonRetryableError, ReleaseRequested } from "@/server/uploads/queue";
 import { DATASETS, datasetOf, toCsvCells, type DatasetDef, type FileDef } from "./datasets";
 import { FORMAT_VERSION, exportConfig } from "./config";
@@ -88,6 +89,7 @@ export async function assertExportFence(tx: Tx, job: ClaimedExport): Promise<{ c
   const rows = await tx.$queryRaw<{ cancelRequested: boolean }[]>(Prisma.sql`
     SELECT "cancelRequested" FROM "ExportJob" WHERE id = ${job.id} AND fence = ${job.fence} AND "leaseOwner" = ${job.leaseOwner} AND status IN ('PREPARING', 'GENERATING') FOR UPDATE`);
   if (rows.length === 0) throw new LostLeaseError();
+  noteProgress("export");
   return rows[0];
 }
 
@@ -225,6 +227,7 @@ async function writeFilePart(job: ClaimedExport, jobId: string, ds: DatasetDef, 
       done += rows.length;
       page++;
       await reportProgress(job, done);
+      noteProgress("export");
       await hooks.afterPage?.({ fileKey: f.fileKey, part, page });
     }
     if (last !== to && to >= from) throw new Error(`La materialización de «${f.fileKey}» está incompleta (${last}/${to}).`);
@@ -303,6 +306,7 @@ export async function processExport(job: ClaimedExport, shouldStop: () => boolea
   const cfg = uploadConfig();
   let lost = false;
   const timer = setInterval(() => { heartbeatExport(job).then((ok) => { if (!ok) lost = true; }).catch(() => undefined); }, cfg.heartbeatMs);
+  setActivity("export", { kind: "job", jobId: job.id });
   try {
     log(`Exportación ${job.id} (${job.dataset}), intento ${job.attempts}/${job.maxAttempts}`);
     const ds = datasetOf(job.dataset);
@@ -337,6 +341,7 @@ export async function processExport(job: ClaimedExport, shouldStop: () => boolea
     }
   } finally {
     clearInterval(timer);
+    setActivity("export", null);
   }
 }
 

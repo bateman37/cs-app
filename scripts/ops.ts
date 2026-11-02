@@ -105,7 +105,8 @@ async function iniciar(): Promise<number> {
   await clearRunFile(dir);
   const token = randomUUID();
   const workerId = `trabajador-${process.pid}-${token.slice(0, 8)}`;
-  const env = { ...process.env, NODE_ENV: "production", CSAPP_HOME: root, PORT: String(port), CSAPP_WORKER_ID: workerId } as NodeJS.ProcessEnv;
+  // Los procesos operativos no heredan bases de pruebas/shadow: se vacían (un valor definido, aunque vacío, impide que `next start` las cargue desde .env).
+  const env = { ...process.env, NODE_ENV: "production", CSAPP_HOME: root, PORT: String(port), CSAPP_WORKER_ID: workerId, TEST_DATABASE_URL: "", SHADOW_DATABASE_URL: "" } as NodeJS.ProcessEnv;
   let stopping = false;
   const kids: { name: string; p: ChildProcess }[] = [];
   const run: RunFile = { token, root, port, host, supervisorPid: process.pid, webPid: null, workerPid: null, workerId, startedAt: ts(), heartbeatAt: ts(), sha: bi.sha };

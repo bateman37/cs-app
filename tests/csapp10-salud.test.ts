@@ -236,13 +236,17 @@ describe("configuración operativa", () => {
     expect(checkStoreLayout({ uploads: `${root}/almacen-cargas`, exports: `${root}/almacen-exportaciones`, root, operational: false, uploadsExplicit: false, exportsExplicit: false })).toEqual([]);
     expect(checkStoreLayout({ uploads: `${root}/public/u`, exports: "/d/e", root, operational: false, uploadsExplicit: false, exportsExplicit: false }).map((p) => p.code)).toContain("ALMACEN_PUBLICO");
   });
-  it("las opciones de prueba no se heredan en operación y no se activan por accidente", () => {
+  it("las opciones de prueba no se habilitan por accidente en operación; las bases de prueba/shadow avisan sin impedir el arranque", () => {
     expect(operationalEnvIssues({ NODE_ENV: "production" })).toEqual([]);
-    for (const k of ["TEST_DATABASE_URL", "SHADOW_DATABASE_URL", "CSAPP_ENABLE_SYNTHETIC_PROFILES", "CSAPP_APPROVED_TEST_DB", "CSAPP_COUNT_QUERIES"]) {
-      expect(operationalEnvIssues({ NODE_ENV: "production", [k]: "x" }).map((i) => i.code)).toEqual(["OPCION_DE_PRUEBA"]);
+    for (const k of ["CSAPP_ENABLE_SYNTHETIC_PROFILES", "CSAPP_APPROVED_TEST_DB", "CSAPP_COUNT_QUERIES"]) {
+      expect(operationalEnvIssues({ NODE_ENV: "production", [k]: "x" })).toEqual([expect.objectContaining({ code: "OPCION_DE_PRUEBA", fatal: true })]);
+    }
+    for (const k of ["TEST_DATABASE_URL", "SHADOW_DATABASE_URL"]) {
+      expect(operationalEnvIssues({ NODE_ENV: "production", [k]: "x" })).toEqual([expect.objectContaining({ code: "BASE_DE_PRUEBAS_HEREDADA", fatal: false })]);
     }
     expect(isOperational({ NODE_ENV: "production" })).toBe(true);
-    expect(isOperational({ NODE_ENV: "production", CSAPP_ENABLE_SYNTHETIC_PROFILES: "cs_app_test" })).toBe(false);
+    expect(isOperational({ NODE_ENV: "production", CSAPP_ENABLE_SYNTHETIC_PROFILES: "cs_app_test" })).toBe(true); // el flag NO convierte la instalación en «no operativa»: se rechaza
+    expect(isOperational({ NODE_ENV: "production", CSAPP_APPROVED_TEST_DB: "cs_app_e2e_test" })).toBe(false); // destino de pruebas aprobado por el guard
     expect(isOperational({ NODE_ENV: "test" })).toBe(false);
   });
   it("versiones de Node: 22.18+, 24.11+; no 22.17 ni 23", () => {

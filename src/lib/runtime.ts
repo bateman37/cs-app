@@ -32,7 +32,10 @@ export function buildInfo(): BuildInfo {
 /** Solo pruebas. */
 export function resetBuildInfoCache(): void { cached = undefined; }
 
-/** Modo operativo: web/trabajador compilados con NODE_ENV=production y sin ninguna opción de pruebas. Las opciones de test NO se habilitan en él. */
+/**
+ * Modo operativo: web/trabajador compilados con NODE_ENV=production que NO corren contra un destino de pruebas aprobado por el guard central (`CSAPP_APPROVED_TEST_DB`).
+ * En modo operativo las opciones de prueba (perfiles sintéticos, contador de consultas) son un error de arranque, no se ignoran en silencio.
+ */
 export function isOperational(env: Record<string, string | undefined> = process.env): boolean {
-  return env.NODE_ENV === "production" && !env.CSAPP_ENABLE_SYNTHETIC_PROFILES && !env.CSAPP_APPROVED_TEST_DB;
+  return env.NODE_ENV === "production" && !env.CSAPP_APPROVED_TEST_DB;
 }

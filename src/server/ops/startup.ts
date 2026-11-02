@@ -8,12 +8,18 @@ import { currentLayoutProblems, ensureInstallationId, readInstallationId, verify
  */
 export type StartupIssue = { code: string; message: string; fatal: boolean };
 
-export const FORBIDDEN_IN_OPERATION = ["TEST_DATABASE_URL", "SHADOW_DATABASE_URL", "CSAPP_ENABLE_SYNTHETIC_PROFILES", "CSAPP_APPROVED_TEST_DB", "CSAPP_COUNT_QUERIES"] as const;
+/** Opciones que CAMBIAN el comportamiento de la aplicación: en una instalación operativa impiden el arranque. */
+export const FORBIDDEN_IN_OPERATION = ["CSAPP_ENABLE_SYNTHETIC_PROFILES", "CSAPP_APPROVED_TEST_DB", "CSAPP_COUNT_QUERIES"] as const;
+/** Bases de pruebas y de desarrollo de migraciones: inertes en operación (ningún código operativo las lee), pero no deben heredarse; se avisa y `ops iniciar` las vacía en los procesos hijos. */
+export const NOT_INHERITED_IN_OPERATION = ["TEST_DATABASE_URL", "SHADOW_DATABASE_URL"] as const;
 
 export function operationalEnvIssues(env: Record<string, string | undefined> = process.env): StartupIssue[] {
   const out: StartupIssue[] = [];
   for (const k of FORBIDDEN_IN_OPERATION) {
-    if (env[k]) out.push({ code: "OPCION_DE_PRUEBA", fatal: true, message: `${k} está definida en una instalación operativa: las opciones de prueba/shadow no se heredan en producción. Retírela del entorno.` });
+    if (env[k]) out.push({ code: "OPCION_DE_PRUEBA", fatal: true, message: `${k} está definida en una instalación operativa: las opciones de prueba no se habilitan en producción. Retírela del entorno.` });
+  }
+  for (const k of NOT_INHERITED_IN_OPERATION) {
+    if (env[k]) out.push({ code: "BASE_DE_PRUEBAS_HEREDADA", fatal: false, message: `${k} está definida en el entorno operativo: no se usa en producción, pero no debería heredarse. Retírela del .env de producción.` });
   }
   return out;
 }
@@ -21,6 +27,7 @@ export function operationalEnvIssues(env: Record<string, string | undefined> = p
 export async function startupIssues(role: "web" | "worker", env: Record<string, string | undefined> = process.env): Promise<StartupIssue[]> {
   if (!isOperational(env)) return [];
   const issues: StartupIssue[] = operationalEnvIssues(env);
+  if (issues.some((i) => i.fatal)) return issues;
   for (const p of currentLayoutProblems(true, env)) issues.push({ code: p.code, message: p.message, fatal: true });
   if (issues.some((i) => i.fatal)) return issues;
   try {

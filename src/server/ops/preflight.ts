@@ -7,7 +7,7 @@ import { Client } from "pg";
 import { databaseNameOf } from "@/lib/env";
 import { appRoot } from "@/lib/runtime";
 import { checkStoreLayout } from "./stores";
-import { FORBIDDEN_IN_OPERATION } from "./startup";
+import { FORBIDDEN_IN_OPERATION, NOT_INHERITED_IN_OPERATION } from "./startup";
 
 const pexec = promisify(execFile);
 
@@ -76,7 +76,8 @@ export async function runPreflight(env: Record<string, string | undefined> = pro
       if (u.pathname !== "/" && u.pathname !== "") add("warn", "ORIGEN_RUTA", "BETTER_AUTH_URL incluye una ruta; debe ser solo el origen.");
     } catch { add("error", "ORIGEN_INVALIDO", "BETTER_AUTH_URL no es una URL válida."); }
   }
-  for (const k of FORBIDDEN_IN_OPERATION) if (env[k]) add(k === "CSAPP_APPROVED_TEST_DB" ? "error" : "warn", "OPCION_DE_PRUEBA", `${k} está definida: no se hereda en una instalación operativa (el arranque operativo la rechaza). Retírela del .env de producción.`);
+  for (const k of FORBIDDEN_IN_OPERATION) if (env[k]) add("error", "OPCION_DE_PRUEBA", `${k} está definida: el arranque operativo la rechaza. Retírela del entorno de producción.`);
+  for (const k of NOT_INHERITED_IN_OPERATION) if (env[k]) add("warn", "BASE_DE_PRUEBAS_HEREDADA", `${k} está definida: no se usa en producción y no debe heredarse (el supervisor la vacía en los procesos que arranca). Retírela del .env de producción.`);
   // Base de datos
   const db = env.DATABASE_URL ? parseDbUrl(env.DATABASE_URL) : null;
   if (env.DATABASE_URL && !db) add("error", "DB_URL", "DATABASE_URL no es una URL postgresql:// válida.");

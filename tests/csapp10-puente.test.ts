@@ -65,7 +65,7 @@ describe("puente Comparativa / Análisis Cliente / Pulse Rent / Calidad", () => 
 
   it("por servicio y por ámbito: SOPORTE, un Cliente y una entidad seleccionada usan el mismo perímetro en todas las pantallas", async () => {
     const { g, c } = await world();
-    for (const extra of [{ servicio: "SOPORTE" }, { servicio: "ADMIN_DELEGADA" }, { scope: "client" }, { scope: "group", sel: g.id }, { scope: "client", sel: c.id }, { desde: "2026-01-01" }]) {
+    for (const extra of <Record<string, string>[]>[{ servicio: "SOPORTE" }, { servicio: "ADMIN_DELEGADA" }, { scope: "client" }, { scope: "group", sel: g.id }, { scope: "client", sel: c.id }, { desde: "2026-01-01" }]) {
       const run = await runReconciliation(admin.id, P(extra));
       const bad = run.results.filter((x) => x.level === 4 && x.status === "DIFERENCIA").map((x) => `${x.id} ${x.expected}≠${x.observed}`);
       expect(bad, JSON.stringify(extra)).toEqual([]);

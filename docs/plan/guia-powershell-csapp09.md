@@ -1,5 +1,7 @@
 # Guía PowerShell de CSAPP-09 (escrita, **sin probar en Windows**)
 
+> **Guía histórica (CSAPP-09).** Describe el arranque de esa entrega y puede contradecir la operación actual. La guía **vigente** de instalación, arranque y operación es [instalación y operación](../operacion/instalacion-operacion.md); los comandos de aquí no se usan en una instalación operativa.
+
 Hay **una migración nueva**: `20261104090000_exportaciones_conciliacion` (tablas `ExportJob`, `ExportFile`, `ExportRow` y `ReconRun`; no toca ninguna tabla anterior, las `ConfigRevision` ni los datos de CSAPP-08). Los dos índices heredados de 08 que faltaban en `schema.prisma` quedan declarados (sin cambio en la base). Todos los comandos funcionan con Node; **no se necesita Bash**. Todo lo de abajo se ha ejercitado en Linux; Windows y PowerShell **no se han probado**.
 
 ```powershell

@@ -1,5 +1,7 @@
 # Guía PowerShell de CSAPP-08 (escrita, **sin probar en Windows**)
 
+> **Guía histórica (CSAPP-08).** Describe el arranque de esa entrega y puede contradecir la operación actual. La guía **vigente** de instalación, arranque y operación es [instalación y operación](../operacion/instalacion-operacion.md); los comandos de aquí no se usan en una instalación operativa.
+
 Hay **una migración nueva**: `20261103090000_calidad_health_cobertura` (tablas `HealthFeedback`, `HealthFeedbackEvent`, `QualityNote` y `UploadCoverageDeclaration`, dos índices y restricciones; no toca ninguna tabla anterior ni la `ConfigRevision` de CSAPP-07). Esta rama (`feature/CSAPP-08-calidad-client-health`) parte de la cabeza de la PR 7, que ya contiene CSAPP-06 y 07: su PR está **apilada** contra esa rama y muestra solo los cambios de 08. Nada de esto está probado en Windows y no sustituye tu aceptación.
 
 ```powershell

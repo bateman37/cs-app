@@ -1,5 +1,7 @@
 # Guía PowerShell de CSAPP-05: migrar, arrancar y probar las finanzas y el motor económico
 
+> **Guía histórica (CSAPP-05).** Describe el arranque de esa entrega y puede contradecir la operación actual. La guía **vigente** de instalación, arranque y operación es [instalación y operación](../operacion/instalacion-operacion.md); los comandos de aquí no se usan en una instalación operativa.
+
 Escrita para Windows 10/11 con PowerShell, Node.js 22 LTS y PostgreSQL ≥13 local. **No se ha ejecutado en Windows**: lo probado es Linux (ver [validación](../validacion/csapp-05.md)). Los comandos de esta guía están **documentados, no ejecutados en Windows**; los ejecutados en Linux se listan en la validación. Parte de que [CSAPP-01](guia-powershell-csapp01.md) a [CSAPP-04](guia-powershell-csapp04.md) ya funcionan. Todo desde la carpeta del repositorio. No se imprime ninguna credencial. **No se precarga ningún dato: las cargas reales de 2025 y 2026 las realiza usted.**
 
 ## 1. Actualizar sin borrar nada

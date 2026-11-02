@@ -1,5 +1,7 @@
 # Guía PowerShell de CSAPP-06 (escrita, **sin probar en Windows**)
 
+> **Guía histórica (CSAPP-06).** Describe el arranque de esa entrega y puede contradecir la operación actual. La guía **vigente** de instalación, arranque y operación es [instalación y operación](../operacion/instalacion-operacion.md); los comandos de aquí no se usan en una instalación operativa.
+
 No hay migración nueva: basta con las cinco de CSAPP-01 a 05.
 
 ```powershell

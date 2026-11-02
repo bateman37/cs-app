@@ -37,6 +37,10 @@ Además de las entradas comunes y del apartado propio del roadmap:
 | CSAPP-07 | producto/pulse-rent.md; producto/administracion.md; calculos/catalogo.md; arquitectura/pulse-configuracion-csapp07.md (implementado) |
 | CSAPP-08 | producto/calidad.md; producto/backlog-antiguedad.md; producto/diagnostico-origen.md; calculos/catalogo.md; producto/administracion.md; arquitectura/calidad-csapp08.md; arquitectura/pulse-configuracion-csapp07.md; validacion/csapp-07.md |
 | CSAPP-09 | validacion/aceptacion.md; arquitectura/propuesta.md y modelo.md; contratos que revelen discrepancias |
-| CSAPP-10 | plan/roadmap.md; plan/estado.md; validacion/aceptacion.md; guías operativas creadas durante la implementación |
+| CSAPP-10 | plan/roadmap.md; plan/estado.md; validacion/aceptacion.md; operacion/instalacion-operacion.md; operacion/variables-entorno.md; operacion/copia-restauracion.md; operacion/actualizacion-despliegue-it.md; plan/guia-dennis.md; validacion/registro-aceptacion.md; validacion/csapp-10.md |
 
 Las rutas se resuelven desde el índice. Leer decisiones históricas únicamente para entender una divergencia. Las fuentes reales y la evidencia agregada se consultan cuando la entrega lo requiera, no como preámbulo fijo de cada tarea.
+
+## Guías por entrega (históricas)
+
+Desde CSAPP-10 hay **una** guía vigente de instalación y operación ([instalación y operación](../operacion/instalacion-operacion.md)), una de copias ([copia y restauración](../operacion/copia-restauracion.md)), una de actualización y despliegue ([actualización y despliegue para IT](../operacion/actualizacion-despliegue-it.md)) y una de puesta en marcha de datos ([guía de Dennis](guia-dennis.md)). Las `guia-powershell-csapp01` a `09` quedan como **historia** (llevan una nota al inicio): explican cómo se arrancó cada entrega y no se usan para operar. No contienen fórmulas ni contratos; los contratos viven en `producto/`, `importaciones/`, `calculos/` y `arquitectura/`. Los prompts y la evidencia anterior no se reescriben.

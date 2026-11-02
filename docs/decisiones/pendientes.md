@@ -40,3 +40,24 @@ Siguen **sin aceptar**: ECO 08, ZDT 11–13, ZTM 06–08, la lista de origen PAP
 Pendiente de **Dennis**: conciliación con sus cargas reales (finanzas completas 2025 y 2026 y bugs VFS/VSW separados) — **no ejecutada**; limpieza de las dos cuentas sintéticas residuales de CSAPP-06 en `cs_app` (no tocadas); revisar la PR; ejecutar la [guía](../plan/guia-powershell-csapp09.md) en Windows (sin probar).
 
 Propuestas técnicas de CSAPP-09 (no aceptadas, ajustables): límites iniciales de exportación (2 activas por persona, 6 en total, 24 h de vida, 20 000 000 de filas, partes de 1 000 000); evolución de Calidad **recalculada con la revisión activa** al solicitarla (no el color publicado históricamente: no existe archivo de ese cálculo); puente de conciliación automática de Comparativa/Pulse (no incluido); caché persistente (no introducida: las medidas no la justifican); partición de la evolución en carga diferida si su coste (ver [validación](../validacion/csapp-09.md)) resulta molesto con carteras mayores.
+
+
+## Pendientes y propuestas tras CSAPP-10
+
+Siguen **sin aceptar** (continuar o cerrar la última entrega no los acepta): ECO 08, ZDT 11–13, ZTM 06–08, la lista de origen PAP, los estados de bugs, el signo de «Diferencia» y Silver On Demand. Ningún mapeo, perfil, umbral, referencia, muestra mínima ni composición/global se activó: son elecciones del Administrador.
+
+Decisiones concretas pendientes, con su efecto y la pantalla o el documento propietario:
+
+| Decisión | Quién | Efecto concreto | Dónde se decide |
+| --- | --- | --- | --- |
+| Aceptar o ajustar ECO 08 / Silver On Demand en Comparativa | Dennis | Qué cartera de referencia usa el comparador de planes | [Comparativa](../producto/comparativa.md), Administración › Configuración › Economía |
+| Aceptar o ajustar ZDT 11–13 y ZTM 06–08 | Dennis | Interpretaciones de revisión/observación, partición contable y correcciones de Zendesk ya implementadas | [Tickets](../importaciones/zendesk-tickets.md), [Tiempos](../importaciones/zendesk-tiempo.md) |
+| Lista estable de origen PAP y catálogo de estados de bugs | Dennis | Qué PAP son únicos entre listas y qué estados de bugs son terminales (`CSAPP_BUG_TERMINAL_STATES`) | [PAP](../importaciones/pap.md), [Bugs](../importaciones/bugs-producto.md) |
+| Signo de «Diferencia» frente a Budget | Dennis | Presentación de la desviación (se guarda separada) | [Comparativa](../producto/comparativa.md) |
+| Calibración de Calidad: mapeo de Health, perfiles de Dedicación, umbrales, referencias, mínimos de muestra, «peor señal», plantilla del global, política de fotografía anterior | Administrador | Sin esto no hay colores en Calidad/Pulse (magnitudes y razones, nunca un verde por defecto) | Administración › Configuración › Calidad |
+| Dos cuentas sintéticas residuales de CSAPP-06 en `cs_app` | Dennis | Se conservan sin tocar; **no** se reutilizan como cuentas de producción | Esta lista |
+| Política de copias: frecuencia, custodia, acceso, retención | IT | Sin política no hay copias programadas ni borrado automático | [Copia y restauración](../operacion/copia-restauracion.md) |
+| Destino, autorización y fecha de despliegue; proxy, TLS, SSO | IT | Sin ellos el estado es «preparación completa, despliegue pendiente» | [Actualización y despliegue](../operacion/actualizacion-despliegue-it.md) |
+| Aceptación funcional con datos reales y prueba en Windows | Dennis / IT | Cierra el [registro de aceptación](../validacion/registro-aceptacion.md) | Registro de aceptación |
+
+Propuestas técnicas de CSAPP-10 (ajustables, no aceptadas): umbrales de salud (latido vivo < 45 s, sin avance 15 min, cola desatendida 5 min), tiempo máximo de cierre ordenado (120 s), periodo máximo de un informe del puente de conciliación (debe coincidir con uno de los cinco periodos de las pantallas).

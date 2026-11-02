@@ -1,5 +1,7 @@
 # Guía PowerShell de CSAPP-07 (escrita, **sin probar en Windows**)
 
+> **Guía histórica (CSAPP-07).** Describe el arranque de esa entrega y puede contradecir la operación actual. La guía **vigente** de instalación, arranque y operación es [instalación y operación](../operacion/instalacion-operacion.md); los comandos de aquí no se usan en una instalación operativa.
+
 Hay **una migración nueva**: `20261102090000_pulse_calidad_configuracion` (tablas `ConfigRevision` y `ConfigDraft`; no toca ninguna tabla anterior ni reinicia datos). Esta rama (`feature/CSAPP-07-pulse-rent-configuracion`) está **apilada sobre la rama de CSAPP-06** (PR 7, sin fusionar).
 
 ```powershell

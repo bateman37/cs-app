@@ -306,7 +306,7 @@ export async function evolutionIn(tx: Tx, q: QualityQuery, id: string, cfg: Qual
   const src = await evolutionRows(tx, q, id, cfg, today);
   const points: EvolutionPoint[] = [];
   for (const m of src?.months ?? []) if (m.row) points.push(evolutionPoint(m.month, m.period, m.row, m.backlog));
-  return evolutionTail(tx, q, id, { year, lastM, per, points, meta: src ? { ...src.meta, simulated: q.sim === "borrador" } : null });
+  return evolutionTail(tx, q, id, { year, lastM, per, points, meta: src ? { ...src.meta, simulated: q.sim === "borrador" } : null, cumCurrent: src?.cumCurrent });
 }
 
 /**
@@ -334,8 +334,8 @@ export async function evolutionReferenceIn(tx: Tx, q: QualityQuery, id: string, 
   return evolutionTail(tx, q, id, { year, lastM, per, points, meta });
 }
 
-/** Cola común de la serie: CUM técnico, sello de la lectura y referencia. */
-async function evolutionTail(tx: Tx, q: QualityQuery, id: string, s: { year: number; lastM: number; per: QualityPeriod; points: EvolutionPoint[]; meta: { qualityRevision: number; qualityPersisted: boolean; pulseRevision: number; simulated: boolean } | null }): Promise<Evolution> {
+/** Cola común de la serie: CUM técnico, sello de la lectura y referencia. El CUM actual puede llegar ya sumado de los hechos mensuales (los meses son contiguos y disjuntos: 1 de enero → corte); si no, se lee. */
+async function evolutionTail(tx: Tx, q: QualityQuery, id: string, s: { year: number; lastM: number; per: QualityPeriod; points: EvolutionPoint[]; meta: { qualityRevision: number; qualityPersisted: boolean; pulseRevision: number; simulated: boolean } | null; cumCurrent?: Record<string, number> }): Promise<Evolution> {
   const { year, lastM, per, points, meta } = s;
   // CUM técnico: mismo corte del año anterior (magnitudes; NO un global anual ni un promedio de semáforos).
   const scope = scopeOf(q);
@@ -347,7 +347,7 @@ async function evolutionTail(tx: Tx, q: QualityQuery, id: string, s: { year: num
     const r = f.get(id);
     return { flujo: (r?.inc ?? 0) + (r?.prob ?? 0), n3: r?.n3 ?? 0, "problemas estándar/bug": r?.union ?? 0 };
   };
-  const cum = lastM === 0 ? { cut: per.cut, previousCut: prevCutOk, current: {}, previousComparable: {} } : { cut: per.cut, previousCut: prevCutOk, current: await sum(ymFrom, per.cut), previousComparable: await sum(`${year - 1}-01-01`, prevCutOk) };
+  const cum = lastM === 0 ? { cut: per.cut, previousCut: prevCutOk, current: {}, previousComparable: {} } : { cut: per.cut, previousCut: prevCutOk, current: s.cumCurrent ?? (await sum(ymFrom, per.cut)), previousComparable: await sum(`${year - 1}-01-01`, prevCutOk) };
   // Referencia de la serie: cambia con la revisión usada y con CUALQUIER cambio retroactivo de datos, Health o maestros (sello de la misma instantánea).
   const stamp = (await readDataStamp(tx)).stamp;
   const mt = meta ?? { qualityRevision: 0, qualityPersisted: false, pulseRevision: 0, simulated: q.sim === "borrador" };

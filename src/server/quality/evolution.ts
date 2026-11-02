@@ -22,7 +22,11 @@ import { loadHealthForMonths } from "./health";
  * Misma instantánea (la transacción del llamador), misma revisión activa y mismos puntos de sincronización de la lectura coherente que la ficha.
  */
 export type EvolutionMonthResult = { month: number; period: QualityPeriod; row: QualityRow | null; backlog: BacklogInfo };
-export type EvolutionSource = { meta: { qualityRevision: number; qualityPersisted: boolean; pulseRevision: number }; months: EvolutionMonthResult[] };
+export type EvolutionSource = {
+  meta: { qualityRevision: number; qualityPersisted: boolean; pulseRevision: number }; months: EvolutionMonthResult[];
+  /** Magnitudes técnicas acumuladas del año hasta el corte de la entidad: suma exacta de los hechos mensuales (conteos de tickets creados en meses contiguos y disjuntos). */
+  cumCurrent: Record<string, number>;
+};
 
 /** Periodos mensuales de la serie: meses completos hasta el anterior al del corte y el mes del corte con su fecha y modo (mismos que evaluaría la ficha mensual). */
 export function evolutionMonths(q: QualityQuery, today: string): { lastM: number; months: { month: number; q: QualityQuery; period: QualityPeriod }[]; year: number; per: QualityPeriod } {
@@ -43,6 +47,9 @@ export async function evolutionRows(tx: Tx, q: QualityQuery, id: string, cfg: Qu
   const { months } = evolutionMonths(q, today);
   if (months.length === 0) return null;
   const scope = q.scope;
+  // Las consultas por conjuntos de TODO el año tienen un coste estimado alto y PostgreSQL las compila con JIT (generación, optimización y emisión de código
+  // máquina: del orden de segundos por consulta, medido con EXPLAIN ANALYZE). Solo afecta a esta transacción de lectura y no cambia ningún resultado.
+  await tx.$executeRaw`SET LOCAL jit = off`;
   const active = await getActive(tx, "QUALITY", q.qrev ?? undefined);
   const pulse = await getActive(tx, "PULSE", q.prev ?? undefined);
 
@@ -91,5 +98,12 @@ export async function evolutionRows(tx: Tx, q: QualityQuery, id: string, cfg: Qu
     const { evaluateAll } = evaluateMonth(facts, { ...m.q, sel: id }, cfg, pulse.payload.references, new Set([id]));
     out.push({ month: m.month, period, row: evaluateAll(cfg).get(id) ?? null, backlog: s.backlog });
   });
-  return { meta: { qualityRevision: active.revisionNo, qualityPersisted: active.persisted, pulseRevision: pulse.revisionNo }, months: out };
+  const cumCurrent = { flujo: 0, n3: 0, "problemas estándar/bug": 0 };
+  for (const t of tByP.values()) {
+    const f = t.get(id);
+    cumCurrent.flujo += (f?.inc ?? 0) + (f?.prob ?? 0);
+    cumCurrent.n3 += f?.n3 ?? 0;
+    cumCurrent["problemas estándar/bug"] += f?.union ?? 0;
+  }
+  return { meta: { qualityRevision: active.revisionNo, qualityPersisted: active.persisted, pulseRevision: pulse.revisionNo }, months: out, cumCurrent };
 }

@@ -10,7 +10,7 @@ import { runReconciliationAction } from "./actions";
 export const metadata: Metadata = { title: "Conciliación" };
 export const dynamic = "force-dynamic";
 const STATUS: Record<string, string> = { OK: "coincide", DIFERENCIA: "diferencia", INFORMATIVO: "informativo", NO_DISPONIBLE: "no disponible" };
-const LEVEL: Record<number, string> = { 1: "Nivel 1 · Fuente y lote", 2: "Nivel 2 · Hechos elegibles", 3: "Nivel 3 · Resultado (servicio ↔ detalle ↔ CSV)" };
+const LEVEL: Record<number, string> = { 1: "Nivel 1 · Fuente y lote", 2: "Nivel 2 · Hechos elegibles", 3: "Nivel 3 · Resultado (servicio ↔ detalle ↔ CSV)", 4: "Nivel 4 · Puente Comparativa / Análisis Cliente / Pulse Rent / Calidad" };
 
 export default async function ConciliacionPage({ searchParams }: { searchParams: Promise<SearchParams> }) {
   const user = await requirePageAdmin();
@@ -41,7 +41,7 @@ export default async function ConciliacionPage({ searchParams }: { searchParams:
           {run.stale ? <p className="notice notice-warn" role="note"><strong>Los datos actuales han cambiado</strong> desde esta lectura (referencia {run.stamp} → {run.currentStamp}). Este informe conserva sus resultados; ejecute una nueva comprobación para ver el estado actual.</p> : null}
           <p>Periodo {run.params.desde} – {run.params.hasta} · {run.params.scope === "group" ? "Grupo Cliente" : "Cliente"}{run.params.sel ? ` ${run.params.sel}` : " (todos)"} · servicio {run.params.servicio} · referencia <code>{run.stamp}</code> · leído {new Date(run.readAt).toLocaleString("es-ES", { timeZone: "Europe/Madrid" })} · {run.summary.ok} coinciden, {run.summary.difference} con diferencia, {run.summary.informative} informativas, {run.summary.unavailable} no disponibles.</p>
           <p className="quick"><a href={`/api/administracion/conciliacion/${run.id}/informe`} download>Descargar informe tabular (CSV)</a> · <a href={`/api/administracion/conciliacion/${run.id}/manifiesto`} download>Descargar manifiesto (JSON)</a></p>
-          {[1, 2, 3].map((lv) => (
+          {[1, 2, 3, 4].map((lv) => (
             <div key={lv} className="table-wrap" tabIndex={0} role="region" aria-label={LEVEL[lv]}>
               <table>
                 <caption>{LEVEL[lv]}</caption>

@@ -35,6 +35,10 @@ const CONSTRAINT_MESSAGES: Record<string, { message: string; field?: string }> =
   EconomicSettingsRevision_revisionNo_key: {
     message: "Otra persona ha guardado una revisión de la configuración económica mientras editaba. Recargue y vuelva a intentarlo; no se ha guardado nada.",
   },
+  HealthFeedback_groupId_year_month_key: { message: "Otra operación simultánea ha registrado ya el feedback de este mes. Recargue la matriz y revise; no se ha guardado nada." },
+  HealthFeedback_clientId_year_month_key: { message: "Otra operación simultánea ha registrado ya el feedback de este mes. Recargue la matriz y revise; no se ha guardado nada." },
+  HealthFeedbackEvent_feedbackId_version_key: { message: "Otra operación simultánea ha modificado esta celda. Recargue la matriz y revise; no se ha guardado nada." },
+  UploadCoverageDeclaration_batchId_version_key: { message: "Otra persona ha declarado la cobertura de este lote mientras editaba. Recargue y revise la declaración vigente; no se ha guardado nada." },
   UploadJob_open_per_batch_kind_key: { message: "Esta operación ya está en cola para el lote; no se ha duplicado." },
 };
 

@@ -22,7 +22,7 @@ export function selectorsOf(cfg: PulseConfig): Selector[] {
 }
 export const configuredProfiles = (cfg: PulseConfig): Set<ProfileKey> => new Set(PROFILE_KEYS.filter((k) => (cfg.profiles[k] ?? []).length > 0));
 
-const selValues = (sels: Selector[]) =>
+export const selValues = (sels: Selector[]) =>
   sels.length === 0
     ? Prisma.sql`SELECT NULL::int AS idx, NULL::text AS key, NULL::text AS team, NULL::text AS level, NULL::boolean AS pmo WHERE false`
     : Prisma.sql`SELECT * FROM (VALUES ${Prisma.join(sels.map((s) => Prisma.sql`(${s.idx}::int, ${s.key}::text, ${s.team}::text, ${s.level}::text, ${s.pmo}::boolean)`))}) v(idx, key, team, level, pmo)`;

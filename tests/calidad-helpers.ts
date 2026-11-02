@@ -4,6 +4,8 @@ import { tkey } from "./economia-helpers";
 import { declareCoverage } from "@/server/quality/coverage";
 
 const d = (v: string) => new Date(`${v}T00:00:00Z`);
+/** Reloj de las declaraciones de prueba: nunca anterior a la fecha de referencia de las pruebas (02/11/2026), pero tampoco por detrás del reloj real. */
+const helperNow = () => new Date(Math.max(Date.now(), Date.parse("2026-11-02T09:00:00Z")));
 
 export async function batchOf(adminId: string, profileId: string, extract: string | null = null, status: "COMPLETED" | "REVERTED" = "COMPLETED") {
   return prisma.uploadBatch.create({ data: { profileId, profileVersion: 1, status, originalName: `${profileId}.xlsx`, storageId: `s-${randomUUID()}`, fileFormat: "xlsx", createdById: adminId, declaredExtractionDate: extract ? d(extract) : null } });
@@ -28,7 +30,7 @@ export async function declare(adminId: string, batchId: string, o: Partial<{ pop
   return declareCoverage(adminId, {
     batchId, population: o.population ?? "ALL_CLIENTS", statusScope: o.statusScope ?? (prof === "zendesk-tickets" ? "ALL_STATUSES" : "NOT_APPLICABLE"), coveredFrom: o.from ?? "2026-01-01", coveredTo: o.to ?? "2026-10-31",
     extractedOn: o.extractedOn ?? "", reason: "Declaración de prueba", expectedVersion: o.expectedVersion ?? 0,
-  }, { now: new Date("2026-11-02T09:00:00Z") });
+  }, { now: helperNow() });
 }
 
 export async function seedPap(batchId: string, o: { id: string; groupId: string; clientId: string; date: string | null; state: "CORRECTIVE" | "NON_CORRECTIVE" | "UNKNOWN"; causes?: { category: string; origin?: string }[]; result?: string; listKey?: string }) {
@@ -53,6 +55,7 @@ export async function seedBugLink(batchId: string, o: { bugId: string; product?:
 export async function declareAllSources(adminId: string, from = "2020-01-01", to = "2026-12-31") {
   for (const profile of ["zendesk-tickets", "zendesk-tiempo", "wrike", "pap"]) {
     const b = await batchOf(adminId, profile, profile === "zendesk-tickets" ? to : null);
-    await declare(adminId, b.id, { from, to: to > "2026-11-02" ? "2026-11-02" : to }, profile);
+    const today = helperNow().toISOString().slice(0, 10);
+    await declare(adminId, b.id, { from, to: to > today ? today : to }, profile);
   }
 }

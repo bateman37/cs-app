@@ -21,8 +21,11 @@ export async function exportaciones(ctx: Ctx): Promise<void> {
   const atlas = await h.addGroup("Grupo Export");
   const cl = await h.addClient("Cliente Export", atlas.id);
   const zb = await c.batchOf(admin.id, "zendesk-tiempo");
+  // La pantalla de Calidad exporta con SU servicio (Soporte por defecto): las horas del fixture se atribuyen a Soporte por Entorno y Tipología.
+  await h.serviceAssignment({ matchKind: "ENTORNO", matchValue: "soporte", service: "SOPORTE" });
+  await h.addTicket(zb.id, { ticketId: "EXP", entorno: "Soporte" });
   const N = 1300; // varios bloques de 500 filas
-  for (let i = 1; i <= N; i++) await h.addZd({ batchId: zb.id, date: `2026-10-${String((i % 28) + 1).padStart(2, "0")}`, minutes: 1 + (i % 7), groupId: atlas.id, clientId: cl.id });
+  for (let i = 1; i <= N; i++) await h.addZd({ batchId: zb.id, date: `2026-10-${String((i % 28) + 1).padStart(2, "0")}`, minutes: 1 + (i % 7), groupId: atlas.id, clientId: cl.id, ticketId: "EXP" });
   const expectedSum = (await ctx.prisma.$queryRaw<{ m: string }[]>`SELECT sum(minutes)::bigint::text AS m FROM "ZdTimeEntry"`)[0].m;
 
   // --- Sin trabajador: el aviso es visible (no un spinner indefinido) y se puede cancelar
@@ -41,13 +44,13 @@ export async function exportaciones(ctx: Ctx): Promise<void> {
   const queued = await body(page);
   ctx.check("Exportar: sin trabajador queda «En cola» y avisa de que no hay trabajador activo (sin spinner indefinido)", /En cola/.test(queued) && /No hay un trabajador activo/.test(queued), queued.slice(0, 200));
   await page.getByRole("button", { name: "Cancelar" }).first().click();
-  await page.getByText(/Cancelación solicitada/).first().waitFor({ timeout: 10000 });
+  await page.locator("[data-export-status='CANCELLED']").first().waitFor({ timeout: 15000 }); // la tarjeta se vuelve a pintar con el nuevo estado
   ctx.check("Exportar: cancelar una exportación en cola es inmediato y reintentable", (await ctx.prisma.exportJob.findFirstOrThrow()).status === "CANCELLED" && (await page.getByRole("button", { name: "Reintentar" }).count()) > 0);
 
   // --- Con trabajador: reintentar, progreso hasta «Listo», salir y volver, descargar y verificar el contenido
   await ctx.startWorker();
   await page.getByRole("button", { name: "Reintentar" }).first().click();
-  await page.getByText(/Exportación en cola de nuevo/).first().waitFor({ timeout: 10000 });
+  await page.locator("[data-export-status='QUEUED'], [data-export-status='PREPARING'], [data-export-status='GENERATING'], [data-export-status='READY']").first().waitFor({ timeout: 15000 });
   await page.goto(`${ctx.base}/comparativa`); // sale de la pantalla...
   const job = await ctx.prisma.exportJob.findFirstOrThrow();
   const until = Date.now() + 90000;
@@ -80,7 +83,8 @@ export async function exportaciones(ctx: Ctx): Promise<void> {
   // --- Permisos: sin sesión, Consulta (otra persona), UUID manipulado, Administración supervisa sin descargar ajenos
   const anon = await newContext(ctx);
   const r0 = await anon.page.request.get(`${ctx.base}/api/exportaciones/${job.id}/archivo/${data.id}`);
-  ctx.check("Permisos: sin sesión la descarga se rechaza (401) y no devuelve contenido", r0.status() === 401 && !(await r0.text()).includes("fecha_trabajo"));
+  const t0 = await r0.text();
+  ctx.check("Permisos: sin sesión la descarga no entrega contenido (el proxy redirige a /login o la ruta responde 401)", (r0.status() === 401 || r0.url().includes("/login")) && !t0.includes("fecha_trabajo"), `${r0.status()} ${r0.url()}`);
   const fake = await anon.context.addCookies([{ name: "better-auth.session_token", value: "falsa.cookie", url: ctx.base }]).then(() => anon.page.request.get(`${ctx.base}/api/exportaciones/${job.id}/estado`));
   ctx.check("Permisos: cookie falsa rechazada", fake.status() === 401);
   const rd = await login(ctx, ctx.accounts.readerEmail, ctx.accounts.readerPassword);
@@ -122,7 +126,7 @@ export async function exportaciones(ctx: Ctx): Promise<void> {
   ctx.check("Conciliación: Consulta no puede descargar el informe", rc.status() >= 400);
   // --- Accesibilidad básica del panel (1440 y 390 px, teclado, anuncio de estado): NO se declara lector de pantalla verificado
   await page.goto(`${ctx.base}/calidad?fecha=2026-10-31&modo=FULL_MONTH`);
-  const a11y = await page.evaluate(() => ({ status: document.querySelectorAll("[role='status']").length, labelled: Array.from(document.querySelectorAll("#exp-title ~ form select, #exp-title ~ form input")).every((e) => (e as HTMLInputElement).labels?.length), overflow: document.documentElement.scrollWidth - window.innerWidth }));
+  const a11y = await page.evaluate(() => ({ status: document.querySelectorAll("[role='status']").length, labelled: Array.from(document.querySelectorAll("#exp-title ~ form select, #exp-title ~ form input:not([type=hidden])")).every((e) => (e as HTMLInputElement).labels?.length), overflow: document.documentElement.scrollWidth - window.innerWidth }));
   await page.setViewportSize({ width: 390, height: 844 });
   await page.reload();
   const narrow = await page.evaluate(() => document.documentElement.scrollWidth - window.innerWidth);

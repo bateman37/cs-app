@@ -12,6 +12,7 @@ import { runPreflight, portFree, portOf } from "../src/server/ops/preflight";
 import { adoptStores, ensureInstallationId, verifyStore } from "../src/server/ops/stores";
 import { clearRunFile, isPidAlive, readRunFile, runFileLive, stateDir, stopRequestPath, writeRunFile, type RunFile } from "../src/server/ops/runfile";
 import { requestWorkerStop } from "../src/server/ops/worker-instance";
+import { backupLockLive } from "../src/server/ops/backup/lock";
 
 /**
  * Herramienta operativa de CS App (CSAPP-10 §3-4). Node puro, sin Bash; funciona en PowerShell. Uso: `npm run ops -- <orden>`.
@@ -92,6 +93,7 @@ async function iniciar(): Promise<number> {
   if (errors.length) { for (const f of errors) console.error(`[ERROR] ${f.code}: ${f.message}`); return 1; }
   const existing = await readRunFile(dir);
   if (runFileLive(existing)) { console.error(`Ya hay una instancia en marcha (supervisor ${existing!.supervisorPid}). No se inicia otra: use «npm run ops -- parar» primero.`); return 1; }
+  if (await backupLockLive(dir)) { console.error("Hay una copia de seguridad en curso (bloqueo vigente): no se arranca nada hasta que termine."); return 1; }
   const host = process.env.CSAPP_HOST || "127.0.0.1";
   const port = portOf(process.env);
   if (!(await portFree(port, host))) { console.error(`El puerto ${port} está ocupado por otro proceso. No se inicia una instancia accidental.`); return 1; }

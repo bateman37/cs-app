@@ -72,6 +72,10 @@
     "e2e:grandes": "tsx scripts/e2e/grandes.ts",
     "ensayo:instalacion": "tsx scripts/ensayo-instalacion.ts",
     "ensayo:actualizacion": "tsx scripts/ensayo-actualizacion.ts",
-    "huella": "tsx scripts/huella-datos.ts"
+    "huella": "tsx scripts/huella-datos.ts",
+    "backup:crear": "tsx scripts/backup.ts crear",
+    "backup:verificar": "tsx scripts/backup.ts verificar",
+    "backup:restaurar": "tsx scripts/backup.ts restaurar",
+    "ensayo:restauracion": "tsx scripts/ensayo-restauracion.ts"
   }
 }

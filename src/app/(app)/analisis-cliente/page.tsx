@@ -1,3 +1,4 @@
+import { ExportPanel } from "@/components/exports/export-panel";
 import type { Metadata } from "next";
 import Link from "next/link";
 import { requirePageUser } from "@/lib/session";
@@ -153,6 +154,7 @@ async function FichaPage({ userId, isAdmin, query, target, back, sp }: { userId:
         </>
       )}
       <CalidadFicha userId={userId} query={query} target={ref} />
+      {ref.type !== "implementation" ? <ExportPanel userId={userId} scope={ref.type} sel={ref.id} selName={ctx.name} from={`${f.cut.slice(0, 4)}-01-01`} to={f.cut} service={query.service} stamp={f.economics?.reference?.dataStamp?.stamp} /> : null}
     </>
   );
 }

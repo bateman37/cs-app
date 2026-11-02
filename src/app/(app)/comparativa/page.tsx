@@ -1,3 +1,4 @@
+import { ExportPanel } from "@/components/exports/export-panel";
 import type { Metadata } from "next";
 import Link from "next/link";
 import { requirePageUser } from "@/lib/session";
@@ -52,6 +53,7 @@ export default async function Page({ searchParams }: { searchParams: Promise<Sea
         </Notice>
       ) : null}
       {view ? <Body view={view} isAdmin={isAdmin} stale={Boolean(fresh)} params={params} /> : null}
+      {view ? <ExportPanel userId={user.id} scope="group" sel="" from={`${view.cut.slice(0, 4)}-01-01`} to={view.cut} service={query.service === "TOTAL" ? "TOTAL" : query.service} stamp={view.economics.reference.dataStamp.stamp} /> : null}
     </>
   );
 }

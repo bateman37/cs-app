@@ -1,3 +1,4 @@
+import { ExportPanel } from "@/components/exports/export-panel";
 import type { Metadata } from "next";
 import Link from "next/link";
 import { requirePageUser } from "@/lib/session";
@@ -111,6 +112,7 @@ async function Cartera({ v, q, isAdmin, userId, today }: { v: QualityView; q: Qu
           {isAdmin && v.notes.length ? <p className="hint">Siguientes acciones: calibrar umbrales y mapeo de Client Health, elegir perfiles de Dedicación y plantilla del global en <Link href="/administracion/configuracion?seccion=calidad">Administración › Configuración</Link>; declarar la cobertura de los lotes en <Link href="/administracion/cargas">Cargas</Link>.</p> : v.notes.length ? <p className="hint">Los pendientes de calibración y cobertura los resuelve un Administrador; usted puede consultar los motivos y descargar el CSV.</p> : null}
         </>
       )}
+      {!noSetup ? <ExportPanel userId={userId} scope={q.scope} sel={q.sel} selName={sel?.name} from={`${v.period.year}-01-01`} to={v.period.cut} service={q.base.service} stamp={v.stamp} /> : null}
       {sel ? <EntityDetail r={sel} q={q} cfg={v.config_payload} basePath={BASE} evolution={evolution} notes={notes} isAdmin={isAdmin} milestones={milestones} /> : q.sel ? <Notice kind="warn">La entidad seleccionada no está en este ámbito o no existe.</Notice> : null}
     </>
   );

@@ -1,3 +1,4 @@
+import { ExportPanel } from "@/components/exports/export-panel";
 import type { Metadata } from "next";
 import Link from "next/link";
 import { requirePageUser } from "@/lib/session";
@@ -111,6 +112,7 @@ export default async function Page({ searchParams }: { searchParams: Promise<Sea
           )}
         </>
       ) : null}
+      {view ? <ExportPanel userId={user.id} scope={query.scope === "group" ? "group" : "client"} sel="" from={`${view.cut.slice(0, 4)}-01-01`} to={view.cut} service="TOTAL" stamp={view.stamp} /> : null}
       <p className="hint">Interpretaciones pendientes de aceptación (no cambian por este módulo): ZDT 11–13, ZTM 06–08, lista de origen PAP, estados de bugs, signo de «Diferencia» y tratamiento de Silver. Sin evidencia de facturación, los PAP evolutivos no se califican como no facturables.</p>
     </>
   );

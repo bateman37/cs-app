@@ -17,5 +17,6 @@ export function proxy(request: NextRequest) {
 export const config = {
   // api/cargas queda fuera: el proxy bufferiza los cuerpos de petición y las subidas deben ir en
   // streaming. Sus rutas validan origen, sesión real y rol ADMIN por sí mismas antes de leer nada.
-  matcher: ["/((?!api/auth|api/cargas|_next/static|_next/image|favicon.ico).*)"],
+  // api/salud (CSAPP-10): salud MÍNIMA pública para supervisores y proxys; solo devuelve el estado global, nunca detalles.
+  matcher: ["/((?!api/auth|api/cargas|api/salud|_next/static|_next/image|favicon.ico).*)"],
 };

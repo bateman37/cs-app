@@ -192,6 +192,7 @@ async function main(): Promise<number> {
 }
 
 main().then(
-  async (code) => { if (cmd !== "iniciar") { await prisma.$disconnect().catch(() => undefined); process.exit(code); } },
+  // `iniciar` solo resuelve su promesa cuando se niega a arrancar (el camino normal sale desde `shutdown`).
+  async (code) => { await prisma.$disconnect().catch(() => undefined); process.exit(code); },
   async (e: unknown) => { console.error(e instanceof Error ? e.message.split("\n")[0].replace(/postgres(ql)?:\/\/\S+/g, "(URL oculta)") : "Error desconocido."); await prisma.$disconnect().catch(() => undefined); process.exit(1); },
 );

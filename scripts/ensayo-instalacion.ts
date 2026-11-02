@@ -97,7 +97,7 @@ async function main() {
     const det = await (await fetch(`${base_url}/api/administracion/salud`, { headers: { cookie } })).json() as { overall: string; workers: { verdict: string }; schema: { state: string; applied: number }; stores: { marker: string; writable: boolean }[]; version: { sha: string } };
     out.saludDetalle = det;
     check("Salud detallada (Administrador): trabajador «presente en reposo» SIN ningún trabajo, esquema compatible y almacenes enlazados y escribibles", det.workers.verdict === "presente_en_reposo" && det.schema.state === "ok" && det.schema.applied === 9 && det.stores.every((s) => s.marker === "ok" && s.writable), JSON.stringify({ w: det.workers.verdict, s: det.schema, st: det.stores }));
-    check("Salud detallada: sin sesión → 401; la pública no filtra detalles", (await fetch(`${base_url}/api/administracion/salud`)).status === 401);
+    check("Salud detallada: sin sesión no se sirve (401/redirección al acceso)", [401, 307, 302].includes((await fetch(`${base_url}/api/administracion/salud`, { redirect: "manual" })).status));
     const html = await (await fetch(`${base_url}/comparativa`, { headers: { cookie } })).text();
     check("Estado vacío honesto: Comparativa sin datos no muestra cifras ni colores inventados", /No hay|sin datos|Todavía no|vacío/i.test(html) && !/\b(Verde|Rojo)\b.*€\/jornada/.test(html));
     const second = spawnSync(process.execPath, [path.join(ROOT, "node_modules/tsx/dist/cli.mjs"), "scripts/ops.ts", "iniciar"], { cwd: ROOT, env: env as NodeJS.ProcessEnv, encoding: "utf8", timeout: 120_000 });

@@ -224,6 +224,13 @@ describe("crear: interrupción, fallo y espacio ⇒ no queda copia recuperable",
     expect(await dirs()).toEqual([]);
   });
 
+  it("interrupción por la persona operadora (señal de cancelación) tras el volcado ⇒ no se publica nada y se limpia el temporal propio", async () => {
+    const ac = new AbortController();
+    await expect(makeBackup(w, { signal: ac.signal, hooks: { afterDump: () => ac.abort() } })).rejects.toThrow(/Copia interrumpida/);
+    expect(await dirs()).toEqual([]);
+    expect(await backupLockLive(w.state)).toBe(false);
+  });
+
   it("pg_dump más antiguo que el servidor ⇒ rechaza antes de crear nada", async () => {
     const f = path.join(w.root, "pg_dump_viejo");
     await writeFile(f, `#!/usr/bin/env node\nconsole.log("pg_dump (PostgreSQL) 12.4");\n`, { mode: 0o755 });

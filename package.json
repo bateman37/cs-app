@@ -68,6 +68,10 @@
     "ops:preparar": "tsx scripts/ops.ts preparar",
     "ops:salud": "tsx scripts/ops.ts salud",
     "start:todo": "tsx scripts/ops.ts iniciar",
-    "stop:todo": "tsx scripts/ops.ts parar"
+    "stop:todo": "tsx scripts/ops.ts parar",
+    "backup:crear": "tsx scripts/backup.ts crear",
+    "backup:verificar": "tsx scripts/backup.ts verificar",
+    "backup:restaurar": "tsx scripts/backup.ts restaurar",
+    "ensayo:restauracion": "tsx scripts/ensayo-restauracion.ts"
   }
 }

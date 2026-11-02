@@ -44,7 +44,6 @@ async function world() {
   const tb = await batchOf(admin.id, "zendesk-tickets", "2026-10-31");
   return { g, g2, c1, c2, b1, tb };
 }
-type W = Awaited<ReturnType<typeof world>>;
 const row = (v: Awaited<ReturnType<typeof run>>, name: string) => v.rows.find((r) => r.name === name)!;
 const V = (r: ReturnType<typeof row>, k: IndicatorKey) => r.evaluation.indicators[k];
 

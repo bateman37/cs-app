@@ -2,7 +2,7 @@ import { Prisma } from "@/generated/prisma/client";
 import { Dec, lastDayOfMonth, parseYmd } from "@/domain/finance";
 import { todayMadrid } from "@/domain/vigencia";
 import { PMO_CUTOFF } from "@/domain/zendesk";
-import { PROFILE_KEYS, referenceMembership, type PulseConfig, type PulseReference, type CriteriaMeta } from "@/domain/pulse-catalog";
+import { PROFILE_KEYS, referenceMembership, type PulseReference, type CriteriaMeta } from "@/domain/pulse-catalog";
 import { percentileInc, sortDec } from "@/domain/pulse-stats";
 import {
   BACKLOG_UNIT, INDICATOR_KEYS, INDICATOR_NAME, METRIC_UNIT, UNIT_LABEL, ageDays, backlogStockRate, evaluateEntity, flowRate, hoursPerUserMonth, isAged,
@@ -231,7 +231,6 @@ export async function computeQuality(tx: Tx, q: QualityQuery, opts: QualityOptio
 
   type Raw = { input: Omit<EntityInput, "scope" | "health">; explain: Record<IndicatorKey, Explain>; users: Users };
   const rawOf = new Map<string, Raw>();
-  const hundred = Dec.int(100);
   const gapNote = (c: Coverage) => `${c.reason}`;
   const withCoverage = (value: Dec | null, c: Coverage[], extraPartial: string | null, reasonBase: string | null): ComponentInput => {
     if (value === null) return { value: null, reason: reasonBase };

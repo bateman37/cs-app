@@ -1,3 +1,4 @@
+import type { ReactNode } from "react";
 import Link from "next/link";
 import { ActionForm, SelectField, SubmitButton, TextAreaField, TextField } from "@/components/form-kit";
 import { DIAGNOSIS_FAMILIES, DIAGNOSIS_LABEL, INDICATOR_KEYS, INDICATOR_NAME, UNIT_LABEL, type QualityConfig } from "@/domain/quality-config";
@@ -15,7 +16,7 @@ import { ColorBadge, KpiCell, STATUS_TEXT, num } from "./ui";
 
 const pct = (v: string | null | undefined) => (v === null || v === undefined ? "—" : `${num(v, 2)} %`);
 
-export function EntityDetail({ r, q, cfg, basePath, evolution, notes, isAdmin, milestones }: { r: QualityRow; q: QualityQuery; cfg: QualityConfig; basePath: string; evolution: Evolution | null; notes: QualityNoteView[]; isAdmin: boolean; milestones: { date: string; type: string; note: string | null; where: string }[] }) {
+export function EntityDetail({ r, q, cfg, basePath, evolutionSlot, notes, isAdmin, milestones }: { r: QualityRow; q: QualityQuery; cfg: QualityConfig; basePath: string; evolutionSlot: ReactNode; notes: QualityNoteView[]; isAdmin: boolean; milestones: { date: string; type: string; note: string | null; where: string }[] }) {
   const w = r.evaluation.weights;
   const g = r.evaluation.global;
   const href = (extra: Partial<QualityQuery>) => `${basePath}${qs(qualityToParams({ ...q, ...extra }))}`;
@@ -83,7 +84,7 @@ export function EntityDetail({ r, q, cfg, basePath, evolution, notes, isAdmin, m
       <p>{r.health.state && r.health.state !== "NONE" ? <>{HEALTH_DB_LABEL[r.health.state as HealthDbState]}{r.health.comment ? <> — «{r.health.comment}»</> : null} <small>(versión {r.health.version}; {r.health.use?.note})</small></> : <span className="badge badge-off">Sin feedback (en blanco)</span>}</p>
 
       <h3>Evolución mensual</h3>
-      {evolution ? <Evo e={evolution} /> : <p className="muted">Sin datos de evolución.</p>}
+      {evolutionSlot}
       {milestones.length ? <p className="hint">Hitos del año (anotados; no se excluyen eventos automáticamente): {milestones.map((m) => `${fdate(m.date)} · ${m.type}${m.note ? ` (${m.note})` : ""} · ${m.where}`).join(" — ")}.</p> : null}
 
       <h3>Notas de revisión de calidad</h3>
@@ -101,7 +102,7 @@ export function EntityDetail({ r, q, cfg, basePath, evolution, notes, isAdmin, m
   );
 }
 
-function Evo({ e }: { e: Evolution }) {
+export function Evo({ e }: { e: Evolution }) {
   const rows = e.points;
   const COLOR_TEXT: Record<string, string> = { green: "verde", yellow: "amarillo", red: "rojo" };
   const numOf = (p: Evolution["points"][number], k: (typeof INDICATOR_KEYS)[number]): number | null => {

@@ -25,7 +25,7 @@ Comprobado con `git fetch`, `git merge-base --is-ancestor` y la lista de PR abie
 | Migración | Base limpia (ocho migraciones, **sin deriva** respecto a `schema.prisma`) y actualización desde 08 con datos, `ConfigRevision` inmutable, Health y cobertura conservados, sin reset, repetible (`tests/migracion-csapp09.test.ts`) |
 | Recorrido de navegador (`npm run e2e`, web y trabajador **compilados**) | **338 comprobaciones correctas, 0 fallos** (318 heredadas de 08 + 20 nuevas de `15-exportaciones.ts`). Una primera ejecución dio 320 correctas y 1 caso abortado por un defecto **del propio caso** (esperaba un mensaje que se vuelve a pintar; el fixture no era de Soporte); se corrigió el caso y se repitió el recorrido completo |
 | Suites largas (`npm run test:largo`, con el trabajador real) | **7 archivos, 12 pruebas correctas, 1 555 s**: `cargas-trabajador` (SIGKILL/SIGTERM durante preparación y activación, **300 000 filas, sin reducirlo**), `cargas-volumen` (1 000 000 de filas del perfil **sintético**), `zendesk-volumen`, `csapp04-volumen`, `finanzas-trabajador`, `finanzas-volumen` y `csapp09-exportacion-trabajador` (300 000 filas). Ninguna excluida ni omitida |
-| Benchmark comparado con 08 | [[BENCH]] |
+| Benchmark comparado con 08 (mismo equipo, semilla y comando; 1 500 y 750 grupos) | Ver «Medidas de rendimiento»: cartera, ficha, detalles y CSV **dentro del ±15 %** de 08 con las mismas sentencias; la **evolución mensual** de una ficha pasa de 3,5 s a 15,7 s (explicado abajo); sin N+1 |
 
 ## Deficiencias de §3: reproducción, corrección y verificación
 
@@ -55,7 +55,45 @@ La memoria **no crece con el tamaño** (343 MB con 250 000 filas frente a 340 MB
 
 ## Medidas de rendimiento (mismo equipo, misma semilla y mismo comando)
 
-[[BENCHTABLE]]
+**Equipo y entorno.** Intel Xeon 2,8 GHz, 4 vCPU, 16 GB de RAM, Linux, Node 22.22.0, PostgreSQL 16.15 local (configuración por defecto), Prisma 7.10.1. **Semilla y comando**: `npx tsx scripts/volumen-calidad.ts 1500 250000 114000` (y `750 125000 57000` para el segundo tamaño); fixture **sintética** determinista generada por SQL en la base `_test`: 1 500 (750) Grupos y Clientes con usuarios propios, 250 000 (125 000) tiempos, 116 000 (57 000) tickets con revisiones, 225 508 observaciones en seis fotografías, 6 000 PAP, 3 000 vínculos a bugs, 15 000 celdas de Health y cobertura declarada suficiente para calcular percentiles. La base de 08 se midió con el **mismo script** (copiado a un `git worktree` de la cabeza de 08 `d7bc52b`), en el mismo equipo y la misma base, secuencialmente (nunca en paralelo). Cada operación se mide **tres veces** (la primera es «fría») y se informa mediana y rango; las operaciones con efectos (exportación y conciliación, que no existen en 08) una vez. Son medidas de **llamada de servicio dentro del proceso** (no del recorrido web ni del lector aislado); no se extrapola capacidad productiva.
+
+**1 500 Grupos / Clientes (tamaño mayor)**
+
+| Operación | 08: mediana s (rango) | 09: mediana s (rango) | Sentencias 08 → 09 | Variación |
+| --- | --- | --- | --- | --- |
+| Cartera Grupo Cliente (1 página de 50, percentiles) | 2,88 (2,65–2,92) | 3,30 (2,75–3,53) | 23 → 23 | rangos solapados |
+| Cartera Cliente (1 500 clientes) | 4,37 (4,33–4,47) | 4,21 (4,07–4,31) | 24 → 24 | −4 % |
+| Filtro por color y orden por global | 2,72 (2,66–2,75) | 2,66 (2,45–2,95) | 23 → 23 | −2 % |
+| Ficha de una entidad (cartera + selección) | 2,81 (2,76–2,84) | 2,87 (2,77–2,92) | 23 → 23 | +2 % |
+| **Evolución mensual de una entidad** | **3,49 (3,43–3,71)** | **15,72 (15,02–15,84)** | **9 → 189** | **+350 %** (ver explicación) |
+| Backlog histórico (fotografía exacta) | 3,80 (3,77–4,08) | 4,08 (4,05–4,08) | 9 → 9 | +7 % |
+| Backlog de un corte con solo fotografía anterior | 1,09 (1,05–1,12) | 1,10 (1,06–1,12) | 9 → 9 | +1 % |
+| Diagnóstico por origen | 0,64 (0,63–0,72) | 0,61 (0,58–0,63) | 8 → 8 | −5 % |
+| Detalle de una familia | 0,58 (0,57–0,62) | 0,59 (0,57–0,68) | 6 → 6 | +2 % |
+| Matriz de Client Health (1.ª página) | 0,02 | 0,02 | 6 → 6 | — |
+| CSV completo de la cartera | 2,74 (2,70–2,76) | 2,90 (2,85–2,92) | 23 → 23 | +6 % |
+| Sello de datos (lectura) | 0,14 (0,13–0,14) | 0,16 (0,15–0,16) | 3 → 3 | +0,02 s (+14 %) |
+
+**750 Grupos / Clientes (tamaño menor, para detectar N+1)**
+
+| Operación | 08 (s) | 09 (s) | Sentencias |
+| --- | --- | --- | --- |
+| Cartera Grupo / Cliente | 1,41 / 1,35 | 1,33 / 1,24 | 23 / 24 en ambos tamaños |
+| Ficha | 1,27 | 1,26 | 23 |
+| Evolución mensual | 1,35 | 7,69 | 9 → **189 en ambos tamaños** |
+| Backlog histórico / Diagnóstico / CSV | 1,95 / 0,34 / 1,25 | 2,05 / 0,31 / 1,33 | 9 / 8 / 23 |
+| Sello de datos | 0,08 | 0,07 | 3 |
+
+**Sin N+1**: el número de sentencias es **idéntico** con 750 y con 1 500 entidades en todas las operaciones (también en la evolución, 189, y en la conciliación, 37); el tiempo crece con el volumen, no con el número de consultas. Dos tamaños de cartera cubren la detección pedida; no se afirma linealidad exacta.
+
+**Regresión de la evolución mensual (explicada).** Es la única operación heredada con una variación superior al 20 % (3,49 → 15,72 s con 1 500 entidades; 1,35 → 7,69 s con 750). **Causa**: 08 calculaba la serie con sus propios conteos por mes (9 sentencias, sin cohorte ni referencias por percentiles) y por eso daba un resultado **incorrecto** (umbrales prestados, ceros inventados, stock sin política). 09 evalúa cada mes con la misma evaluación que la ficha (`computeQuality`: unas 19 sentencias por mes sobre **toda la cohorte**, necesarias para los percentiles de ese mes): 10 meses × ≈19 = 189 sentencias **constantes**, independientes del número de entidades, pero cada mes cuesta casi lo mismo que una cartera. No es variación del entorno (el resto de operaciones coincide con 08 en el mismo entorno). **Mitigación aplicada**: la sección se calcula en un componente aparte con `Suspense` (streaming), de modo que el resto de la ficha se muestra de inmediato y aviso de «calculando» hasta que llega la serie; el foco de evaluación (`focusIds`) evita evaluar y explicar al resto de entidades (efecto medido **pequeño**: 15,5 → 15,7 s; el coste está en las sentencias, no en el JavaScript). **No se ha reducido el dato ni la cobertura.** **Cuello de botella restante / propuesta**: hacer los hechos de los meses en una sola pasada por familia (una consulta agrupada por mes en vez de una por mes), que llevaría el coste a ≈ el de una cartera; no se hizo en 09 por riesgo sobre el evaluador común.
+
+**Conciliación y exportación (nuevas en 09; sin comparación con 08)** — 1 500 Grupos: conciliación de los tres niveles, año hasta 31/10: **10,37 s** y 37 sentencias (750: 5,75 s). Exportación completa, **solicitud** (totales + sello): `tickets` 2,80 s / 20 sentencias, `horas` 0,33 s, `pap` 0,32 s, `bugs` 0,57 s; **preparación + generación** en el trabajador (materialización coherente + escritura del CSV): `tickets` 7,19 s (57 sentencias), `horas` 2,55 s (69), `pap` 0,50 s, `bugs` 0,74 s. Con 750: 4,08 / 1,36 / 0,26 / 0,36 s. Los tiempos separados de **preparación** y **generación** de 1 000 000 de hechos están en la sección anterior (la prueba completa duró 87 s con siembra y tres trabajadores).
+
+**Coste del sello.** El sello de 09 añade observaciones de Work Items, punteros de observación vigente y evidencias de vínculos: **+0,02 s** (0,14 → 0,16 s) por lectura con 116 000 tickets y 225 508 observaciones, **3 sentencias** como antes, sin escaneos nuevos por entidad. Es un detector de cambios, no un certificado ni un archivo histórico, y no se ha añadido caché persistente (las medidas no la justifican; documentar clave e invalidación solo si se introdujera).
+
+**Planes (`EXPLAIN (ANALYZE, BUFFERS)` solo en la base `_test`, 1 500 Grupos).** Archivo `tickets`: 3,57 s de ejecución; barridos secuenciales de `ZdTicket` y `ZdTicketRevision` (necesarios: el periodo cubre ≈ toda la tabla), `Index Scan` sobre `ExternalIdentity_no_overlap` y `Bitmap Heap Scan` sobre `ServiceTerm`; `horas`: 0,79 s, barrido de `ZdTimeEntry`/`WrikeTimeEntry` con el periodo de todo el año; `problemas_bugs`: 0,29 s con `WorkItemLink_ticketId_idx`; `pap`: 5,9 ms. **No se ha añadido ningún índice**: los predicados abarcan casi toda la tabla del periodo (un índice no mejoraría el plan) y los selectivos ya los usan; la migración de 09 solo crea tablas de exportación/conciliación y declara dos índices que 08 había creado a mano y faltaban en `schema.prisma`. Cuellos de botella restantes: el barrido anual de tickets/tiempos y la evolución mensual (arriba).
+
 
 ## Recuperación e idempotencia (§8)
 

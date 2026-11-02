@@ -211,7 +211,7 @@ describe("crear: bloqueo propio", () => {
 });
 
 describe("crear: interrupción, fallo y espacio ⇒ no queda copia recuperable", () => {
-  it("pg_dump falla (ejecutable doble) ⇒ error, sin copia publicada, sin .tmp- residual propio y sin bloqueo", async () => {
+  it.skipIf(process.platform === "win32")("pg_dump falla (ejecutable doble; script con shebang, solo POSIX) ⇒ error, sin copia publicada, sin .tmp- residual propio y sin bloqueo", async () => {
     await cleanBackups();
     const dbl = await fakePgDump(w.root, "falla");
     const env = { ...process.env, CSAPP_PG_DUMP: dbl };
@@ -231,7 +231,7 @@ describe("crear: interrupción, fallo y espacio ⇒ no queda copia recuperable",
     expect(await backupLockLive(w.state)).toBe(false);
   });
 
-  it("pg_dump más antiguo que el servidor ⇒ rechaza antes de crear nada", async () => {
+  it.skipIf(process.platform === "win32")("pg_dump más antiguo que el servidor ⇒ rechaza antes de crear nada", async () => {
     const f = path.join(w.root, "pg_dump_viejo");
     await writeFile(f, `#!/usr/bin/env node\nconsole.log("pg_dump (PostgreSQL) 12.4");\n`, { mode: 0o755 });
     await expect(makeBackup(w, { env: { ...process.env, CSAPP_PG_DUMP: f } })).rejects.toThrow(/más antiguo que el servidor/);

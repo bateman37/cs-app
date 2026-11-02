@@ -1,3 +1,4 @@
+import type { ReactNode } from "react";
 import Link from "next/link";
 import { ActionForm, SelectField, SubmitButton, TextAreaField, TextField } from "@/components/form-kit";
 import { DIAGNOSIS_FAMILIES, DIAGNOSIS_LABEL, INDICATOR_KEYS, INDICATOR_NAME, UNIT_LABEL, type QualityConfig } from "@/domain/quality-config";
@@ -15,7 +16,7 @@ import { ColorBadge, KpiCell, STATUS_TEXT, num } from "./ui";
 
 const pct = (v: string | null | undefined) => (v === null || v === undefined ? "—" : `${num(v, 2)} %`);
 
-export function EntityDetail({ r, q, cfg, basePath, evolution, notes, isAdmin, milestones }: { r: QualityRow; q: QualityQuery; cfg: QualityConfig; basePath: string; evolution: Evolution | null; notes: QualityNoteView[]; isAdmin: boolean; milestones: { date: string; type: string; note: string | null; where: string }[] }) {
+export function EntityDetail({ r, q, cfg, basePath, evolutionSlot, notes, isAdmin, milestones }: { r: QualityRow; q: QualityQuery; cfg: QualityConfig; basePath: string; evolutionSlot: ReactNode; notes: QualityNoteView[]; isAdmin: boolean; milestones: { date: string; type: string; note: string | null; where: string }[] }) {
   const w = r.evaluation.weights;
   const g = r.evaluation.global;
   const href = (extra: Partial<QualityQuery>) => `${basePath}${qs(qualityToParams({ ...q, ...extra }))}`;
@@ -83,7 +84,7 @@ export function EntityDetail({ r, q, cfg, basePath, evolution, notes, isAdmin, m
       <p>{r.health.state && r.health.state !== "NONE" ? <>{HEALTH_DB_LABEL[r.health.state as HealthDbState]}{r.health.comment ? <> — «{r.health.comment}»</> : null} <small>(versión {r.health.version}; {r.health.use?.note})</small></> : <span className="badge badge-off">Sin feedback (en blanco)</span>}</p>
 
       <h3>Evolución mensual</h3>
-      {evolution ? <Evo e={evolution} /> : <p className="muted">Sin datos de evolución.</p>}
+      {evolutionSlot}
       {milestones.length ? <p className="hint">Hitos del año (anotados; no se excluyen eventos automáticamente): {milestones.map((m) => `${fdate(m.date)} · ${m.type}${m.note ? ` (${m.note})` : ""} · ${m.where}`).join(" — ")}.</p> : null}
 
       <h3>Notas de revisión de calidad</h3>
@@ -101,38 +102,58 @@ export function EntityDetail({ r, q, cfg, basePath, evolution, notes, isAdmin, m
   );
 }
 
-function Evo({ e }: { e: Evolution }) {
+export function Evo({ e }: { e: Evolution }) {
   const rows = e.points;
-  const pts = (pick: (p: Evolution["points"][number]) => number | null, label: string, unit: string) => rows.map((p) => ({ x: p.month - 1, y: pick(p), tip: `${MONTH_SHORT[p.month - 1]} ${e.year}: ${pick(p) ?? "sin dato"} ${unit} (${label})` }));
+  const COLOR_TEXT: Record<string, string> = { green: "verde", yellow: "amarillo", red: "rojo" };
+  const numOf = (p: Evolution["points"][number], k: (typeof INDICATOR_KEYS)[number]): number | null => {
+    const v = p.indicators[k].numerator;
+    return v === null || Number.isNaN(Number(v)) ? null : Number(v);
+  };
+  const pts = (k: (typeof INDICATOR_KEYS)[number], label: string, unit: string) => rows.map((p) => ({ x: p.month - 1, y: numOf(p, k), tip: `${MONTH_SHORT[p.month - 1]} ${e.year}: ${numOf(p, k) ?? "sin dato"} ${unit} (${label})` }));
   const lines = [
-    { name: "Flujo incidentes+problemas", color: color(0), marker: "circle" as const, points: pts((p) => p.flow, "altas por creación", "tickets") },
-    { name: "Escalados N3", color: color(1), marker: "square" as const, points: pts((p) => p.n3, "tickets únicos", "tickets") },
-    { name: "PAP correctivos", color: color(2), marker: "circle" as const, points: pts((p) => p.pap, "PAP únicos", "PAP") },
-    { name: "Bugs/estándar", color: color(3), marker: "square" as const, points: pts((p) => p.bugs, "problemas únicos", "problemas") },
+    { name: "Incidentes y problemas (altas)", color: color(0), marker: "circle" as const, points: pts("INCIDENTS_PROBLEMS", "altas por creación", "tickets") },
+    { name: "Escalados N3", color: color(1), marker: "square" as const, points: pts("N3_ESCALATIONS", "tickets únicos", "tickets") },
+    { name: "PAP correctivos", color: color(2), marker: "circle" as const, points: pts("PAP_CORRECTIVE", "PAP únicos", "PAP") },
+    { name: "Bugs/estándar", color: color(3), marker: "square" as const, points: pts("BUGS_STANDARD", "problemas únicos", "problemas") },
   ];
   return (
     <>
+      <p className="hint" role="note">
+        Serie <strong>recalculada</strong> con la revisión de Calidad {e.series.qualityRevision}{e.series.qualityPersisted ? "" : " (inicial)"}{e.series.simulated ? " (borrador: simulación, no publicado)" : ""} y de Pulse {e.series.pulseRevision}; referencia de serie <code>{e.series.reference}</code>. No es el color publicado históricamente.
+      </p>
       <Legend items={lines.map((l) => ({ label: l.name, color: l.color, marker: l.marker }))} />
-      <LineChart title="Conteos mensuales de hechos técnicos" unit="conteos por mes (no tasas)" lines={lines} />
+      <LineChart title="Numeradores mensuales de los indicadores (conteos, no tasas)" unit="conteos por mes" lines={lines} />
       <details open>
-        <summary>Tabla equivalente</summary>
+        <summary>Tabla equivalente: seis indicadores, global y estado de cada mes</summary>
         <div className="table-wrap" tabIndex={0} role="region" aria-label="Evolución mensual (desplazable)">
           <table>
-            <caption className="visually-hidden">Evolución mensual de {e.year}</caption>
-            <thead><tr><th scope="col">Mes</th><th scope="col">Usuarios</th><th scope="col">Flujo</th><th scope="col">N3</th><th scope="col">PAP corr.</th><th scope="col">Bugs/estándar</th><th scope="col">Client Health</th><th scope="col">Stock observado</th></tr></thead>
+            <caption className="visually-hidden">Evolución mensual de {e.year}: valor, color o motivo, muestra de referencia y backlog observado</caption>
+            <thead><tr><th scope="col">Mes</th><th scope="col">Usuarios (corte / mes)</th>{INDICATOR_KEYS.map((k) => <th key={k} scope="col">{INDICATOR_NAME[k]}</th>)}<th scope="col">Global</th><th scope="col">Backlog observado</th></tr></thead>
             <tbody>
               {rows.map((p) => (
                 <tr key={p.month}>
-                  <th scope="row">{MONTH_SHORT[p.month - 1]}</th><td>{p.users ?? "sin informar"}</td><td>{p.flow}</td><td>{p.n3}</td><td>{p.pap}</td><td>{p.bugs}</td>
-                  <td>{p.healthState && p.healthState !== "NONE" ? HEALTH_DB_LABEL[p.healthState as HealthDbState] : "en blanco"}</td>
-                  <td>{p.stockAged ? `observado ${fdate(p.stockObservedOn)}: ${p.stockAged.incident} inc. / ${p.stockAged.problem} prob. envejecidos` : <span className="muted">hueco (sin fotografía compatible)</span>}</td>
+                  <th scope="row">{MONTH_SHORT[p.month - 1]}{p.period.provisional ? " (provisional)" : ""}</th>
+                  <td>{p.users.stock ?? "sin informar"} / {p.users.userMonths ?? "—"}</td>
+                  {INDICATOR_KEYS.map((k) => {
+                    const i = p.indicators[k];
+                    return (
+                      <td key={k}>
+                        {i.value !== null ? `${num(i.value, 2)} ${i.unit}` : "sin valor"} · {i.color ? COLOR_TEXT[i.color] : (STATUS_TEXT[i.status] ?? i.status)}
+                        {i.sampleN !== null ? ` · muestra ${i.sampleN}` : ""}
+                        {i.numerator !== null || i.denominator !== null ? <span className="muted"> (num. {i.numerator ?? "—"} / den. {i.denominator ?? "—"})</span> : null}
+                        {i.value === null && i.reason ? <span className="muted"> {i.reason}</span> : null}
+                      </td>
+                    );
+                  })}
+                  <td>{p.global.color ? COLOR_TEXT[p.global.color] : `sin global: ${p.global.reason}`}</td>
+                  <td>{p.backlog.observedOn ? `${p.backlog.exact ? "exacta" : "provisional"} ${fdate(p.backlog.observedOn)}` : <span className="muted">hueco: {p.backlog.note}</span>}</td>
                 </tr>
               ))}
             </tbody>
           </table>
         </div>
       </details>
-      <p className="hint">{e.note} Los conteos son hechos del mes, no tasas ni semáforos. CUM al {fdate(e.cum.cut)}: {Object.entries(e.cum.current).map(([k, v]) => `${k} ${v}`).join(" · ") || "—"} · mismo corte del año anterior ({fdate(e.cum.previousCut)}): {Object.entries(e.cum.previousComparable).map(([k, v]) => `${k} ${v}`).join(" · ") || "—"}. Una curva por cohorte de creación con la clasificación actual sería un recálculo, no un estado histórico demostrado.</p>
+      <p className="hint">{e.note} CUM al {fdate(e.cum.cut)}: {Object.entries(e.cum.current).map(([k, v]) => `${k} ${v}`).join(" · ") || "—"} · mismo corte del año anterior ({fdate(e.cum.previousCut)}): {Object.entries(e.cum.previousComparable).map(([k, v]) => `${k} ${v}`).join(" · ") || "—"}.</p>
     </>
   );
 }

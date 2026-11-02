@@ -114,13 +114,22 @@ import { performance } from "node:perf_hooks";
   const g = globalThis as unknown as { csappQueryCount?: number };
   const Q = (p: Record<string, string> = {}) => parseQualityQuery({ fecha: "2026-10-31", modo: "FULL_MONTH", ...p }, NOW).query;
   const rows: string[] = [];
-  const run = async <T>(name: string, fn: () => Promise<T>, size?: (r: T) => number) => {
-    g.csappQueryCount = 0;
+  // Tres medidas por operación (la primera es «fría»: caché de PostgreSQL y de módulos por calentar); se informa mediana y rango. `reps = 1` en operaciones con efectos.
+  const run = async <T>(name: string, fn: () => Promise<T>, size?: (r: T) => number, reps = 3) => {
+    const times: number[] = [];
+    let r!: T;
+    let queries = 0;
     const m0 = process.memoryUsage().rss;
-    const s = performance.now();
-    const r = await fn();
-    const ms = performance.now() - s;
-    const line = `| ${name} | ${(ms / 1000).toFixed(2)} | ${g.csappQueryCount} | ${size ? (size(r) / 1024).toFixed(0) : "—"} | ${((process.memoryUsage().rss - m0) / 1048576).toFixed(0)} / ${(process.memoryUsage().rss / 1048576).toFixed(0)} |`;
+    for (let i = 0; i < reps; i++) {
+      g.csappQueryCount = 0;
+      const s = performance.now();
+      r = await fn();
+      times.push((performance.now() - s) / 1000);
+      queries = g.csappQueryCount ?? 0;
+    }
+    const sorted = [...times].sort((a, b) => a - b);
+    const med = sorted[Math.floor(sorted.length / 2)];
+    const line = `| ${name} | ${med.toFixed(2)} (${sorted[0].toFixed(2)}–${sorted[sorted.length - 1].toFixed(2)}; 1.ª ${times[0].toFixed(2)}) | ${queries} | ${size ? (size(r) / 1024).toFixed(0) : "—"} | ${((process.memoryUsage().rss - m0) / 1048576).toFixed(0)} / ${(process.memoryUsage().rss / 1048576).toFixed(0)} |`;
     rows.push(line);
     console.log(line);
     return r;
@@ -137,6 +146,41 @@ import { performance } from "node:perf_hooks";
   await run("Detalle de una familia (1.ª página)", () => diagnosisTickets(admin.id, Q(), "ESTANDAR", 1, 50, NOW), json);
   await run("Matriz de Client Health (1.ª página)", () => getHealthMatrix(admin.id, { scope: "group", year: 2026, q: "", page: 1, pageSize: 50 }), json);
   await run("CSV completo de la cartera", () => qualityCsv(admin.id, Q(), "cartera", { now: NOW }), (r) => r.body.length);
-  console.log(`\n| Medida | s | sentencias | KB | RSS Δ / total MB |\n| --- | --- | --- | --- | --- |\n${rows.join("\n")}`);
+  // CSAPP-09: conciliación y exportación completa (solo en esta rama; no existen en 08).
+  try {
+    const { runReconciliation } = await import("../src/server/reconciliation/service");
+    const { createExport } = await import("../src/server/exports/service");
+    const { runExportOnce } = await import("../src/server/exports/run");
+    const { mkdtempSync } = await import("node:fs");
+    const { tmpdir } = await import("node:os");
+    const nodePath = await import("node:path");
+    process.env.CSAPP_EXPORT_DIR = mkdtempSync(nodePath.join(tmpdir(), "vol-exp-"));
+    await run("Conciliación (tres niveles, todo el ámbito, 2026 hasta 31/10)", () => runReconciliation(admin.id, { scope: "group", sel: "", desde: "2026-01-01", hasta: "2026-10-31", servicio: "TOTAL" }), json, 1);
+    for (const ds of ["tickets", "horas", "pap", "bugs"]) {
+      await run(`Exportación completa «${ds}»: solicitud (totales + sello)`, () => createExport(admin.id, { dataset: ds, scope: "group", sel: "", desde: "2026-01-01", hasta: "2026-10-31", servicio: "TOTAL" }), json, 1);
+      await run(`Exportación completa «${ds}»: preparación + generación en el trabajador`, () => runExportOnce("volumen"), () => 0, 1);
+    }
+  } catch (e) {
+    if (!(e instanceof Error) || !/Cannot find module|Failed to load url/i.test(e.message)) throw e;
+    console.log("(conciliación/exportación no existen en esta versión)");
+  }
+  // CSAPP-09 §7: planes con EXPLAIN (ANALYZE, BUFFERS) SOLO en esta base de test (la guarda ya lo garantizó). Se resumen nodos de lectura y tiempos.
+  try {
+    const { readDataStamp } = await import("../src/server/analytics/stamp");
+    await run("Sello de datos (lectura sobre la instantánea)", () => prisma.$transaction((tx) => readDataStamp(tx), { isolationLevel: "RepeatableRead" }), json);
+    const { DATASETS } = await import("../src/server/exports/datasets");
+    const { resolveParams } = await import("../src/server/exports/service");
+    const params = (await prisma.$transaction((tx) => resolveParams(tx, { dataset: "tickets", scope: "group", sel: "", desde: "2026-01-01", hasta: "2026-10-31", servicio: "TOTAL" }), { isolationLevel: "RepeatableRead" })).params;
+    for (const [dsKey, fileKey] of [["tickets", "tickets"], ["horas", "horas"], ["pap", "pap"], ["bugs", "problemas_bugs"]] as const) {
+      const f = DATASETS.find((d) => d.key === dsKey)!.files.find((x) => x.fileKey === fileKey)!;
+      const plan = await prisma.$queryRaw<{ "QUERY PLAN": string }[]>(Prisma.sql`EXPLAIN (ANALYZE, BUFFERS) ${f.sql(params)}`);
+      const lines = plan.map((r) => r["QUERY PLAN"]);
+      const scans = [...new Set(lines.map((l) => /(Seq Scan on \S+|Index (?:Only )?Scan using \S+ on \S+|Bitmap Heap Scan on \S+|Parallel Seq Scan on \S+)/.exec(l)?.[1]).filter(Boolean))];
+      console.log(`EXPLAIN ${fileKey}: ${lines.find((l) => /Execution Time/.test(l))?.trim()}; ${lines.find((l) => /Planning Time/.test(l))?.trim()}; nodos de lectura: ${scans.join(" | ")}; ${lines.find((l) => /^\s*Buffers:/.test(l))?.trim() ?? ""}`);
+    }
+  } catch (e) {
+    console.log(`(sello/EXPLAIN no disponibles: ${e instanceof Error ? e.message.split("\n")[0] : "error"})`);
+  }
+  console.log(`\n| Medida | s: mediana (rango; 1.ª fría) | sentencias | KB | RSS Δ / total MB |\n| --- | --- | --- | --- | --- |\n${rows.join("\n")}`);
   await prisma.$disconnect();
 })();

@@ -110,15 +110,23 @@ describe("backlog con filas y evolución", () => {
     expect([...b.rows].sort((a, c) => a.age - c.age).map((r) => [r.age, r.aged])).toEqual([[0, false], [10, false], [30, false], [31, true], [365, true]]);
     expect(b.rows.find((r) => r.age === 31)?.reason).toMatch(/Edad 31 > umbral 30/);
   });
-  it("evolución: cada mes con sus datos y hueco cuando no hay fotografía compatible; CUM técnico separado", async () => {
+  it("evolución: cada mes con sus datos; sin cobertura declarada un mes NO es un cero confirmado y no hay fotografía compatible (hueco); CUM técnico separado", async () => {
     const w = await world();
     await seedTicket(w.tb.id, { id: "E1", org: "701", type: "incident", created: "2026-03-10", observedOn: "2026-10-31" });
     await seedTicket(w.tb.id, { id: "E2", org: "701", type: "incident", created: "2026-10-10", observedOn: "2026-10-31" });
     const ev = await readSnapshot(admin.id, (tx) => evolutionIn(tx, Q(), w.g.id, defaultQualityConfig(), "2026-11-02"));
     expect(ev.points).toHaveLength(10);
-    expect(ev.points[2]).toMatchObject({ month: 3, flow: 1 });
-    expect(ev.points[9]).toMatchObject({ month: 10, flow: 1, stockObservedOn: null, stockAged: null }); // sin fotografía declarada: hueco, no relleno
+    expect(ev.series.basis).toBe("RECALCULADA_CON_REVISION_ACTIVA");
+    const mar = ev.points[2].indicators.INCIDENTS_PROBLEMS;
+    expect(mar.numerator).toBe("1");
+    expect(ev.points[9].indicators.INCIDENTS_PROBLEMS.numerator).toBe("1");
+    // Un mes SIN tickets y SIN cobertura declarada no es un cero confirmado: valor nulo con motivo, nunca «0».
+    const feb = ev.points[1].indicators.N3_ESCALATIONS;
+    expect(feb.value).toBeNull();
+    expect(feb.reason).toMatch(/no sustentado/i);
+    expect(ev.points[9].backlog).toMatchObject({ kind: "NONE", observedOn: null }); // sin fotografía declarada: hueco, no relleno
     expect(ev.cum.current).toMatchObject({ flujo: 2 });
+    expect(ev.series.reference).toMatch(/^[0-9a-f]{12}$/);
   });
 });
 

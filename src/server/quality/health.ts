@@ -8,6 +8,7 @@ import { DomainError, StaleVersionError } from "@/server/errors";
 import { parseInput } from "@/server/parse";
 import { adminTransaction } from "@/server/tx";
 import { readSnapshot } from "@/server/analytics/snapshot";
+import { readDataStamp } from "@/server/analytics/stamp";
 
 /**
  * Client Health mensual (CSAPP-08 §4). Edición atómica de UNA celda (ámbito + entidad + año + mes) con `expectedVersion`, historial y auditoría
@@ -87,12 +88,12 @@ export async function saveHealthCell(actorId: string, raw: unknown, opts: { now?
 
 export type HealthMatrixQuery = { scope: "group" | "client"; year: number; q: string; page: number; pageSize: number };
 export type HealthMatrixRow = { id: string; name: string; parent: string | null; cells: Record<number, HealthCell | null> };
-export type HealthMatrix = { query: HealthMatrixQuery; total: number; page: number; pageCount: number; rows: HealthMatrixRow[]; canEdit: boolean };
+export type HealthMatrix = { query: HealthMatrixQuery; total: number; page: number; pageCount: number; rows: HealthMatrixRow[]; canEdit: boolean; /** Solo con `all`: sello de datos y fecha de la lectura coherente que sustenta la matriz completa. */ stamp: string; readAt: string };
 
 const fold = (s: string) => s.normalize("NFD").replace(/[̀-ͯ]/g, "").toLowerCase();
 
 /** Matriz enero–diciembre de un año y ámbito, con búsqueda y paginación de ENTIDADES (las doce celdas viajan con cada fila). Lectura coherente. */
-export async function getHealthMatrix(actorId: string, q: HealthMatrixQuery): Promise<HealthMatrix> {
+export async function getHealthMatrix(actorId: string, q: HealthMatrixQuery, opts: { all?: boolean } = {}): Promise<HealthMatrix> {
   return readSnapshot(actorId, async (tx) => {
     const actor = await authorize(tx, actorId, "READ");
     const needle = fold(q.q);
@@ -101,9 +102,10 @@ export async function getHealthMatrix(actorId: string, q: HealthMatrixQuery): Pr
         ? (await tx.clientGroup.findMany({ select: { id: true, name: true }, orderBy: [{ name: "asc" }, { id: "asc" }] })).map((g) => ({ id: g.id, name: g.name, parent: null as string | null }))
         : (await tx.client.findMany({ where: { isInternal: false }, select: { id: true, name: true, group: { select: { name: true } } }, orderBy: [{ name: "asc" }, { id: "asc" }] })).map((c) => ({ id: c.id, name: c.name, parent: c.group?.name ?? null }));
     const filtered = needle === "" ? ents : ents.filter((e) => fold(e.name).includes(needle) || fold(e.parent ?? "").includes(needle));
-    const pageCount = Math.max(1, Math.ceil(filtered.length / q.pageSize));
-    const page = Math.min(Math.max(1, q.page), pageCount);
-    const slice = filtered.slice((page - 1) * q.pageSize, page * q.pageSize);
+    // `all`: la matriz COMPLETA en esta misma instantánea (CSV); sin llamadas paginadas independientes que mezclen estados distintos.
+    const pageCount = opts.all ? 1 : Math.max(1, Math.ceil(filtered.length / q.pageSize));
+    const page = opts.all ? 1 : Math.min(Math.max(1, q.page), pageCount);
+    const slice = opts.all ? filtered : filtered.slice((page - 1) * q.pageSize, page * q.pageSize);
     const ids = slice.map((e) => e.id);
     const rows = ids.length === 0 ? [] : await tx.healthFeedback.findMany({ where: { year: q.year, ...(q.scope === "group" ? { groupId: { in: ids } } : { clientId: { in: ids } }) }, include: { updatedBy: { select: { email: true } } } });
     const by = new Map<string, Map<number, HealthCell>>();
@@ -113,7 +115,9 @@ export async function getHealthMatrix(actorId: string, q: HealthMatrixQuery): Pr
       m.set(c.month, c);
       by.set(c.entityId, m);
     }
-    return { query: q, total: filtered.length, page, pageCount, canEdit: actor.role === "ADMIN", rows: slice.map((e) => ({ ...e, cells: Object.fromEntries(Array.from({ length: 12 }, (_, i) => [i + 1, by.get(e.id)?.get(i + 1) ?? null])) })) };
+    const stamp = opts.all ? (await readDataStamp(tx)).stamp : "";
+    const readAt = opts.all ? (await tx.$queryRaw<{ t: Date }[]>(Prisma.sql`SELECT now() AS t`))[0].t.toISOString() : "";
+    return { query: q, stamp, readAt, total: filtered.length, page, pageCount, canEdit: actor.role === "ADMIN", rows: slice.map((e) => ({ ...e, cells: Object.fromEntries(Array.from({ length: 12 }, (_, i) => [i + 1, by.get(e.id)?.get(i + 1) ?? null])) })) };
   });
 }
 

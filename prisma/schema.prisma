@@ -36,6 +36,8 @@ model User {
   matrixMonths      UserMatrixMonth[]
   uploadsCreated    UploadBatch[]               @relation("UploadCreatedBy")
   uploadJobs        UploadJob[]
+  exportJobs        ExportJob[]
+  reconRuns         ReconRun[]
   zdDecisions       ZdTimeDecision[]
   zdCorrections     ZdTimeCorrection[]
   wrikeDecisions    WrikeTimeDecision[]
@@ -725,6 +727,7 @@ model ZdTicketRevision {
   @@unique([ticketId, revisionNo])
   @@index([batchId])
   @@index([organizationId])
+  @@index([createdOn])
 }
 
 /// Observación: un lote vio este ticket con este contenido en una fecha de extracción declarada
@@ -747,6 +750,7 @@ model ZdTicketObservation {
   @@unique([batchId, ticketId])
   @@index([ticketId, observedOn])
   @@index([revisionId])
+  @@index([observedOn, batchId])
 }
 
 /// Registro de tiempo materializado (uno por fila fuente distinta). Las columnas drv* son derivadas y se
@@ -1476,4 +1480,109 @@ model UploadCoverageDeclaration {
 
   @@unique([batchId, version])
   @@index([declaredById])
+}
+
+// ---------------------------------------------------------------- CSAPP-09: exportaciones completas y conciliación
+
+enum ExportStatus {
+  QUEUED
+  PREPARING
+  GENERATING
+  READY
+  FAILED
+  CANCELLED
+  EXPIRED
+}
+
+/// Trabajo persistente de exportación completa (cola en PostgreSQL con lease y fencing, sin Redis). La consulta validada, el solicitante, las versiones,
+/// las revisiones de configuración y el sello pedido se guardan al crearlo; al prepararse se MATERIALIZA en una lectura coherente (ExportRow) y el archivo
+/// se genera por bloques desde esa materialización inmutable. Cada intento escribe un temporal propio y publica con rename atómico.
+model ExportJob {
+  id               String       @id @default(uuid())
+  ownerId          String
+  dataset          String
+  query            Json
+  status           ExportStatus @default(QUEUED)
+  phase            String?
+  progressDone     BigInt       @default(0)
+  progressTotal    BigInt?
+  cancelRequested  Boolean      @default(false)
+  formatVersion    String
+  engineVersion    String
+  configRevisions  Json
+  requestedStamp   String
+  requestedReadAt  DateTime
+  requestedTotals  Json
+  /// Materialización: lectura coherente que fija registros, contexto y totales. Nula hasta completarse.
+  materializedAt   DateTime?
+  materialStamp    String?
+  materialContext  Json?
+  rowCount         BigInt?
+  laterThanScreen  Boolean      @default(false)
+  attempts         Int          @default(0)
+  maxAttempts      Int          @default(3)
+  leaseOwner       String?
+  leaseExpiresAt   DateTime?
+  heartbeatAt      DateTime?
+  fence            Int          @default(0)
+  runAfter         DateTime     @default(now())
+  lastError        String?
+  createdAt        DateTime     @default(now())
+  startedAt        DateTime?
+  finishedAt       DateTime?
+  expiresAt        DateTime?
+
+  owner User         @relation(fields: [ownerId], references: [id], onDelete: Restrict)
+  files ExportFile[]
+
+  @@index([ownerId, createdAt])
+  @@index([status, runAfter])
+  @@index([status, expiresAt])
+}
+
+/// Archivo terminado y validado de un trabajo (UUID interno de almacenamiento; nunca ruta ni nombre del navegador).
+model ExportFile {
+  id        String   @id @default(uuid())
+  jobId     String
+  fileKey   String
+  part      Int      @default(1)
+  kind      String
+  name      String
+  rows      BigInt
+  bytes     BigInt
+  checksum  String
+  additive  Boolean  @default(true)
+  storageId String   @unique
+  createdAt DateTime @default(now())
+
+  job ExportJob @relation(fields: [jobId], references: [id], onDelete: Cascade)
+
+  @@unique([jobId, fileKey, part])
+}
+
+/// Materialización inmutable de una exportación: una fila por registro del archivo, con orden estable (seq). Se borra al caducar el trabajo.
+model ExportRow {
+  jobId   String
+  fileKey String
+  seq     BigInt
+  cells   Json
+
+  @@id([jobId, fileKey, seq])
+}
+
+/// Ejecución registrada de una comprobación de conciliación (Administración): parámetros, resultados y manifiesto de lo leído. No modifica fuentes.
+model ReconRun {
+  id          String   @id @default(uuid())
+  actorId     String
+  params      Json
+  stamp       String
+  readAt      DateTime
+  results     Json
+  manifest    Json
+  summary     Json
+  createdAt   DateTime @default(now())
+
+  actor User @relation(fields: [actorId], references: [id], onDelete: Restrict)
+
+  @@index([createdAt])
 }

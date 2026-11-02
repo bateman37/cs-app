@@ -1,7 +1,7 @@
 import { Prisma } from "@/generated/prisma/client";
 import { Dec, parseYmd } from "@/domain/finance";
 import { todayMadrid } from "@/domain/vigencia";
-import { DIAGNOSIS_FAMILIES, ageDays, diagnosisFamily, isAged, type DiagnosisFamily, type QualityConfig } from "@/domain/quality-config";
+import { DIAGNOSIS_FAMILIES, INDICATOR_KEYS, INDICATOR_NAME, UNIT_LABEL, type IndicatorKey, ageDays, diagnosisFamily, isAged, type DiagnosisFamily, type QualityConfig } from "@/domain/quality-config";
 import { chooseSnapshot } from "@/domain/quality-coverage";
 import { qualityPeriod, type QualityQuery } from "@/domain/quality-query";
 import { INCIDENT_INFRA_CAUSE } from "@/domain/zendesk";
@@ -11,7 +11,8 @@ import { readSnapshot, type Tx } from "@/server/analytics/snapshot";
 import { SERVICE_OF_SQL } from "@/server/economics/engine";
 import { loadTicketBatches } from "./coverage";
 import { stockSetSql, ticketFacts, validBugLinkSql, type QScopeDb } from "./facts";
-import { agePercentile } from "./engine";
+import { agePercentile, computeQuality } from "./engine";
+import { readDataStamp } from "@/server/analytics/stamp";
 
 /**
  * Detalles de Calidad (CSAPP-08 §8, §10): diagnóstico por origen, backlog con filas y evolución. Los detalles paginados usan los MISMOS predicados que el
@@ -244,52 +245,74 @@ export async function getBacklog(actorId: string, q: QualityQuery, page: number,
   });
 }
 
-// ---------------------------------------------------------------- Evolución mensual de una entidad (datos propios de cada periodo)
+// ---------------------------------------------------------------- Evolución mensual de una entidad (CSAPP-09 §3)
 
-export type EvolutionPoint = { month: number; users: number | null; userMonths: string | null; flow: number | null; n3: number | null; bugs: number | null; pap: number | null; healthState: string | null; stockObservedOn: string | null; stockAged: { incident: number; problem: number } | null };
-export type Evolution = { year: number; points: EvolutionPoint[]; cum: { current: Record<string, number>; previousComparable: Record<string, number>; cut: string; previousCut: string }; note: string };
+export type EvolutionIndicator = {
+  key: IndicatorKey; name: string; value: string | null; unit: string; color: string | null; status: string; availability: string; reason: string;
+  /** Tamaño de la muestra de referencia de ESE mes (cohorte propia del mes), cuando la regla es por percentiles. */
+  sampleN: number | null; cuts: { a: string; b: string } | null;
+  numerator: string | null; denominator: string | null; breakdown: Record<string, string>; notes: string[]; coverage: { source: string; state: string }[];
+  components: { id: string; label: string; value: string | null; color: string | null; status: string; n: number | null }[];
+};
+export type EvolutionPoint = {
+  month: number; period: { from: string; cut: string; provisional: boolean };
+  users: { stock: number | null; userMonths: string | null };
+  indicators: Record<IndicatorKey, EvolutionIndicator>;
+  global: { color: string | null; score: string | null; status: string; reason: string };
+  backlog: { kind: string; observedOn: string | null; exact: boolean; provisional: boolean; usersMonth: { year: number; month: number } | null; note: string };
+  healthState: string | null;
+  uncalibrated: boolean;
+};
+export type Evolution = {
+  year: number;
+  /** Política de la serie: se RECALCULA con la revisión activa al solicitarla; no es el color publicado históricamente (no existe archivo de ese cálculo). */
+  series: { basis: "RECALCULADA_CON_REVISION_ACTIVA"; qualityRevision: number; qualityPersisted: boolean; pulseRevision: number; simulated: boolean; reference: string; stamp: string };
+  points: EvolutionPoint[];
+  cum: { current: Record<string, number>; previousComparable: Record<string, number>; cut: string; previousCut: string };
+  note: string;
+};
 
-/** Evolución: cada mes usa SUS hechos y SU observación (hueco si no hay fotografía compatible; nunca se rellena con el estado actual ni se interpola). */
+/**
+ * Evolución: CADA mes se evalúa con la MISMA función que la ficha mensual (`computeQuality`) sobre su propia cohorte, usuarios, cobertura, fotografía y referencias
+ * (percentiles recalculados con la cohorte de ese mes); nunca se prestan umbrales de otro mes. Todos los puntos usan la misma revisión de configuración y se leen
+ * en la misma instantánea. Un mes sin cobertura no es un cero confirmado; el stock sigue la política de fotografía (EXACT/antigüedad máxima) y una foto anterior
+ * conserva su fecha y su carácter provisional. Coste: un número constante de consultas por mes (documentado), no una por entidad/indicador.
+ */
 export async function evolutionIn(tx: Tx, q: QualityQuery, id: string, cfg: QualityConfig, today = todayMadrid()): Promise<Evolution> {
   const per = qualityPeriod(q.base.date, q.base.mode, today);
-  const scope = scopeOf(q);
   const year = per.year;
   const lastM = per.future ? 0 : per.month;
-  const ymFrom = `${year}-01-01`;
-  const t0 = lastM === 0 ? new Map() : await ticketFactsByMonth(tx, scope, id, ymFrom, per.cut);
-  const papM = lastM === 0 ? new Map<number, number>() : await papByMonth(tx, scope, id, ymFrom, per.cut);
-  const uRows = await tx.$queryRaw<{ month: number; value: number }[]>(Prisma.sql`
-    SELECT mm.month, mm.value FROM "UserMatrix" m JOIN "UserMatrixMonth" mm ON mm."matrixId" = m.id WHERE m.year = ${year} AND m.${scope === "group" ? Prisma.raw('"groupId"') : Prisma.raw('"clientId"')} = ${id}`);
-  const users = new Map(uRows.map((r) => [r.month, r.value]));
-  const health = await tx.healthFeedback.findMany({ where: { year, ...(scope === "group" ? { groupId: id } : { clientId: id }) } });
-  const hMap = new Map(health.map((h) => [h.month, h.state]));
-  const batches = (await loadTicketBatches(tx)).filter((b) => b.extractionKnown && b.population === "ALL_CLIENTS" && (b.statusScope === "ALL_STATUSES" || b.statusScope === "UNRESOLVED_ONLY"));
+  const now = new Date(`${today}T12:00:00Z`);
   const points: EvolutionPoint[] = [];
+  let meta: { qualityRevision: number; qualityPersisted: boolean; pulseRevision: number; simulated: boolean } | null = null;
   for (let m = 1; m <= lastM; m++) {
-    const monthEnd = new Date(Date.UTC(year, m, 0)).toISOString().slice(0, 10);
-    const cutM = m === lastM ? per.cut : monthEnd;
-    const days = Number(cutM.slice(8, 10));
-    const dim = Number(monthEnd.slice(8, 10));
-    const u = users.get(m) ?? null;
-    const t = t0.get(m);
-    // Fotografía del propio mes: la última con extracción dentro del mes y ≤ corte (la «exacta» a fin de mes se prefiere; no se rellena hacia atrás).
-    const inMonth = batches.filter((b) => b.observedOn.slice(0, 7) === monthEnd.slice(0, 7) && b.observedOn <= cutM).sort((a, b) => (a.observedOn < b.observedOn ? 1 : -1))[0];
-    let stockAged: EvolutionPoint["stockAged"] = null;
-    if (inMonth && cfg.incidents.concerningDays.incident !== null && cfg.incidents.concerningDays.problem !== null) {
-      const rows = await tx.$queryRaw<{ type: string; status: string; created_on: string }[]>(Prisma.sql`SELECT s.type, s.status, s.created_on FROM (${stockSetSql(scope, [id], inMonth.batchId, { activeOnly: true })}) s WHERE s.entity IS NOT NULL AND s.status IN ('new', 'open', 'pending', 'hold') AND s.type IN ('incident', 'problem')`);
-      stockAged = { incident: 0, problem: 0 };
-      for (const r of rows) {
-        const a = ageDays(r.created_on, inMonth.observedOn);
-        const th = r.type === "incident" ? cfg.incidents.concerningDays.incident : cfg.incidents.concerningDays.problem;
-        if (a !== null && th !== null && isAged(a, th)) stockAged[r.type as "incident" | "problem"]++;
-      }
+    const date = m === lastM ? q.base.date : `${year}-${String(m).padStart(2, "0")}-01`;
+    const mode = m === lastM ? q.base.mode : "FULL_MONTH";
+    const qm: QualityQuery = { ...q, base: { ...q.base, date, mode, q: "", page: 1, pageSize: 1, status: "todos" }, sel: id, color: "", sim: "" };
+    const v = await computeQuality(tx, qm, { now, configOverride: cfg, skipActiveCompare: true, skipStamp: true, focusIds: [id] });
+    meta ??= { qualityRevision: v.config.revisionNo, qualityPersisted: v.config.persisted, pulseRevision: v.pulseRevision, simulated: q.sim === "borrador" };
+    const r = v.rows.find((x) => x.id === id);
+    if (!r) continue;
+    const indicators = {} as Record<IndicatorKey, EvolutionIndicator>;
+    for (const k of INDICATOR_KEYS) {
+      const i = r.evaluation.indicators[k];
+      const e = r.explain[k];
+      indicators[k] = {
+        key: k, name: INDICATOR_NAME[k], value: i.value, unit: UNIT_LABEL[i.unit], color: i.color, status: i.status, availability: i.availability, reason: i.reason, sampleN: i.n ?? null, cuts: i.cuts ?? null,
+        numerator: e.numerator, denominator: e.denominator, breakdown: e.breakdown, notes: e.notes, coverage: e.coverage.map((c) => ({ source: c.source, state: c.state })),
+        components: (i.components ?? []).map((c) => ({ id: c.id, label: c.label, value: c.value, color: c.color, status: c.status, n: c.n ?? null })),
+      };
     }
     points.push({
-      month: m, users: u, userMonths: u === null ? null : Dec.int(u).ratio(days, dim).toString(),
-      flow: t ? t.inc + t.prob : 0, n3: t?.n3 ?? 0, bugs: t?.union ?? 0, pap: papM.get(m) ?? 0, healthState: hMap.get(m) ?? null, stockObservedOn: inMonth?.observedOn ?? null, stockAged,
+      month: m, period: { from: v.period.from, cut: v.period.cut, provisional: v.period.provisional }, users: r.users, indicators,
+      global: { color: r.evaluation.global.color, score: r.evaluation.global.score, status: r.evaluation.global.status, reason: r.evaluation.global.reason },
+      backlog: { kind: v.backlog.choice.kind, observedOn: v.backlog.observedOn, exact: v.backlog.exact, provisional: v.backlog.provisional, usersMonth: v.backlog.usersMonth, note: v.backlog.note },
+      healthState: r.health.state, uncalibrated: r.flags.uncalibrated,
     });
   }
   // CUM técnico: mismo corte del año anterior (magnitudes; NO un global anual ni un promedio de semáforos).
+  const scope = scopeOf(q);
+  const ymFrom = `${year}-01-01`;
   const prevCut = `${year - 1}${per.cut.slice(4)}`;
   const prevCutOk = new Date(Date.UTC(year - 1, Number(per.cut.slice(5, 7)), 0)).toISOString().slice(0, 10) < prevCut ? new Date(Date.UTC(year - 1, Number(per.cut.slice(5, 7)), 0)).toISOString().slice(0, 10) : prevCut;
   const sum = async (a: string, b: string) => {
@@ -298,20 +321,12 @@ export async function evolutionIn(tx: Tx, q: QualityQuery, id: string, cfg: Qual
     return { flujo: (r?.inc ?? 0) + (r?.prob ?? 0), n3: r?.n3 ?? 0, "problemas estándar/bug": r?.union ?? 0 };
   };
   const cum = lastM === 0 ? { cut: per.cut, previousCut: prevCutOk, current: {}, previousComparable: {} } : { cut: per.cut, previousCut: prevCutOk, current: await sum(ymFrom, per.cut), previousComparable: await sum(`${year - 1}-01-01`, prevCutOk) };
-  return { year, points, cum, note: "Cada mes usa sus propios hechos y su propia fotografía (hueco si no hay una compatible); no se rellena con el estado actual ni se interpola. El CUM es técnico (magnitudes), separado del global mensual." };
-}
-
-async function ticketFactsByMonth(tx: Tx, scope: QScopeDb, id: string, from: string, to: string) {
-  const rows = await tx.$queryRaw<{ m: number; inc: bigint; prob: bigint; n3: bigint; uni: bigint }[]>(Prisma.sql`
-    SELECT extract(month FROM x.created_on)::int AS m, count(*) FILTER (WHERE x.type = 'incident') AS inc, count(*) FILTER (WHERE x.type = 'problem') AS prob,
-      count(*) FILTER (WHERE x.destinations && ${N3_DESTINATIONS}::text[]) AS n3,
-      count(*) FILTER (WHERE x.type = 'problem' AND (lower(x.cause) = 'incidente_estándar_plataforma' OR ${validBugLinkSql(Prisma.sql`x.ticket_id`)})) AS uni
-    FROM (${ticketSetSql(scope, [id], from, to)}) x WHERE x.entity IS NOT NULL GROUP BY 1`);
-  return new Map(rows.map((r) => [r.m, { inc: Number(r.inc), prob: Number(r.prob), n3: Number(r.n3), union: Number(r.uni) }]));
-}
-async function papByMonth(tx: Tx, scope: QScopeDb, id: string, from: string, to: string) {
-  const rows = await tx.$queryRaw<{ m: number; n: bigint }[]>(Prisma.sql`
-    SELECT extract(month FROM v."productionDate")::int AS m, count(*) AS n FROM "PapItem" t JOIN "PapRevision" v ON v.id = t."currentRevisionId"
-    WHERE t.${scope === "group" ? Prisma.raw('"drvGroupId"') : Prisma.raw('"drvClientId"')} = ${id} AND v."productionDate" BETWEEN ${from}::date AND ${to}::date AND v."correctiveState" = 'CORRECTIVE' GROUP BY 1`);
-  return new Map(rows.map((r) => [r.m, Number(r.n)]));
+  // Referencia de la serie: cambia con la revisión usada y con CUALQUIER cambio retroactivo de datos, Health o maestros (sello de la misma instantánea).
+  const stamp = (await readDataStamp(tx)).stamp;
+  const mt = meta ?? { qualityRevision: 0, qualityPersisted: false, pulseRevision: 0, simulated: q.sim === "borrador" };
+  const ref = (await tx.$queryRaw<{ h: string }[]>(Prisma.sql`SELECT md5(${`${mt.qualityRevision}|${mt.pulseRevision}|${mt.simulated}|${stamp}|${year}|${lastM}`}) AS h`))[0].h.slice(0, 12);
+  return {
+    year, series: { basis: "RECALCULADA_CON_REVISION_ACTIVA", ...mt, reference: ref, stamp }, points, cum,
+    note: "Serie RECALCULADA con la revisión de configuración indicada (la misma para todos los meses) y con los datos actuales: cada mes usa su cohorte, usuarios, cobertura, reglas y referencias propias. No es el color publicado históricamente (no existe archivo de ese cálculo) y un cambio retroactivo de datos, Health o maestros puede modificarla. Un mes sin cobertura no es un cero confirmado; el stock sigue la política de fotografía. El CUM es técnico (magnitudes), separado del global mensual; no hay global anual ni promedio de colores.",
+  };
 }

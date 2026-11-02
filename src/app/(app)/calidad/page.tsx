@@ -1,4 +1,6 @@
+import { ExportPanel } from "@/components/exports/export-panel";
 import type { Metadata } from "next";
+import { Suspense } from "react";
 import Link from "next/link";
 import { requirePageUser } from "@/lib/session";
 import { prisma } from "@/lib/db";
@@ -17,7 +19,7 @@ import { Controls, ViewTabs } from "./controls";
 import { BacklogSection, Cards, ContextCard, DiagnosisSection } from "./sections";
 import { Portfolio } from "./table";
 import { HealthMatrixView } from "./health";
-import { EntityDetail } from "./detail";
+import { EntityDetail, Evo } from "./detail";
 
 export const metadata: Metadata = { title: "Calidad" };
 export const dynamic = "force-dynamic";
@@ -85,12 +87,7 @@ async function Cartera({ v, q, isAdmin, userId, today }: { v: QualityView; q: Qu
         include: { client: { select: { name: true } }, group: { select: { name: true } } }, orderBy: { date: "asc" },
       })).map((m) => ({ date: m.date.toISOString().slice(0, 10), type: m.type, note: m.note, where: m.client?.name ?? m.group?.name ?? "" }))
     : [];
-  const [evolution, notes] = sel
-    ? await Promise.all([
-        readSnapshot(userId, (tx) => evolutionIn(tx, q, sel.id, v.config_payload, today)).catch(() => null),
-        listQualityNotes(userId, q.scope, sel.id).catch(() => []),
-      ])
-    : [null, []];
+  const notes = sel ? await listQualityNotes(userId, q.scope, sel.id).catch(() => []) : [];
   const noSetup = v.totalEntities === 0;
   return (
     <>
@@ -111,7 +108,8 @@ async function Cartera({ v, q, isAdmin, userId, today }: { v: QualityView; q: Qu
           {isAdmin && v.notes.length ? <p className="hint">Siguientes acciones: calibrar umbrales y mapeo de Client Health, elegir perfiles de Dedicación y plantilla del global en <Link href="/administracion/configuracion?seccion=calidad">Administración › Configuración</Link>; declarar la cobertura de los lotes en <Link href="/administracion/cargas">Cargas</Link>.</p> : v.notes.length ? <p className="hint">Los pendientes de calibración y cobertura los resuelve un Administrador; usted puede consultar los motivos y descargar el CSV.</p> : null}
         </>
       )}
-      {sel ? <EntityDetail r={sel} q={q} cfg={v.config_payload} basePath={BASE} evolution={evolution} notes={notes} isAdmin={isAdmin} milestones={milestones} /> : q.sel ? <Notice kind="warn">La entidad seleccionada no está en este ámbito o no existe.</Notice> : null}
+      {!noSetup ? <ExportPanel userId={userId} scope={q.scope} sel={q.sel} selName={sel?.name} from={`${v.period.year}-01-01`} to={v.period.cut} service={q.base.service} stamp={v.stamp} /> : null}
+      {sel ? <EntityDetail r={sel} q={q} cfg={v.config_payload} basePath={BASE} evolutionSlot={<Suspense fallback={<p role="status" className="muted">Calculando la evolución mensual: cada mes se recalcula con su propia cohorte (puede tardar varios segundos con carteras grandes; el resto de la ficha ya está disponible)…</p>}><EvolutionSection userId={userId} q={q} id={sel.id} cfg={v.config_payload} today={today} /></Suspense>} notes={notes} isAdmin={isAdmin} milestones={milestones} /> : q.sel ? <Notice kind="warn">La entidad seleccionada no está en este ámbito o no existe.</Notice> : null}
     </>
   );
 }
@@ -133,4 +131,10 @@ async function Diagnosis({ q, userId }: { q: QualityQuery; userId: string }) {
 async function Backlog({ q, userId }: { q: QualityQuery; userId: string }) {
   const b = await getBacklog(userId, q, q.base.page);
   return <BacklogSection b={b} q={q} basePath={BASE} />;
+}
+
+/** Evolución mensual: se calcula aparte (streaming) para que el coste de recalcular cada mes con su cohorte no retrase el resto de la ficha. */
+async function EvolutionSection({ userId, q, id, cfg, today }: { userId: string; q: QualityQuery; id: string; cfg: QualityView["config_payload"]; today: string }) {
+  const evolution = await readSnapshot(userId, (tx) => evolutionIn(tx, q, id, cfg, today)).catch(() => null);
+  return evolution ? <Evo e={evolution} /> : <p className="muted">No se ha podido calcular la evolución mensual (sin datos o error de lectura).</p>;
 }

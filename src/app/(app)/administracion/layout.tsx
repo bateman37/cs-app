@@ -13,6 +13,8 @@ export default async function AdminLayout({ children }: { children: React.ReactN
     { href: "/administracion/servicios", label: "Servicio económico" },
     { href: "/administracion/economia", label: "Comprobación económica" },
     { href: "/administracion/configuracion", label: "Configuración" },
+    // Conciliación y supervisión de exportaciones: solo Administrador.
+    ...(user.role === "ADMIN" ? [{ href: "/administracion/conciliacion", label: "Conciliación" }, { href: "/administracion/exportaciones", label: "Exportaciones" }] : []),
   ];
   return (
     <>

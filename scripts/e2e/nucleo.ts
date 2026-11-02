@@ -37,6 +37,8 @@ export type Ctx = {
   restartServer(): Promise<void>;
   /** Directorio temporal de subida de Cargas (privado, borrado al terminar). */
   uploadDir: string;
+  /** Almacén temporal de exportaciones (CSAPP-09), separado del de originales. */
+  exportDir: string;
   /** Arranca/detiene el trabajador de cargas construido (`npm run worker:build`) contra la base de test. */
   startWorker(): Promise<void>;
   stopWorker(): Promise<void>;
@@ -146,6 +148,10 @@ export async function runAll(casos: ((ctx: Ctx) => Promise<void>)[]): Promise<nu
   // comprobada (las tres condiciones del registro: variable = nombre de la base, sufijo _test, esquema marcador).
   const uploadDir = await mkdtemp(path.join(tmpdir(), "csapp-e2e-cargas-"));
   process.env.CSAPP_UPLOAD_DIR = uploadDir;
+  // Exportaciones (CSAPP-09): almacén temporal PROPIO y separado del de originales, compartido por web y trabajador; limpieza restringida a este directorio.
+  const exportDir = await mkdtemp(path.join(tmpdir(), "csapp-e2e-exportaciones-"));
+  process.env.CSAPP_EXPORT_DIR = exportDir;
+  process.env.CSAPP_EXPORT_PAGE_ROWS = "500";
   process.env.CSAPP_ENABLE_SYNTHETIC_PROFILES = databaseNameOf(dbUrl);
   const { setupSyntheticSchema, resetSynthetic } = await import("../../tests/synthetic/schema");
   await setupSyntheticSchema();
@@ -178,6 +184,7 @@ export async function runAll(casos: ((ctx: Ctx) => Promise<void>)[]): Promise<nu
       await startServer(dbUrl);
     },
     uploadDir,
+    exportDir,
     startWorker: () => startWorkerProcess(dbUrl),
     stopWorker: stopWorkerProcess,
   };
@@ -198,6 +205,7 @@ export async function runAll(casos: ((ctx: Ctx) => Promise<void>)[]): Promise<nu
     await stopWorkerProcess();
     await stopServer();
     await rm(uploadDir, { recursive: true, force: true });
+    await rm(exportDir, { recursive: true, force: true });
     await prisma.$disconnect();
   }
   const failed = results.filter((r) => !r.ok).length;

@@ -15,7 +15,7 @@ Estado de la regla: **Confirmado** = decidido por Dennis; **Propuesto** = parám
 | Comparativa | [Contrato de vista](producto/comparativa.md) | ECO 01-08 | Mixto (Silver en ECO 08 propuesto); implementada en CSAPP-06 |
 | Análisis Cliente | [Contrato de vista](producto/analisis-cliente.md) | — | Confirmado; implementado en CSAPP-06 |
 | Pulse Rent | [Contrato de vista](producto/pulse-rent.md) | PUL 01-05 | Confirmado (bandas del Excel); implementado en CSAPP-07 |
-| Seis indicadores de Calidad | [Calidad](producto/calidad.md) | QLT 01-10, QHL 01 | Mixto (color de Incidentes y problemas propuesto) |
+| Seis indicadores de Calidad | [Calidad](producto/calidad.md) | QLT 01-19, QHL 01-03 | Mixto (color de Incidentes y problemas, mapeo de Health y global: propuestas hasta elección del Administrador) |
 | Stock y antigüedad | [Backlog](producto/backlog-antiguedad.md) | BACK 01-12 | Mixto (BACK 07-08 propuesta a calibrar) |
 | Origen y actuación | [Diagnóstico](producto/diagnostico-origen.md) | DIA 01-07 | Confirmado; catálogo de causas configurable |
 | Fórmulas y denominadores | [Catálogo](calculos/catalogo.md) | CAL 01-44 | Confirmado; implementado en CSAPP-05 el motor económico (CAL 17-30) y corregido en CSAPP-06 (CAL 31-36, eco-v2); tolerancias de conciliación propuestas (CAL 08) |
@@ -56,6 +56,10 @@ Estado de la regla: **Confirmado** = decidido por Dennis; **Propuesto** = parám
 | Implementado en CSAPP-07: Pulse Rent, configuración versionada, guard de pruebas | [Decisiones técnicas](arquitectura/pulse-configuracion-csapp07.md) | CAL 37-44, ADM 12-15 | Implementado; probado en Linux |
 | Guías de CSAPP-07: PowerShell y configuración | [PowerShell](plan/guia-powershell-csapp07.md) · [Configuración](plan/guia-configuracion-csapp07.md) | — | Sin probar en Windows |
 | Resultados de validación de CSAPP-07 | [Validación](validacion/csapp-07.md) | — | Registro |
+| Arquitectura de Calidad (CSAPP-08): esquema, compatibilidad v1→v2, fotografías, cobertura | [Calidad CSAPP-08](arquitectura/calidad-csapp08.md) | CAL 45-52 | Implementado, sin aceptación |
+| Guía PowerShell y recorrido de CSAPP-08 | [Guía PowerShell](plan/guia-powershell-csapp08.md) | — | Escrita, sin probar en Windows |
+| Guía breve de Calidad | [Guía de Calidad](plan/guia-calidad-csapp08.md) | — | Referencia |
+| Resultados de validación de CSAPP-08 | [Validación](validacion/csapp-08.md) | — | Registro |
 | DOC-00 y diez entregas | [Roadmap](plan/roadmap.md) | — | Confirmado |
 | Precarga futura y pruebas de Dennis | [Política](plan/precarga-y-pruebas.md) | — | Confirmado |
 | Progreso real | [Estado](plan/estado.md) | — | Registro vivo |

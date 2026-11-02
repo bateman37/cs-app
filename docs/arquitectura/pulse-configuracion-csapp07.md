@@ -40,3 +40,7 @@ Incidente heredado de CSAPP-06: una importación estática dejó un cliente cone
 ## 6. Rendimiento
 
 Medido con `npm run benchmark:pulse` (1 500 grupos, 250 000 tiempos, PAP y destinos sintéticos); cifras reales en la [validación](../validacion/csapp-07.md). Cada petición recalcula la referencia completa sin caché (privada o ninguna). Los gráficos reciben distribuciones agregadas, nunca hechos masivos.
+
+## Nota de CSAPP-08: `quality-config-v2`
+
+La carga de Calidad pasa a v2 (reglas por ámbito y unidad, backlog por tipo, política de fotografía y catálogo de diagnóstico). Las revisiones v1 se leen mediante un adaptador documentado en [calidad-csapp08](calidad-csapp08.md) sin actualizar su JSON; una nueva elección crea otra revisión. Siguen vigentes la inmutabilidad, la activación atómica, la vuelta atrás como nueva revisión y la edición obsoleta rechazada. Pulse Rent no cambia.

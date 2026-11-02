@@ -22,7 +22,7 @@ export function selectorsOf(cfg: PulseConfig): Selector[] {
 }
 export const configuredProfiles = (cfg: PulseConfig): Set<ProfileKey> => new Set(PROFILE_KEYS.filter((k) => (cfg.profiles[k] ?? []).length > 0));
 
-const selValues = (sels: Selector[]) =>
+export const selValues = (sels: Selector[]) =>
   sels.length === 0
     ? Prisma.sql`SELECT NULL::int AS idx, NULL::text AS key, NULL::text AS team, NULL::text AS level, NULL::boolean AS pmo WHERE false`
     : Prisma.sql`SELECT * FROM (VALUES ${Prisma.join(sels.map((s) => Prisma.sql`(${s.idx}::int, ${s.key}::text, ${s.team}::text, ${s.level}::text, ${s.pmo}::boolean)`))}) v(idx, key, team, level, pmo)`;
@@ -103,10 +103,5 @@ export function papPredicate(kind: PapKind): Prisma.Sql | null {
   }
 }
 
-/** ¿Hay datos de cada fuente en el periodo? Una fuente sin filas del periodo NO prueba un cero. */
-export const sourceCoverageSql = (from: string, to: string): Prisma.Sql => Prisma.sql`
-  SELECT EXISTS (SELECT 1 FROM "ZdTimeEntry" WHERE "workDate" BETWEEN ${from}::date AND ${to}::date) AS zd_time,
-    EXISTS (SELECT 1 FROM "WrikeTimeEntry" WHERE "workDate" BETWEEN ${from}::date AND ${to}::date) AS wrike_time,
-    EXISTS (SELECT 1 FROM "ZdTicketRevision" WHERE "createdOn" BETWEEN ${from}::date AND ${to}::date) AS tickets,
-    EXISTS (SELECT 1 FROM "PapItem" t JOIN "PapRevision" v ON v.id = t."currentRevisionId" WHERE v."productionDate" BETWEEN ${from}::date AND ${to}::date) AS pap`;
+/** La cobertura de fuentes ya no se deduce de la existencia de filas fechadas (CSAPP-08): se usa el contrato compartido `loadDeclarations` + `coverageOf`. */
 export { CLASS_OF_SQL };

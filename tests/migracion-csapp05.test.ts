@@ -88,7 +88,7 @@ describe("migración CSAPP-04 → CSAPP-05", () => {
     await withTempDb("cs_app_migra05b_test", async (db, env) => {
       execSync("npx prisma migrate deploy", { env, stdio: "pipe" });
       const applied = await db.query(`SELECT migration_name FROM _prisma_migrations ORDER BY migration_name`);
-      expect(applied.rows).toHaveLength(6);
+      expect(applied.rows.length).toBeGreaterThanOrEqual(6); // las posteriores las cubre su propia prueba
       expect((await db.query(`SELECT count(*)::int AS n FROM "EconomicSettingsRevision"`)).rows[0].n).toBe(1);
     });
   }, 180000);

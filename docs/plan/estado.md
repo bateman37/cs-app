@@ -1,6 +1,6 @@
 # Estado de CS App
 
-Actualizado el 1 de noviembre de 2026 tras ejecutar [CSAPP-DOC-00-v1](../../prompts/CSAPP-DOC-00-v1.md), [CSAPP-01-v1](../../prompts/CSAPP-01-v1.md), [CSAPP-02-v1](../../prompts/CSAPP-02-v1.md), [CSAPP-03-v1](../../prompts/CSAPP-03-v1.md) [CSAPP-04-v1](../../prompts/CSAPP-04-v1.md) [CSAPP-05-v1](../../prompts/CSAPP-05-v1.md) [CSAPP-06-v1](../../prompts/CSAPP-06-v1.md) y [CSAPP-07-v1](../../prompts/CSAPP-07-v1.md).
+Actualizado el 2 de noviembre de 2026 tras ejecutar [CSAPP-DOC-00-v1](../../prompts/CSAPP-DOC-00-v1.md), [CSAPP-01-v1](../../prompts/CSAPP-01-v1.md), [CSAPP-02-v1](../../prompts/CSAPP-02-v1.md), [CSAPP-03-v1](../../prompts/CSAPP-03-v1.md) [CSAPP-04-v1](../../prompts/CSAPP-04-v1.md) [CSAPP-05-v1](../../prompts/CSAPP-05-v1.md) [CSAPP-06-v1](../../prompts/CSAPP-06-v1.md) y [CSAPP-07-v1](../../prompts/CSAPP-07-v1.md) y [CSAPP-08-v1](../../prompts/CSAPP-08-v1.md).
 
 ## Resultado de CSAPP-DOC-00
 
@@ -107,7 +107,7 @@ Documentación: [analítica](../arquitectura/analitica-csapp06.md), [Comparativa
 | Dato | Valor |
 | --- | --- |
 | Rama / base | `feature/CSAPP-07-pulse-rent-configuracion`, **apilada sobre la cabeza de la PR 7** (`8c92ab8`, CSAPP-06, sin fusionar; `main` f71b5b7 incluye CSAPP-05, merge de la PR 6, pero no 06). La rama designada por la sesión (`claude/new-session-omvsmd`) estaba ocupada por la PR 7 y no se contaminó; push normal, sin force |
-| PR | Apilada contra `claude/new-session-omvsmd` (ver enlace en la PR), sin fusionar. Cuando 06 entre en `main`, rebasar la base conservando historia |
+| PR | [PR 8](https://github.com/bateman37/cs-app/pull/8), apilada contra `claude/new-session-omvsmd`; **integrada en la rama de la PR 7** (cabeza `e0f17e4`, que contiene 06 y 07), **no en `main`** (`f71b5b7`). Integración en Git no es aceptación de Dennis |
 | Migración | `20261102090000_pulse_calidad_configuracion` (`ConfigRevision`, `ConfigDraft`) |
 | Implementado | Guard central de pruebas (prevención, no limpieza); `/pulse-rent` con 38 métricas (M01-M38), referencias explícitas, normalización, percentiles, cinco bandas, explicación, detalle y CSV; Administración › Configuración con secciones Economía / Pulse Rent / Calidad (borrador, simulación, activación, vuelta atrás, revisiones inmutables); pesos exactos de Calidad y simulador |
 | Probado | Linux: `npm test` 475 pruebas / 33 archivos, trabajador 300 000 filas, recorrido 291 comprobaciones, volumen 1 500 grupos. Ver [validación](../validacion/csapp-07.md) |
@@ -117,6 +117,20 @@ Documentación: [analítica](../arquitectura/analitica-csapp06.md), [Comparativa
 | Pendiente de Dennis | Revisar la PR, ejecutar la [guía](guia-powershell-csapp07.md), cargar fuentes, decidir sobre el residuo, aceptar o ajustar ECO 08, ZDT 11-13, ZTM 06-08, lista PAP, estados de bugs y los parámetros de Calidad |
 
 Documentación: [arquitectura](../arquitectura/pulse-configuracion-csapp07.md), [Pulse Rent](../producto/pulse-rent.md), [guía de configuración](guia-configuracion-csapp07.md), [catálogo CAL 37-44](../calculos/catalogo.md).
+
+## Resultado de CSAPP-08 (Calidad, Client Health, diagnóstico y backlog observado)
+
+| Dato | Valor |
+| --- | --- |
+| Rama / base | `feature/CSAPP-08-calidad-client-health`, creada desde la cabeza de la PR 7 (`e0f17e4c8e1a47ad08d10b8eeaf2e5f407c66bb5`, que ya contiene 06 y 07 tras integrar la PR 8); `main` (`f71b5b7`) no los contiene. La rama de la sesión (`claude/new-session-omvsmd`) es la de la PR 7 y no se contaminó; push normal, sin force |
+| PR | [PR 9](https://github.com/bateman37/cs-app/pull/9), apilada contra `claude/new-session-omvsmd`, sin fusionar ni desplegar. Cuando 06/07 entren en `main`, ajustar la base conservando historia |
+| Migración | `20261103090000_calidad_health_cobertura` (`HealthFeedback`, `HealthFeedbackEvent`, `QualityNote`, `UploadCoverageDeclaration`, índices y restricciones); las seis anteriores y la `ConfigRevision` v1 intactas |
+| Implementado | `/calidad` (cartera, Client Health editable, diagnóstico por origen, backlog por antigüedad, detalle explicado, evolución, CSV) con el motor común por conjuntos y evaluador puro; `quality-config-v2` con adaptador de v1; contrato de cobertura declarada en Cargas, compartido con Pulse; simulación del borrador sobre datos; integración en Análisis Cliente; correcciones de §2 con contraejemplos |
+| Probado | Linux con datos sintéticos: ver [validación](../validacion/csapp-08.md). Windows sin probar; sin lector de pantalla |
+| Confirmado / propuesto / activado | **Confirmados:** pesos iguales 1/6 y redistribución solo sin Health. **Propuestas desactivadas:** mapeo de Health, perfiles de Dedicación, umbrales/referencias/mínimos, «peor señal», plantilla del global, política de fotografía anterior. Nada se ha activado para que haya colores |
+| Pendiente de Dennis | Revisar la PR; ejecutar la [guía](guia-powershell-csapp08.md); declarar la cobertura de sus lotes reales; calibrar y activar sus reglas; decidir sobre las dos cuentas sintéticas de `cs_app`; aceptar o ajustar ECO 08, ZDT 11–13, ZTM 06–08, lista PAP, estados de bugs y signo de «Diferencia» (siguen pendientes) |
+
+Documentación: [arquitectura](../arquitectura/calidad-csapp08.md), [Calidad](../producto/calidad.md), [backlog](../producto/backlog-antiguedad.md), [diagnóstico](../producto/diagnostico-origen.md), [catálogo CAL 45–52](../calculos/catalogo.md), [guía breve](guia-calidad-csapp08.md).
 
 ## Estado por trabajo
 
@@ -131,11 +145,12 @@ Niveles: diseñado, documentado, implementado, probado, aceptado. Un criterio de
 | CSAPP-04 | Sí | Sí | Sí (PR 5 fusionada según Git) | Sí en Linux con datos sintéticos; Windows sin probar | No |
 | CSAPP-05 | Sí | Sí | Sí (PR 6 fusionada según Git) | Sí en Linux con datos sintéticos; Windows sin probar | No |
 | CSAPP-06 | Sí | Sí | Sí (PR sin fusionar) | Sí en Linux con datos sintéticos; Windows sin probar | No |
-| CSAPP-07 | Sí | Sí | Sí (PR apilada sin fusionar) | Sí en Linux con datos sintéticos; Windows sin probar | No |
-| CSAPP-08 a CSAPP-10 | Sí, en [roadmap](roadmap.md) y contratos | Sí | No | No | No |
+| CSAPP-07 | Sí | Sí | Sí (PR 8, integrada en la rama de la PR 7, no en `main`) | Sí en Linux con datos sintéticos; Windows sin probar | No |
+| CSAPP-08 | Sí | Sí | Sí (PR apilada sin fusionar) | Sí en Linux con datos sintéticos; Windows sin probar | No |
+| CSAPP-09 y CSAPP-10 | Sí, en [roadmap](roadmap.md) y contratos | Sí | No | No | No |
 | Cargas reales | — | Política en [precarga y pruebas](precarga-y-pruebas.md) | No | No | No; las probará Dennis |
 
-CSAPP-08 a CSAPP-10 siguen sin iniciar y sin prompt redactado. La próxima acción es revisar las PR 7 (CSAPP-06) y la apilada de CSAPP-07, que Dennis cargue sus fuentes, decida sobre las dos cuentas sintéticas de `cs_app` y envíe el prompt de CSAPP-08.
+CSAPP-09 y CSAPP-10 siguen sin iniciar y sin prompt redactado. La próxima acción es revisar la PR 7 (CSAPP-06, con 07 integrada), la apilada de CSAPP-08, que Dennis cargue sus fuentes, declare su cobertura, decida sobre las dos cuentas sintéticas de `cs_app` y envíe el prompt de CSAPP-09.
 
 ## Vigente
 

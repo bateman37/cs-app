@@ -10,6 +10,7 @@ import { BACK_KEYS, BASE, backHref, fichaHref } from "./links";
 import { Detail, isDetailKind } from "./detalle";
 import { Charts, PeriodCards } from "./resumen";
 import { Datos, Dedicacion, Pap, Tickets } from "./sections";
+import { CalidadFicha } from "./calidad";
 
 export const metadata: Metadata = { title: "Análisis Cliente" };
 export const dynamic = "force-dynamic";
@@ -151,7 +152,7 @@ async function FichaPage({ userId, isAdmin, query, target, back, sp }: { userId:
           {query.tab === "datos" ? <Datos c={c} isAdmin={isAdmin} /> : null}
         </>
       )}
-      <p className="hint">Los seis indicadores de Calidad, el Client Health y el backlog se integrarán en esta ficha en CSAPP-08; hoy no se muestran semáforos ni resultado global.</p>
+      <CalidadFicha userId={userId} query={query} target={ref} />
     </>
   );
 }

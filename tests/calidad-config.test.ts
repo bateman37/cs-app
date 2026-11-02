@@ -61,17 +61,19 @@ describe("pesos exactos", () => {
     expect(none.computable).toBe(false);
     expect(none.reasons[0]).toMatch(/Ningún indicador/);
   });
-  it("un KPI técnico ausente con peso positivo no se redistribuye ni se vuelve verde: el global no se publica completo", () => {
+  it("un KPI técnico ausente con peso positivo CONSERVA su asignación (no aumenta la de los demás): el global no se publica completo y la cobertura lo dice", () => {
     const u = weightUnits({ mode: "EQUAL", custom: {} as never }).units!;
     const w = effectiveWeights(u, avail({ DEDICATION: "MISSING" }));
     expect(w.computable).toBe(false);
     expect(w.reasons[0]).toMatch(/no se redistribuye/);
-    expect(w.fraction.DEDICATION.num).toBe(0n);
+    expect(w.fraction.DEDICATION).toEqual({ num: 1n, den: 6n });
+    expect(w.fraction.PAP_CORRECTIVE).toEqual({ num: 1n, den: 6n });
+    expect(w.coverage).toEqual({ num: 5n, den: 6n });
   });
 });
 
 describe("reglas de umbral deterministas", () => {
-  const rule = (o: Partial<ThresholdRule> = {}): ThresholdRule => ({ method: "ABSOLUTE", direction: "LOWER_BETTER", a: "10", b: "20", referenceId: null, minSample: null, calibration: "CALIBRADO", ...o });
+  const rule = (o: Partial<ThresholdRule> = {}): ThresholdRule => ({ method: "ABSOLUTE", direction: "LOWER_BETTER", a: "10", b: "20", referenceId: null, minSample: null, calibration: "CALIBRADO", unit: "PER_100_USER_MONTHS", ...o });
   const colorAt = (r: ThresholdRule, x: number | null, ref?: number[]) => evaluateRule(r, x === null ? null : D(x), ref ? ref.map(D) : null).color;
   it("menor mejor: verde x≤a · amarillo a<x≤b · rojo x>b (igualdades declaradas)", () => {
     expect([10, 10.01, 20, 20.01].map((x) => colorAt(rule(), x))).toEqual(["green", "yellow", "yellow", "red"]);
@@ -89,8 +91,9 @@ describe("reglas de umbral deterministas", () => {
     expect(validateRule(rule({ a: null }))[0]).toMatch(/Faltan/);
   });
   it("percentiles: dos posiciones ordenadas en [0,100] sobre una referencia explícita; los cortes pueden coincidir", () => {
-    const p = rule({ method: "PERCENTILE", a: "25", b: "75", referenceId: "todos" });
+    const p = rule({ method: "PERCENTILE", a: "25", b: "75", referenceId: "todos", minSample: 4 });
     const ref = [0, 10, 20, 30];
+    expect(validateRule(rule({ method: "PERCENTILE", a: "25", b: "75", referenceId: "todos" }))[0]).toMatch(/muestra mínima/); // un mínimo requerido sin definir no se usa en silencio
     expect(percentileAt(ref.map(D), "25")?.toString()).toBe("7.5");
     expect([5, 7.5, 15, 22.5, 25].map((x) => colorAt(p, x, ref))).toEqual(["green", "green", "yellow", "yellow", "red"]);
     expect(validateRule(rule({ method: "PERCENTILE", a: "75", b: "25", referenceId: "x" }))[0]).toMatch(/ordenadas/);
@@ -107,8 +110,9 @@ describe("reglas de umbral deterministas", () => {
   });
   it("Client Health es categórico: la ausencia queda en blanco y no hay propagación implícita", () => {
     const m = defaultQualityConfig().health.mapping;
-    expect(healthColor("positive", m)).toEqual({ color: "green", blank: false });
-    expect(healthColor(null, m)).toEqual({ color: null, blank: true });
+    expect(healthColor("positive", { mapping: m, confirmed: true })).toEqual({ color: "green", blank: false });
+    expect(healthColor("positive", { mapping: m, confirmed: false })).toEqual({ color: null, blank: false }); // propuesta: sin color publicado
+    expect(healthColor(null, { mapping: m, confirmed: true })).toEqual({ color: null, blank: true });
     expect(defaultQualityConfig().health.confirmed).toBe(false); // propuesta, no confirmada
   });
 });
@@ -116,8 +120,8 @@ describe("reglas de umbral deterministas", () => {
 describe("incidentes y problemas: edad, stock y flujo", () => {
   it("envejecido es edad > umbral (no ≥); stock y flujo usan denominadores distintos", () => {
     expect([isAged(30, 30), isAged(31, 30), isAged(0, 0)]).toEqual([false, true, false]);
-    expect(backlogStockRate(6, 60)?.toString()).toBe("0.1"); // por usuarios AL CORTE
-    expect(flowRate(6, D(120))?.toString()).toBe("0.05"); // por exposición (usuarios mes)
+    expect(backlogStockRate(6, 60)?.toString()).toBe("10"); // 100 × 6 / 60 por 100 usuarios AL CORTE (BACK 06)
+    expect(flowRate(6, D(120))?.toString()).toBe("5"); // 100 × 6 / 120 usuarios·mes (exposición)
     expect(backlogStockRate(6, null)).toBeNull();
     expect(flowRate(6, D(0))).toBeNull();
   });

@@ -60,6 +60,7 @@
     "test:todo": "vitest run",
     "e2e:volumen": "tsx scripts/e2e/volumen.ts",
     "benchmark:analitica": "tsx scripts/volumen-analitica.ts",
-    "benchmark:pulse": "tsx scripts/volumen-pulse.ts"
+    "benchmark:pulse": "tsx scripts/volumen-pulse.ts",
+    "benchmark:calidad": "tsx scripts/volumen-calidad.ts"
   }
 }

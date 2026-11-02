@@ -22,3 +22,12 @@ Versiones compatibles, lector XLSX y benchmark se verifican en CSAPP-01/02. La a
 ## Pendientes y propuestas tras CSAPP-05
 
 Sin aceptar y pendientes de Dennis: ZDT 11–13 y ZTM 06–08 (CSAPP-04 §2); lista estable de origen PAP (implementada, pendiente de validación); catálogo de estados de bugs, lista de palabras que evita inferencias de tickets y `CSAPP_DEVOPS_PRODUCTS` (propuestas implementadas). Nuevas en CSAPP-05: tolerancia de conciliación de 0,01 € (técnica, CAL 08); vacío de Vta Potencial como cero solo por decisión de lote (FAC 07 propuesto, no regla global); convención de signo de «Diferencia» (sin Budget absoluto); Silver On Demand ECO 08 (sin rentabilidad mensual recurrente); interpretación de la categoría del histórico `DATA FACTURACIÓN` por las columnas «Soporte»/«Admin Delegada» (validar con el libro real). Ver la [tabla de estado](../arquitectura/finanzas-motor-csapp05.md#10-reglas-propuestas-pendientes-o-heredadas-estado-explícito).
+
+
+## Pendientes y propuestas tras CSAPP-08
+
+Siguen **sin aceptar** (conservan su estado pendiente): ECO 08, ZDT 11–13, ZTM 06–08, la lista de origen PAP, los estados de bugs y el signo de «Diferencia». Continuar en CSAPP-08 no los acepta.
+
+Propuestas de CSAPP-08 que decide el Administrador en Administración › Configuración (nada se activa solo): mapeo de Client Health a colores y su confirmación; selección de perfiles de Dedicación; umbrales, referencias y muestras mínimas por ámbito (Grupo y Cliente) y unidad; composición «peor señal» del color de Incidentes y problemas y umbrales preocupantes de edad; plantilla del global (severidades 0/0,5/1 con límites elegidos); política de fotografía para cortes históricos (exacta o «última anterior dentro de X días»); catálogo de correspondencias de diagnóstico (inicializado solo con las confirmadas).
+
+Decisiones técnicas tomadas y por validar con Dennis: la cobertura se declara por lote en Cargas (población, estados, alcance temporal) en lugar de deducirse de la presencia de filas; un valor sin cobertura declarada es parcial (cota inferior) y un cero no está sustentado; un vínculo a bug es válido con evidencia de un lote completado o confirmación manual; Pulse Rent **todavía** usa su cobertura anterior por existencia de filas (compartir el contrato cambia sus ceros y se decide aparte).

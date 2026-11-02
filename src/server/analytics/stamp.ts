@@ -14,6 +14,11 @@ const DOMAINS: { key: string; sql: Prisma.Sql }[] = [
   { key: "zendesk_tiempos", sql: Prisma.sql`SELECT count(*)::text || ':' || COALESCE(sum("drvVersion"), 0)::text || ':' || COALESCE(sum(revision), 0)::text || ':' || COALESCE(max("updatedAt")::text, '') FROM "ZdTimeEntry"` },
   { key: "wrike_tiempos", sql: Prisma.sql`SELECT count(*)::text || ':' || COALESCE(sum("drvVersion"), 0)::text || ':' || COALESCE(sum(revision), 0)::text || ':' || COALESCE(max("updatedAt")::text, '') FROM "WrikeTimeEntry"` },
   { key: "tickets", sql: Prisma.sql`SELECT count(*)::text || ':' || COALESCE(max(id), 0)::text FROM "ZdTicketRevision"` },
+  // Observaciones: una observación nueva SIN cambio de contenido (misma revisión) cambia la frescura y el stock observado, y debe invalidar el resultado anterior.
+  { key: "tickets_observaciones", sql: Prisma.sql`SELECT count(*)::text || ':' || COALESCE(max(id), 0)::text || ':' || COALESCE(max("observedOn")::text, '') FROM "ZdTicketObservation"` },
+  { key: "lotes", sql: Prisma.sql`SELECT count(*) FILTER (WHERE status = 'COMPLETED')::text || ':' || count(*)::text || ':' || COALESCE(max("updatedAt")::text, '') FROM "UploadBatch"` },
+  { key: "salud", sql: Prisma.sql`SELECT count(*)::text || ':' || COALESCE(sum(version), 0)::text || ':' || COALESCE(max("updatedAt")::text, '') FROM "HealthFeedback"` },
+  { key: "cobertura", sql: Prisma.sql`SELECT count(*)::text || ':' || COALESCE(max(id), 0)::text FROM "UploadCoverageDeclaration"` },
   { key: "tickets_actuales", sql: Prisma.sql`SELECT md5(COALESCE(string_agg("ticketId" || '=' || COALESCE("currentRevisionId"::text, ''), ',' ORDER BY "ticketId"), '')) FROM "ZdTicket"` },
   { key: "finanzas", sql: Prisma.sql`SELECT COALESCE(string_agg(year || '/' || category || '=' || COALESCE("activeBatchId", '-') || '@' || version, ',' ORDER BY year, category), '') FROM "FinanceScope"` },
   { key: "usuarios", sql: Prisma.sql`SELECT count(*)::text || ':' || COALESCE(sum(revision), 0)::text || ':' || COALESCE(sum(value), 0)::text || ':' || COALESCE(max("updatedAt")::text, '') FROM "UserMatrixMonth"` },

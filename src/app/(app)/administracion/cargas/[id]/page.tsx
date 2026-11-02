@@ -14,6 +14,8 @@ import { StatusPoller } from "./poller";
 import { ZendeskPanels } from "./zendesk-panels";
 import { Csapp04Panels } from "./csapp04-panels";
 import { FinancePanel } from "./finance-panel";
+import { CoveragePanel } from "./coverage-panel";
+import { listDeclarations } from "@/server/quality/coverage";
 
 export const metadata: Metadata = { title: "Ficha de carga" };
 const BASE = "/administracion/cargas";
@@ -116,6 +118,8 @@ export default async function CargaPage({ params, searchParams }: { params: Prom
           <a href={`/api/cargas/${b.id}/archivo`}>Descargar el archivo original</a> (solo Administrador).
         </p>
       </section>
+
+      <CoveragePanel batchId={b.id} profileId={b.profileId} status={st} history={await listDeclarations(user.id, b.id)} declaredExtraction={b.declaredExtractionDate ? b.declaredExtractionDate.toISOString().slice(0, 10) : null} />
 
       <section className="card" aria-labelledby="sec-contadores">
         <h2 id="sec-contadores">Resumen de filas</h2>

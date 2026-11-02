@@ -1,6 +1,6 @@
 # Estado de CS App
 
-Actualizado el 2 de noviembre de 2026 tras ejecutar [CSAPP-DOC-00-v1](../../prompts/CSAPP-DOC-00-v1.md), [CSAPP-01-v1](../../prompts/CSAPP-01-v1.md), [CSAPP-02-v1](../../prompts/CSAPP-02-v1.md), [CSAPP-03-v1](../../prompts/CSAPP-03-v1.md) [CSAPP-04-v1](../../prompts/CSAPP-04-v1.md) [CSAPP-05-v1](../../prompts/CSAPP-05-v1.md) [CSAPP-06-v1](../../prompts/CSAPP-06-v1.md) y [CSAPP-07-v1](../../prompts/CSAPP-07-v1.md) [CSAPP-08-v1](../../prompts/CSAPP-08-v1.md) y [CSAPP-09-v1](../../prompts/CSAPP-09-v1.md).
+Actualizado el 2 de noviembre de 2026 tras ejecutar [CSAPP-DOC-00-v1](../../prompts/CSAPP-DOC-00-v1.md), [CSAPP-01-v1](../../prompts/CSAPP-01-v1.md), [CSAPP-02-v1](../../prompts/CSAPP-02-v1.md), [CSAPP-03-v1](../../prompts/CSAPP-03-v1.md) [CSAPP-04-v1](../../prompts/CSAPP-04-v1.md) [CSAPP-05-v1](../../prompts/CSAPP-05-v1.md) [CSAPP-06-v1](../../prompts/CSAPP-06-v1.md) y [CSAPP-07-v1](../../prompts/CSAPP-07-v1.md) [CSAPP-08-v1](../../prompts/CSAPP-08-v1.md) [CSAPP-09-v1](../../prompts/CSAPP-09-v1.md) y [CSAPP-10-v1](../../prompts/CSAPP-10-v1.md).
 
 ## Resultado de CSAPP-DOC-00
 
@@ -147,6 +147,22 @@ Documentación: [arquitectura](../arquitectura/calidad-csapp08.md), [Calidad](..
 
 Documentación: [exportaciones](../arquitectura/exportaciones-csapp09.md), [conciliación](../validacion/conciliacion-contrato.md), [validación](../validacion/csapp-09.md), [guía PowerShell](guia-powershell-csapp09.md).
 
+## Resultado de CSAPP-10 (cierre técnico, instalación, recuperación y aceptación)
+
+| Dato | Valor |
+| --- | --- |
+| Rama / base | `feature/CSAPP-10-instalacion-recuperacion-cierre`, desde `676df60` (cabeza de la rama de la PR 7 tras fusionar en ella la PR 10 de CSAPP-09). `main` (`f71b5b7`) **no** contiene 06–09. PR **apilada contra `claude/new-session-omvsmd`**, sin fusionar ni desplegar; sin force-push |
+| PR | PR_PENDIENTE |
+| Migración | `20261105090000_operacion_latido_instalacion` (`WorkerInstance`, `InstallationMeta`); solo añade; las ocho anteriores intactas |
+| Implementado | Latido por trabajador (reposo y procesando) y salud (CLI, Administración › Operación, `/api/salud` mínima); identidad de instalación y almacenes; supervisor `start:todo`/`stop:todo` y `ops` (verificar, preparar, salud, diagnóstico); modo operativo estricto; copia/verificación/restauración con parada controlada; evolución de Calidad por conjuntos (−60 % a −84 %, 189 → 23 sentencias, salida idéntica); puente de conciliación `REC-N4-*`; recorridos de cargas y descargas grandes por navegador; ensayos de instalación, actualización y restauración; documentación vigente única |
+| Probado | Linux: suite rápida 685, recorrido de navegador 359/359, grandes 21/21, ensayos 27/27, 17/17 y 89/89. Ver [validación](../validacion/csapp-10.md) |
+| No probado | **Windows/PowerShell**, lector de pantalla, proxy de producción, PostgreSQL remoto |
+| Datos y aceptación funcional | **Pendiente de Dennis** ([registro](../validacion/registro-aceptacion.md), todos los casos «pendiente») |
+| Producción | **Preparación completa, despliegue pendiente** (faltan destino, autorización, TLS/proxy, supervisor y política de copias de IT) |
+| Pendiente de Dennis/IT | Ver [pendientes](../decisiones/pendientes.md#pendientes-y-propuestas-tras-csapp-10) |
+
+Documentación vigente: [instalación y operación](../operacion/instalacion-operacion.md), [variables](../operacion/variables-entorno.md), [copia y restauración](../operacion/copia-restauracion.md), [actualización y despliegue](../operacion/actualizacion-despliegue-it.md), [guía de Dennis](guia-dennis.md), [arquitectura](../arquitectura/operacion-csapp10.md).
+
 ## Estado por trabajo
 
 Niveles: diseñado, documentado, implementado, probado, aceptado. Un criterio de aceptación escrito no es una prueba ejecutada.
@@ -163,10 +179,10 @@ Niveles: diseñado, documentado, implementado, probado, aceptado. Un criterio de
 | CSAPP-07 | Sí | Sí | Sí (PR 8, integrada en la rama de la PR 7, no en `main`) | Sí en Linux con datos sintéticos; Windows sin probar | No |
 | CSAPP-08 | Sí | Sí | Sí (PR apilada sin fusionar) | Sí en Linux con datos sintéticos; Windows sin probar | No |
 | CSAPP-09 | Sí | Sí | Sí (PR apilada sin fusionar) | Sí en Linux con datos sintéticos; Windows y conciliación real sin ejecutar | No |
-| CSAPP-10 | Sí, en [roadmap](roadmap.md) y contratos | Sí | No | No | No |
+| CSAPP-10 | Sí | Sí | Sí (PR apilada sin fusionar) | Sí en Linux con datos sintéticos; Windows, proxy y datos reales sin ejecutar | No |
 | Cargas reales | — | Política en [precarga y pruebas](precarga-y-pruebas.md) | No | No | No; las probará Dennis |
 
-CSAPP-10 sigue sin iniciar y sin prompt redactado. La próxima acción es revisar la PR 7 (CSAPP-06, con 07 y 08 integradas en su rama) y la PR apilada de CSAPP-09, que Dennis cargue sus fuentes reales, declare su cobertura, ejecute la conciliación, decida sobre las dos cuentas sintéticas de `cs_app` y envíe el prompt de CSAPP-10.
+Las diez entregas están implementadas. Siguen pendientes, y **no** están cerradas por este trabajo: la aceptación funcional con los archivos reales de Dennis, la prueba en Windows, las decisiones listadas en [pendientes](../decisiones/pendientes.md) y el despliegue en un destino autorizado por IT. No existe CSAPP-11.
 
 ## Vigente
 

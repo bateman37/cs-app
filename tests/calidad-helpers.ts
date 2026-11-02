@@ -43,6 +43,7 @@ export async function seedBugLink(batchId: string, o: { bugId: string; product?:
   const wi = await prisma.workItem.create({ data: { product: o.product ?? "VFS", scopeKey: "S", workItemId: o.bugId, firstBatchId: batchId } });
   const rev = await prisma.workItemRevision.create({ data: { workItemId: wi.id, fingerprint: `wf-${wi.id}`, revisionNo: 1, itemType: o.isBug === false ? "Task" : "Bug_", isBug: o.isBug ?? true, title: `Bug ${o.bugId}`, state: "Active", stateCategory: "ACTIVE", stateKnown: true, batchId } });
   await prisma.workItem.update({ where: { id: wi.id }, data: { currentRevisionId: rev.id } });
+  await prisma.workItemObservation.create({ data: { workItemId: wi.id, batchId, revisionId: rev.id, observedOn: d("2026-10-01"), observedKind: "DECLARED", receivedAt: new Date() } });
   const link = await prisma.workItemLink.create({ data: { workItemId: wi.id, ticketId: tkey(o.ticket), manualState: o.manual ?? null, drvState: o.state ?? "RESOLVED_EXTERNAL", drvTicketType: "problem", drvClientId: o.clientId ?? null, drvGroupId: o.groupId ?? null } });
   if (o.evidence !== false) await prisma.workItemLinkEvidence.create({ data: { linkId: link.id, batchId, source: "ZENDESK_TICKET_ID", rawRef: tkey(o.ticket), observedOn: d("2026-10-01") } });
   return link;

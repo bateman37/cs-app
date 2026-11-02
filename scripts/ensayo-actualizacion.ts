@@ -83,6 +83,12 @@ async function main() {
     check("10: la cuenta de 09 entra y las cuatro vistas y Administración responden 200", ls === 200 && Object.values(pages).every((s) => s === 200), JSON.stringify(pages));
     const st1 = cli(["scripts/ops.ts", "parar"]);
     check("10: parada ordenada", st1.status === 0, st1.stdout + st1.stderr);
+    // Leer las vistas por primera vez crea, de forma perezosa y en cualquier versión, la revisión INICIAL de configuración: es lo ÚNICO que puede cambiar respecto a la huella previa.
+    const used = await huella(path.join(base, "huella-10-uso.json"));
+    const LAZY = new Set(["EconomicSettingsRevision", "ConfigRevision"]);
+    const dUse = Object.keys(used.tablas).filter((t) => !pre.tablas[t] || used.tablas[t].md5 !== pre.tablas[t].md5);
+    out.cambiosPorPrimerUso = dUse;
+    check("Tras usar 10: solo cambian las revisiones iniciales de configuración creadas de forma perezosa en la primera lectura", dUse.every((t) => LAZY.has(t)), dUse.join(","));
     lap("arranque 10");
     // 4) Vuelta atrás de CÓDIGO: 09 compilado sobre el esquema de 10 (solo añadió tablas)
     const web09 = spawn(node, [path.join(OLD, "node_modules/next/dist/bin/next"), "start", "-p", String(PORT)], { cwd: OLD, env: prod as NodeJS.ProcessEnv, stdio: "ignore" }); kids.push(web09);
@@ -98,8 +104,8 @@ async function main() {
     await sleep(3000);
     check("Vuelta atrás de código: 09 se detiene", !alive(web09.pid) && !alive(wk09.pid));
     const back = await huella(path.join(base, "huella-09-sobre-10.json"));
-    const diffs2 = Object.keys(pre.tablas).filter((t) => back.tablas[t]?.md5 !== pre.tablas[t].md5 || back.tablas[t]?.n !== pre.tablas[t].n);
-    check("Vuelta atrás de código: usar 09 no alteró ningún dato (huella idéntica a la previa)", diffs2.length === 0, diffs2.join(","));
+    const diffs2 = Object.keys(used.tablas).filter((t) => back.tablas[t]?.md5 !== used.tablas[t].md5 || back.tablas[t]?.n !== used.tablas[t].n);
+    check("Vuelta atrás de código: usar 09 sobre el esquema de 10 no alteró ningún dato (huella idéntica a la de antes de volver)", diffs2.length === 0, diffs2.join(","));
     lap("vuelta atrás de código");
     // 5) Volver a avanzar a 10 (sin migraciones pendientes)
     const again = prisma(ROOT, ["migrate", "deploy"]);

@@ -387,3 +387,38 @@ describe("sello de datos", () => {
     void addTicket; void fakeBatch; void defaultPulseConfig;
   });
 });
+
+describe("referencias por percentiles de la métrica de Calidad", () => {
+  it("la referencia se calcula con los valores de Calidad del ámbito (N y cortes), excluye no calculables y no se mueve por filtros de presentación ni por la página", async () => {
+    const tb = await batchOf(admin.id, "zendesk-tickets", "2026-10-31");
+    const gs = [];
+    for (let i = 1; i <= 6; i++) {
+      const g = await addGroup(`G${i}`);
+      const c = await addClient(`C${i}`, g.id);
+      await prisma.externalIdentity.create({ data: { system: "ZENDESK", kind: "ORG_ID", rawValue: `71${i}`, searchValue: `71${i}`, clientId: c.id } });
+      if (i <= 5) await setUsers(admin.id, { groupId: g.id }, 2026, Array(12).fill(100)); // G6: usuarios sin informar → no calculable
+      for (let n = 0; n < i - 1; n++) await seedTicket(tb.id, { id: `R${i}-${n}`, org: `71${i}`, type: "question", created: "2026-10-05", destinations: ["PMO_N3"], observedOn: "2026-10-31" });
+      gs.push(g);
+    }
+    await declare(admin.id, tb.id, { statusScope: "ALL_STATUSES" });
+    const cfg = defaultQualityConfig();
+    cfg.indicators.N3_ESCALATIONS.rules.GRUPO = { ...cfg.indicators.N3_ESCALATIONS.rules.GRUPO, method: "PERCENTILE", a: "25", b: "75", referenceId: "todos", minSample: 5, calibration: "CALIBRADO" };
+    const d = await saveDraft(admin.id, "QUALITY", cfg, { expectedVersion: null });
+    await activateDraft(admin.id, "QUALITY", { expectedRevisionNo: 1, expectedDraftVersion: d.version, reason: "percentiles" });
+    const v = await run();
+    const color = (name: string) => V(row(v, name), "N3_ESCALATIONS");
+    // valores por 100 usuarios·mes: G1=0, G2=1, G3=2, G4=3, G5=4 → P25 = 1, P75 = 3, N = 5 (G6 no calculable queda fuera)
+    expect([color("G1").color, color("G2").color, color("G3").color, color("G4").color, color("G5").color]).toEqual(["green", "green", "yellow", "yellow", "red"]);
+    expect(color("G3")).toMatchObject({ cuts: { a: "1", b: "3" }, n: 5 });
+    expect(V(row(v, "G6"), "N3_ESCALATIONS").value).toBeNull();
+    // filtros de presentación y página: mismos cortes y mismo N
+    const filtered = await run({ q: "G5", pagina: "1", tam: "25" });
+    expect(V(row(filtered, "G5"), "N3_ESCALATIONS")).toMatchObject({ color: "red", cuts: { a: "1", b: "3" }, n: 5 });
+    // referencia inexistente en la revisión de Pulse: sin referencia, nunca verde
+    const bad = { ...cfg, indicators: { ...cfg.indicators, N3_ESCALATIONS: { ...cfg.indicators.N3_ESCALATIONS, rules: { ...cfg.indicators.N3_ESCALATIONS.rules, GRUPO: { ...cfg.indicators.N3_ESCALATIONS.rules.GRUPO, referenceId: "no_existe" } } } } };
+    const sim = await run({ sim: "" }, { configOverride: bad as QualityConfig });
+    expect(V(row(sim, "G1"), "N3_ESCALATIONS")).toMatchObject({ color: null, status: "SIN_REFERENCIA" });
+    expect(sim.config.simulated).toBe(true);
+    expect((await run()).config.simulated).toBe(false); // la simulación no cambia lo activo
+  });
+});

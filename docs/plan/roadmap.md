@@ -17,7 +17,7 @@ Todas las entregas parten de las lecturas comunes (AGENTS, CLAUDE, [índice](../
 | CSAPP-09 | Conciliación, fiabilidad, rendimiento, exportaciones y recuperación | Reimportación/reversión, volumen medido, permisos y cifras conciliadas con cargas reales de Dennis |
 | CSAPP-10 | Aceptación, guías y preparación/ejecución del despliegue autorizado | Instalación y copia recuperable, guía Windows/IT, aceptación registrada y despliegue solo en entorno autorizado |
 
-Estado de las diez entregas: ver [estado](estado.md). CSAPP-01 a CSAPP-05 implementadas y fusionadas según Git (integración, no aceptación de Dennis); CSAPP-06 implementada en la PR 7 sin fusionar; CSAPP-07 implementada (PR 8, integrada en la rama de la PR 7, no en `main`); CSAPP-08 implementada en una PR apilada contra la rama de la PR 7, sin fusionar; CSAPP-09 y CSAPP-10 no han empezado.
+Estado de las diez entregas: ver [estado](estado.md). CSAPP-01 a CSAPP-05 implementadas y fusionadas según Git (integración, no aceptación de Dennis); CSAPP-06 implementada en la PR 7 sin fusionar; CSAPP-07 implementada (PR 8, integrada en la rama de la PR 7, no en `main`); CSAPP-08 implementada en la PR 9, integrada en la rama de la PR 7 (cabeza `31009c9`, no `main`); CSAPP-09 implementada en una PR apilada contra esa rama, sin fusionar; CSAPP-10 no ha empezado.
 
 ## CSAPP-DOC-00 Arranque documental, fuera del roadmap
 

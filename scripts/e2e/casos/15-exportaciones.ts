@@ -120,6 +120,16 @@ export async function exportaciones(ctx: Ctx): Promise<void> {
   ctx.check("Conciliación: informe tabular y manifiesto descargables con la partición de horas conciliada", csv.startsWith("﻿") && /REC-N2-01;2;[^;]*;OK/.test(csv) && typeof man.sello_datos === "string" && man.resultados.length > 8);
   const rc = await rd.page.request.get(`${ctx.base}/api/administracion/conciliacion/${rid}/informe`);
   ctx.check("Conciliación: Consulta no puede descargar el informe", rc.status() >= 400);
+  // --- Accesibilidad básica del panel (1440 y 390 px, teclado, anuncio de estado): NO se declara lector de pantalla verificado
+  await page.goto(`${ctx.base}/calidad?fecha=2026-10-31&modo=FULL_MONTH`);
+  const a11y = await page.evaluate(() => ({ status: document.querySelectorAll("[role='status']").length, labelled: Array.from(document.querySelectorAll("#exp-title ~ form select, #exp-title ~ form input")).every((e) => (e as HTMLInputElement).labels?.length), overflow: document.documentElement.scrollWidth - window.innerWidth }));
+  await page.setViewportSize({ width: 390, height: 844 });
+  await page.reload();
+  const narrow = await page.evaluate(() => document.documentElement.scrollWidth - window.innerWidth);
+  await page.getByRole("button", { name: "Exportar detalle completo" }).focus();
+  const focused = await page.evaluate(() => document.activeElement?.textContent ?? "");
+  ctx.check("Accesibilidad del panel: campos con etiqueta, estado anunciado (role=status), sin desplazamiento horizontal a 1440 y 390 px y botón alcanzable por teclado", a11y.status > 0 && a11y.labelled && a11y.overflow <= 1 && narrow <= 1 && /Exportar detalle completo/.test(focused), JSON.stringify({ a11y, narrow, focused }));
+  await page.setViewportSize({ width: 1440, height: 900 });
   await anon.context.close();
   await rd.context.close();
   await adm.context.close();

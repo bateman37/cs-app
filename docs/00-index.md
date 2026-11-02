@@ -60,6 +60,10 @@ Estado de la regla: **Confirmado** = decidido por Dennis; **Propuesto** = parám
 | Guía PowerShell y recorrido de CSAPP-08 | [Guía PowerShell](plan/guia-powershell-csapp08.md) | — | Escrita, sin probar en Windows |
 | Guía breve de Calidad | [Guía de Calidad](plan/guia-calidad-csapp08.md) | — | Referencia |
 | Resultados de validación de CSAPP-08 | [Validación](validacion/csapp-08.md) | — | Registro |
+| Exportaciones completas en segundo plano, instantáneas, recuperación y límites (CSAPP-09) | [Exportaciones](arquitectura/exportaciones-csapp09.md) | — | Implementado; probado en Linux con datos sintéticos; sin aceptación |
+| Conciliación en tres niveles con IDs estables (CSAPP-09) | [Contrato de conciliación](validacion/conciliacion-contrato.md) | REC-N1…N3 | Implementado; la conciliación real la ejecuta Dennis |
+| Guía PowerShell y recorrido de CSAPP-09 | [Guía PowerShell](plan/guia-powershell-csapp09.md) | — | Escrita, sin probar en Windows |
+| Resultados de validación de CSAPP-09 | [Validación](validacion/csapp-09.md) | — | Registro |
 | DOC-00 y diez entregas | [Roadmap](plan/roadmap.md) | — | Confirmado |
 | Precarga futura y pruebas de Dennis | [Política](plan/precarga-y-pruebas.md) | — | Confirmado |
 | Progreso real | [Estado](plan/estado.md) | — | Registro vivo |

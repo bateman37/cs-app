@@ -11,7 +11,8 @@
 | [CSAPP-06-v1](CSAPP-06-v1.md) | Comparativa y Análisis Cliente sobre el motor económico corregido | Ejecutado; rama claude/new-session-omvsmd (reiniciada desde main f71b5b7, merge de la PR 6); [PR 7](https://github.com/bateman37/cs-app/pull/7) sin fusionar (ver [estado](../docs/plan/estado.md)) |
 | [CSAPP-07-v1](CSAPP-07-v1.md) | Pulse Rent y configuración de Administración (Pulse Rent, Calidad) y prevención de pruebas sobre la base equivocada | Ejecutado; rama feature/CSAPP-07-pulse-rent-configuracion, **apilada sobre la cabeza de la PR 7** (CSAPP-06, sin fusionar; la rama designada por la sesión estaba ocupada por la PR 7 y no se contaminó); PR apilada sin fusionar (ver [estado](../docs/plan/estado.md)) |
 | [CSAPP-08-v1](CSAPP-08-v1.md) | Calidad, Client Health, diagnóstico por origen y backlog observado | Ejecutado; rama feature/CSAPP-08-calidad-client-health, **apilada sobre la cabeza de la PR 7** (`e0f17e4`, que ya contiene 06 y 07 tras integrar la PR 8); [PR 9](https://github.com/bateman37/cs-app/pull/9) apilada sin fusionar (ver [estado](../docs/plan/estado.md)) |
-| CSAPP-09 y CSAPP-10 | Implementación según roadmap | Sin redactar ni ejecutar |
+| [CSAPP-09-v1](CSAPP-09-v1.md) | Conciliación, rendimiento, exportaciones completas y recuperación | Ejecutado; rama feature/CSAPP-09-conciliacion-exportaciones-rendimiento, **apilada sobre la cabeza de la PR 7** (`31009c9`, que contiene 06, 07 y 08); PR apilada sin fusionar (ver [estado](../docs/plan/estado.md)) |
+| CSAPP-10 | Implementación según roadmap | Sin redactar ni ejecutar |
 
 Guardar cada prompt íntegro antes de trabajar, sin sustituirlo por resumen. Revisiones crean v2, v3 y enlazan su origen; no sobrescribir una versión ejecutada. Tras ejecutar, registrar rama, commit y PR reales en estado, sin fusionar automáticamente.
 

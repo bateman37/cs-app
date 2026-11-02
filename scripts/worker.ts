@@ -3,6 +3,7 @@ import { getEnv } from "../src/lib/env";
 import { prisma } from "../src/lib/db";
 import { uploadConfig } from "../src/server/uploads/config";
 import { runWorkerLoop } from "../src/server/uploads/worker";
+import { runExportLoop } from "../src/server/exports/run";
 
 /**
  * Trabajador de cargas: proceso separado de la web que consume la cola de PostgreSQL.
@@ -21,7 +22,8 @@ async function main() {
   };
   process.on("SIGINT", stop);
   process.on("SIGTERM", stop);
-  await runWorkerLoop({ signal: controller.signal, log });
+  // Dos bucles independientes en el mismo proceso: una exportación grande no bloquea las cargas ni al revés.
+  await Promise.all([runWorkerLoop({ signal: controller.signal, log }), runExportLoop({ signal: controller.signal, log: (m) => log(`[exportaciones] ${m}`) })]);
   await prisma.$disconnect();
 }
 

@@ -11,7 +11,7 @@ import { loadavg } from "node:os";
  * CSAPP-10 (evolución), variables opcionales:
  *  - CSAPP_SKIP_SEED=1   no migra, vacía ni siembra: mide sobre la base ya sembrada con la misma fixture (medidas repetidas sobre los mismos datos).
  *  - CSAPP_REPS=n        repeticiones por operación (por defecto 3).
- *  - CSAPP_ONLY=evol     solo las evoluciones mensuales (cartera, ficha y detalles no se miden).
+ *  - CSAPP_ONLY=evol     solo las evoluciones mensuales (cartera, ficha y detalles no se miden); CSAPP_ONLY=core: todo lo de Calidad salvo conciliación, exportaciones y planes de 09.
  *  - CSAPP_EVOLUTION_REFERENCE=1  mide también la ruta de referencia de 09 (por mes con computeQuality), tal cual y con JIT desactivado.
  *  - CSAPP_PROFILE=1     duración y texto de las sentencias más costosas de cada evolución.
  *  - CSAPP_EVOLUTION_DUMP=ruta  escribe la salida íntegra de las evoluciones (config. activa; grupo y cliente) en un JSON, para compararlas entre versiones.
@@ -169,6 +169,7 @@ import { loadavg } from "node:os";
   const json = (r: unknown) => JSON.stringify(r, (_k, v) => (typeof v === "bigint" ? v.toString() : v)).length;
   const { defaultQualityConfig: defaultQualityConfigRun } = await import("../src/domain/quality-config");
   const only = process.env.CSAPP_ONLY === "evol";
+  const core = process.env.CSAPP_ONLY === "core"; // cartera, ficha y detalles de Calidad (sin conciliación, exportaciones ni planes de 09)
   if (!only) {
     await run("Cartera Grupo Cliente (1 página de 50, referencias por percentiles)", () => getQuality(admin.id, Q(), { now: NOW }), json);
     await run("Cartera Cliente (1500 clientes)", () => getQuality(admin.id, Q({ ambito: "client" }), { now: NOW }), json);
@@ -200,7 +201,7 @@ import { loadavg } from "node:os";
     await run("Matriz de Client Health (1.ª página)", () => getHealthMatrix(admin.id, { scope: "group", year: 2026, q: "", page: 1, pageSize: 50 }), json);
     await run("CSV completo de la cartera", () => qualityCsv(admin.id, Q(), "cartera", { now: NOW }), (r) => r.body.length);
   }
-  if (only) {
+  if (only || core) {
     console.log(`\n| Medida | s: mediana (rango; 1.ª fría) | sentencias | KB | RSS Δ / total / pico MB | carga 1 min |\n| --- | --- | --- | --- | --- | --- |\n${rows.join("\n")}`);
     await prisma.$disconnect();
     return;

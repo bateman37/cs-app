@@ -61,9 +61,16 @@ Estado de la regla: **Confirmado** = decidido por Dennis; **Propuesto** = parám
 | Guía breve de Calidad | [Guía de Calidad](plan/guia-calidad-csapp08.md) | — | Referencia |
 | Resultados de validación de CSAPP-08 | [Validación](validacion/csapp-08.md) | — | Registro |
 | Exportaciones completas en segundo plano, instantáneas, recuperación y límites (CSAPP-09) | [Exportaciones](arquitectura/exportaciones-csapp09.md) | — | Implementado; probado en Linux con datos sintéticos; sin aceptación |
-| Conciliación en tres niveles con IDs estables (CSAPP-09) | [Contrato de conciliación](validacion/conciliacion-contrato.md) | REC-N1…N3 | Implementado; la conciliación real la ejecuta Dennis |
+| Conciliación en cuatro niveles con IDs estables (tres de CSAPP-09 y el puente de CSAPP-10) | [Contrato de conciliación](validacion/conciliacion-contrato.md) | REC-N1…N4 | Implementado; la conciliación real la ejecuta Dennis |
 | Guía PowerShell y recorrido de CSAPP-09 | [Guía PowerShell](plan/guia-powershell-csapp09.md) | — | Escrita, sin probar en Windows |
 | Resultados de validación de CSAPP-09 | [Validación](validacion/csapp-09.md) | — | Registro |
+| Operación, salud, instalación y supervisor (CSAPP-10) | [Operación CSAPP-10](arquitectura/operacion-csapp10.md) | — | Implementado; probado en Linux; Windows sin probar |
+| Instalación y operación vigentes | [Instalación y operación](operacion/instalacion-operacion.md) · [Variables](operacion/variables-entorno.md) | — | Vigente; ensayada en Linux |
+| Copia y restauración | [Copia y restauración](operacion/copia-restauracion.md) | — | Ensayada en Linux |
+| Actualización, vuelta atrás y requisitos para IT | [Actualización y despliegue](operacion/actualizacion-despliegue-it.md) | — | Ensayada en Linux; despliegue pendiente |
+| Puesta en marcha de datos para Dennis | [Guía de Dennis](plan/guia-dennis.md) | — | Vigente |
+| Registro de aceptación (Dennis/IT), separado de las pruebas sintéticas | [Registro](validacion/registro-aceptacion.md) | — | Todo pendiente |
+| Resultados de validación de CSAPP-10 | [Validación](validacion/csapp-10.md) | — | Registro |
 | DOC-00 y diez entregas | [Roadmap](plan/roadmap.md) | — | Confirmado |
 | Precarga futura y pruebas de Dennis | [Política](plan/precarga-y-pruebas.md) | — | Confirmado |
 | Progreso real | [Estado](plan/estado.md) | — | Registro vivo |

@@ -28,12 +28,18 @@ Comprobación de conciliación de **Administración › Conciliación** ([`src/s
 | `REC-N3-06` | 3 | Unión del conjunto `tickets` (`afectacion_union`) = unión del servicio | Sí | 0 |
 | `REC-N3-07` | 3 | PAP correctivos únicos lista+ID (cualquier causa correctiva; sin filtro silencioso `Resultado=OK`) | Sí (el desglose por causa no) | 0 |
 | `REC-N3-08` | 3 | Ingreso de las líneas activas: conjunto `finanzas_lineas` = suma directa (sin entidad seleccionada) | Sí | 0 |
+| `REC-N4-01` | 4 Puente | Minutos elegibles del servicio: Comparativa/Análisis Cliente (`perimeterMinutes`) = Calidad (`hourFacts` elegibles, mismo servicio); muestra pendientes, excluidas y horas sin Grupo del CUM | Sí | 0 |
+| `REC-N4-02` | 4 | Horas totales (M16): Pulse Rent = Σ minutos/60 de Comparativa (un redondeo por entidad) | Sí | 0 |
+| `REC-N4-03` | 4 | Usuarios al corte (M17): Pulse Rent = Comparativa/Análisis Cliente (stock, nulos excluidos de ambos lados con su recuento) | Sí | 0 |
+| `REC-N4-04` | 4 | Horas por usuario mes (M22): numerador (horas) y denominador (UM) de Pulse = horas y usuarios mes de Comparativa; la razón por entidad no se suma | **No** | 0 |
+| `REC-N4-05` | 4 | Tickets escalados a N3 (M30): Pulse = Calidad (`ticketFacts`, creación; unión PMO ∪ IT, un ticket una vez) | Sí | 0 |
+| `REC-N4-06` | 4 | PAP correctivos únicos (M38): Pulse = Calidad (`papFacts`) | Sí | 0 |
 
 Estados: `OK` (coincide dentro de su tolerancia), `DIFERENCIA`, `INFORMATIVO` (no se fuerza coincidencia: perímetros distintos con explicación) y `NO_DISPONIBLE` (falta una fuente: nunca se inventa un resultado). **La tolerancia monetaria no tapa diferencias de horas ni de conteos** (probado).
 
 ## Límites declarados
 
-- El nivel 3 concilia el **servicio de Calidad ↔ conjuntos de exportación (detalle/CSV)**. La paridad con la cartera de Comparativa y con Pulse Rent usa los mismos motores (`runEconomics`, `computePulse`) y sus propias pruebas de 06/07; no se ha añadido en 09 un puente automático de Comparativa/Pulse dentro de esta pantalla (**pendiente, propuesto**).
+- El nivel 3 concilia el **servicio de Calidad ↔ conjuntos de exportación (detalle/CSV)**. **CSAPP-10 completa el puente** (nivel 4, `REC-N4-01…06`, [`src/server/reconciliation/bridge.ts`](../../src/server/reconciliation/bridge.ts)): en la misma lectura y con el mismo periodo, servicio y ámbito, compara las magnitudes de perímetro común de Comparativa, Análisis Cliente, Pulse Rent y Calidad, mostrando numeradores, denominadores, unidad y exclusiones. Condiciones: el periodo del informe debe ser uno de los cinco periodos de las pantallas (si no, `NO_DISPONIBLE` con la explicación); Calidad se contrasta con sus indicadores, **nunca con horas de otro perfil o filtro financiero**; no se comparan magnitudes por llevar el mismo nombre. Pruebas: [`tests/csapp10-puente.test.ts`](../../tests/csapp10-puente.test.ts).
 - Las comprobaciones de Usuarios (valores propios de Grupo y Cliente, no suma de hijos) y de rentabilidad ponderada se cubren con las pruebas de 05/06 y los casos de aceptación de [`tests/csapp09-aceptacion.test.ts`](../../tests/csapp09-aceptacion.test.ts); no son un ID `REC-*`.
 
 ## Resultado conocido pequeño y reproducible

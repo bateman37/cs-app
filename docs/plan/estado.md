@@ -1,6 +1,6 @@
 # Estado de CS App
 
-Actualizado el 2 de noviembre de 2026 tras ejecutar [CSAPP-DOC-00-v1](../../prompts/CSAPP-DOC-00-v1.md), [CSAPP-01-v1](../../prompts/CSAPP-01-v1.md), [CSAPP-02-v1](../../prompts/CSAPP-02-v1.md), [CSAPP-03-v1](../../prompts/CSAPP-03-v1.md) [CSAPP-04-v1](../../prompts/CSAPP-04-v1.md) [CSAPP-05-v1](../../prompts/CSAPP-05-v1.md) [CSAPP-06-v1](../../prompts/CSAPP-06-v1.md) y [CSAPP-07-v1](../../prompts/CSAPP-07-v1.md) y [CSAPP-08-v1](../../prompts/CSAPP-08-v1.md).
+Actualizado el 2 de noviembre de 2026 tras ejecutar [CSAPP-DOC-00-v1](../../prompts/CSAPP-DOC-00-v1.md), [CSAPP-01-v1](../../prompts/CSAPP-01-v1.md), [CSAPP-02-v1](../../prompts/CSAPP-02-v1.md), [CSAPP-03-v1](../../prompts/CSAPP-03-v1.md) [CSAPP-04-v1](../../prompts/CSAPP-04-v1.md) [CSAPP-05-v1](../../prompts/CSAPP-05-v1.md) [CSAPP-06-v1](../../prompts/CSAPP-06-v1.md) y [CSAPP-07-v1](../../prompts/CSAPP-07-v1.md) [CSAPP-08-v1](../../prompts/CSAPP-08-v1.md) y [CSAPP-09-v1](../../prompts/CSAPP-09-v1.md).
 
 ## Resultado de CSAPP-DOC-00
 
@@ -132,6 +132,21 @@ Documentación: [arquitectura](../arquitectura/pulse-configuracion-csapp07.md), 
 
 Documentación: [arquitectura](../arquitectura/calidad-csapp08.md), [Calidad](../producto/calidad.md), [backlog](../producto/backlog-antiguedad.md), [diagnóstico](../producto/diagnostico-origen.md), [catálogo CAL 45–52](../calculos/catalogo.md), [guía breve](guia-calidad-csapp08.md).
 
+## Resultado de CSAPP-09 (conciliación, rendimiento, exportaciones y recuperación)
+
+| Dato | Valor |
+| --- | --- |
+| Rama / base | `feature/CSAPP-09-conciliacion-exportaciones-rendimiento`, creada desde la cabeza de la PR 7 (`claude/new-session-omvsmd` = `31009c99398af314a87fe3eedef5b457ede31559`, que contiene 06, 07 y 08 con el mismo contenido que la cabeza de la PR 9 `d7bc52b`). `main` (`f71b5b7283ab1081802cc6256899a02f70460a74`) **no** contiene 06–08. PR apilada **contra la rama de la PR 7**, con un diff exclusivo de 09; push normal, sin force, sin tocar la historia publicada |
+| PR | Ver el prompt registrado en [prompts/README.md](../../prompts/README.md) y la validación; sin fusionar ni desplegar |
+| Migración | `20261104090000_exportaciones_conciliacion` (`ExportJob`, `ExportFile`, `ExportRow`, `ReconRun`); incremental, sin reset; las siete anteriores y las `ConfigRevision` intactas |
+| Implementado | **Evolución de Calidad recalculada por mes** con cohorte, usuarios, cobertura, reglas y percentiles de cada mes (seis indicadores, serie identificada por revisión y referencia); **conciliación** en Administración (tres niveles, IDs `REC-*`, ejecución registrada con manifiesto, informe CSV y JSON); **exportaciones completas en segundo plano** (materialización coherente, bloques con contrapresión, lease/fencing, cancelar, reintentar, caducar, partición determinista, manifiesto) integradas en las cuatro vistas y supervisadas en Administración; **sello de datos** con las omisiones demostradas corregidas; CSV de Health desde una lectura coherente; documentación de Pulse/cobertura corregida; fallo de paginación de la exportación hallado y corregido por la prueba de volumen |
+| Probado | Linux con datos sintéticos: ver [validación de CSAPP-09](../validacion/csapp-09.md) (suite rápida, trabajador real con SIGKILL, volúmenes, recorrido de navegador, benchmark comparado con 08). Windows y lector de pantalla **sin probar** |
+| Confirmado / propuesto / activado | **Confirmados** (sin cambio): pesos iguales 1/6 y redistribución solo sin Health. **Propuestas desactivadas y sin aceptar**: mapeo de Health, perfiles de Dedicación, umbrales/referencias/mínimos, «peor señal», plantilla del global, política de fotografía, límites iniciales de exportación. **Activado**: nada en la base de trabajo |
+| Conciliación real | **Pendiente de ejecución por Dennis** (finanzas 2025 y 2026 completas, bugs VFS/VSW separados): no se cargó ningún archivo real y no hay resultados de ese tipo |
+| Pendiente de Dennis | Revisar la PR; ejecutar la [guía](guia-powershell-csapp09.md) (Windows sin probar); cargar sus fuentes y recorrer el [recorrido breve](guia-powershell-csapp09.md#recorrido-breve-para-dennis-con-tus-archivos-reales-por-tu-cuenta); decidir sobre las dos cuentas sintéticas de `cs_app` (no se tocaron); aceptar o ajustar ECO 08, ZDT 11–13, ZTM 06–08, lista PAP, estados de bugs y signo de «Diferencia» (siguen pendientes) |
+
+Documentación: [exportaciones](../arquitectura/exportaciones-csapp09.md), [conciliación](../validacion/conciliacion-contrato.md), [validación](../validacion/csapp-09.md), [guía PowerShell](guia-powershell-csapp09.md).
+
 ## Estado por trabajo
 
 Niveles: diseñado, documentado, implementado, probado, aceptado. Un criterio de aceptación escrito no es una prueba ejecutada.
@@ -147,10 +162,11 @@ Niveles: diseñado, documentado, implementado, probado, aceptado. Un criterio de
 | CSAPP-06 | Sí | Sí | Sí (PR sin fusionar) | Sí en Linux con datos sintéticos; Windows sin probar | No |
 | CSAPP-07 | Sí | Sí | Sí (PR 8, integrada en la rama de la PR 7, no en `main`) | Sí en Linux con datos sintéticos; Windows sin probar | No |
 | CSAPP-08 | Sí | Sí | Sí (PR apilada sin fusionar) | Sí en Linux con datos sintéticos; Windows sin probar | No |
-| CSAPP-09 y CSAPP-10 | Sí, en [roadmap](roadmap.md) y contratos | Sí | No | No | No |
+| CSAPP-09 | Sí | Sí | Sí (PR apilada sin fusionar) | Sí en Linux con datos sintéticos; Windows y conciliación real sin ejecutar | No |
+| CSAPP-10 | Sí, en [roadmap](roadmap.md) y contratos | Sí | No | No | No |
 | Cargas reales | — | Política en [precarga y pruebas](precarga-y-pruebas.md) | No | No | No; las probará Dennis |
 
-CSAPP-09 y CSAPP-10 siguen sin iniciar y sin prompt redactado. La próxima acción es revisar la PR 7 (CSAPP-06, con 07 integrada), la apilada de CSAPP-08, que Dennis cargue sus fuentes, declare su cobertura, decida sobre las dos cuentas sintéticas de `cs_app` y envíe el prompt de CSAPP-09.
+CSAPP-10 sigue sin iniciar y sin prompt redactado. La próxima acción es revisar la PR 7 (CSAPP-06, con 07 y 08 integradas en su rama) y la PR apilada de CSAPP-09, que Dennis cargue sus fuentes reales, declare su cobertura, ejecute la conciliación, decida sobre las dos cuentas sintéticas de `cs_app` y envíe el prompt de CSAPP-10.
 
 ## Vigente
 

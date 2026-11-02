@@ -171,10 +171,10 @@ async function grandes(ctx: Ctx): Promise<void> {
     const bigPage = page;
     await bigPage.goto(`${ctx.base}/calidad?fecha=2026-10-31&modo=FULL_MONTH&servicio=TOTAL`);
     await bigPage.getByLabel("Conjunto").selectOption("horas");
-    await bigPage.getByLabel("Desde").fill("2020-01-01");
-    await bigPage.getByLabel("Hasta").fill("2030-12-31");
+    await bigPage.getByLabel("Desde").fill("2022-01-01");
+    await bigPage.getByLabel("Hasta").fill("2026-12-31");
     await bigPage.getByRole("button", { name: "Exportar detalle completo" }).click();
-    await bigPage.getByText(/Exportación solicitada/).first().waitFor({ timeout: 30_000 });
+    await bigPage.getByText(/Exportación solicitada/).first().waitFor({ timeout: 30_000 }).catch(async () => { throw new Error(`La exportación no se solicitó: ${(await bigPage.locator("section[aria-labelledby='exp-title']").innerText()).replace(/\s+/g, " ").slice(0, 600)}`); });
     const memExport = sampler();
     const tExp = Date.now();
     let job;

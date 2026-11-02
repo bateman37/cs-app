@@ -107,7 +107,7 @@ describe("backlog con filas y evolución", () => {
     expect(b.stats?.incident.per100).toBe("5"); // 5 tickets × 100 / 100 usuarios
     expect(b.stats?.incident.agedPer100).toBe("2");
     expect(b.stats?.problem).toMatchObject({ count: 0, median: null, max: null }); // stock vacío confirmado: conteo cero, edades no aplicables
-    expect(b.rows.map((r) => [r.age, r.aged]).sort((a, c) => a[0] - c[0])).toEqual([[0, false], [10, false], [30, false], [31, true], [365, true]]);
+    expect([...b.rows].sort((a, c) => a.age - c.age).map((r) => [r.age, r.aged])).toEqual([[0, false], [10, false], [30, false], [31, true], [365, true]]);
     expect(b.rows.find((r) => r.age === 31)?.reason).toMatch(/Edad 31 > umbral 30/);
   });
   it("evolución: cada mes con sus datos y hueco cuando no hay fotografía compatible; CUM técnico separado", async () => {

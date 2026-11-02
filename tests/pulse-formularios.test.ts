@@ -7,15 +7,16 @@ import { DomainError } from "@/server/errors";
 describe("construcción de borradores desde los formularios", () => {
   it("Calidad: pesos personalizados y reglas se aplican sobre la base; lo no enviado se conserva", () => {
     const base = defaultQualityConfig();
-    const cfg = buildQualityDraft({ w_mode: "CUSTOM", w_HEALTH: "20", w_DEDICATION: "20", w_PAP_CORRECTIVE: "15", w_N3_ESCALATIONS: "15", w_INCIDENTS_PROBLEMS: "15", w_BUGS_STANDARD: "15", r_DEDICATION_method: "ABSOLUTE", r_DEDICATION_dir: "LOWER_BETTER", r_DEDICATION_a: "2", r_DEDICATION_b: "4", r_DEDICATION_cal: "CALIBRADO" }, base);
+    const cfg = buildQualityDraft({ w_mode: "CUSTOM", w_HEALTH: "20", w_DEDICATION: "20", w_PAP_CORRECTIVE: "15", w_N3_ESCALATIONS: "15", w_INCIDENTS_PROBLEMS: "15", w_BUGS_STANDARD: "15", r_DEDICATION_GRUPO_method: "ABSOLUTE", r_DEDICATION_GRUPO_dir: "LOWER_BETTER", r_DEDICATION_GRUPO_a: "2", r_DEDICATION_GRUPO_b: "4", r_DEDICATION_GRUPO_cal: "CALIBRADO" }, base);
     expect(cfg.weights.mode).toBe("CUSTOM");
-    expect(cfg.indicators.DEDICATION.rule).toMatchObject({ method: "ABSOLUTE", a: "2", b: "4", calibration: "CALIBRADO" });
-    expect(cfg.indicators.PAP_CORRECTIVE.rule.calibration).toBe("SIN_CALIBRAR"); // intacto
+    expect(cfg.indicators.DEDICATION.rules.GRUPO).toMatchObject({ method: "ABSOLUTE", a: "2", b: "4", calibration: "CALIBRADO", unit: "HOURS_PER_USER_MONTH" });
+    expect(cfg.indicators.DEDICATION.rules.CLIENTE.calibration).toBe("SIN_CALIBRAR"); // el otro ámbito no se completa solo
+    expect(cfg.indicators.PAP_CORRECTIVE.rules.GRUPO.calibration).toBe("SIN_CALIBRAR"); // intacto
     expect(validateQualityConfig(cfg)).toEqual([]);
     expect(base.weights.mode).toBe("EQUAL"); // la base no se muta
   });
   it("Calidad: una regla calibrada con a ≥ b o un total distinto de 100 produce problemas de validación (no se guarda)", () => {
-    const bad = buildQualityDraft({ w_mode: "CUSTOM", w_HEALTH: "20", w_DEDICATION: "20", w_PAP_CORRECTIVE: "15", w_N3_ESCALATIONS: "15", w_INCIDENTS_PROBLEMS: "15", w_BUGS_STANDARD: "14", r_DEDICATION_method: "ABSOLUTE", r_DEDICATION_a: "5", r_DEDICATION_b: "5", r_DEDICATION_cal: "CALIBRADO" }, defaultQualityConfig());
+    const bad = buildQualityDraft({ w_mode: "CUSTOM", w_HEALTH: "20", w_DEDICATION: "20", w_PAP_CORRECTIVE: "15", w_N3_ESCALATIONS: "15", w_INCIDENTS_PROBLEMS: "15", w_BUGS_STANDARD: "14", r_DEDICATION_GRUPO_method: "ABSOLUTE", r_DEDICATION_GRUPO_a: "5", r_DEDICATION_GRUPO_b: "5", r_DEDICATION_GRUPO_cal: "CALIBRADO" }, defaultQualityConfig());
     const msgs = validateQualityConfig(bad).map((i) => i.message).join(" | ");
     expect(msgs).toMatch(/exactamente 100/);
     expect(msgs).toMatch(/a < b/);
@@ -24,7 +25,7 @@ describe("construcción de borradores desde los formularios", () => {
     expect(parseAgeBands("0-7, 8-30, 31-")).toEqual([{ from: 0, to: 7 }, { from: 8, to: 30 }, { from: 31, to: null }]);
     expect(formatAgeBands(parseAgeBands("0-7, 8-30, 31-"))).toBe("0-7, 8-30, 31-");
     expect(() => parseAgeBands("0-7, abc")).toThrow(DomainError);
-    const cfg = buildQualityDraft({ i_bands: "0-7, 9-30", i_conc_incident: "30", i_conc_problem: "", i_worst: "on", r_BACKLOG_method: "ABSOLUTE" }, defaultQualityConfig());
+    const cfg = buildQualityDraft({ i_bands: "0-7, 9-30", i_conc_incident: "30", i_conc_problem: "", i_worst: "on", r_BACKLOG_INCIDENT_GRUPO_method: "ABSOLUTE" }, defaultQualityConfig());
     const msgs = validateQualityConfig(cfg).map((i) => i.message).join(" | ");
     expect(msgs).toMatch(/hueco/);
     expect(msgs).toMatch(/umbral preocupante/); // la composición propuesta exige sus componentes antes de activarse

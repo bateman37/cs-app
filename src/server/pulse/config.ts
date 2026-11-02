@@ -1,7 +1,7 @@
 import { Prisma } from "@/generated/prisma/client";
 import { prisma } from "@/lib/db";
 import { defaultPulseConfig, pulseConfigSchema, validatePulseConfig, type PulseConfig } from "@/domain/pulse-catalog";
-import { defaultQualityConfig, qualityConfigSchema, validateQualityConfig, type QualityConfig } from "@/domain/quality-config";
+import { defaultQualityConfig, readQualityPayload, validateQualityConfig, type QualityConfig } from "@/domain/quality-config";
 import { recordAudit } from "@/server/audit";
 import { authorize } from "@/server/authorize";
 import { DomainError, StaleVersionError } from "@/server/errors";
@@ -36,12 +36,16 @@ export const defaultPayload = <F extends ConfigFamily>(family: F): PayloadOf[F] 
 
 /** Valida estructura (zod) y semántica. Devuelve la carga normalizada o los problemas; nunca acepta JSON arbitrario. */
 export function parsePayload<F extends ConfigFamily>(family: F, raw: unknown): { ok: true; payload: PayloadOf[F]; issues: { path: string; message: string }[] } | { ok: false; issues: { path: string; message: string }[] } {
-  const schema = family === "PULSE" ? pulseConfigSchema : qualityConfigSchema;
-  const r = schema.safeParse(raw);
+  if (family === "QUALITY") {
+    // v2 directamente o v1 mediante el adaptador documentado (el JSON almacenado no se modifica).
+    const q = readQualityPayload(raw);
+    if (!q.ok) return { ok: false, issues: q.issues };
+    return { ok: true, payload: q.payload as PayloadOf[F], issues: validateQualityConfig(q.payload) };
+  }
+  const r = pulseConfigSchema.safeParse(raw);
   if (!r.success) return { ok: false, issues: r.error.issues.slice(0, 10).map((i) => ({ path: i.path.join("."), message: `Estructura no válida en «${i.path.join(".") || "raíz"}»: ${i.message}` })) };
   const payload = r.data as PayloadOf[F];
-  const issues = family === "PULSE" ? validatePulseConfig(payload as PulseConfig) : validateQualityConfig(payload as QualityConfig);
-  return { ok: true, payload, issues };
+  return { ok: true, payload, issues: validatePulseConfig(payload as PulseConfig) };
 }
 
 type Row = { revisionNo: number; payload: Prisma.JsonValue; reason: string | null; kind: string; restoredFromRevisionNo: number | null; activatedAt: Date; activatedBy: { email: string } | null };
@@ -99,7 +103,10 @@ function mustBeValid<F extends ConfigFamily>(family: F, raw: unknown): PayloadOf
   const p = parsePayload(family, raw);
   if (!p.ok) throw new DomainError("La configuración no es válida.", { payload: p.issues[0].message });
   if (p.issues.length > 0) throw new DomainError(p.issues[0].message, Object.fromEntries(p.issues.slice(0, 8).map((i) => [i.path, i.message])));
-  return p.payload;
+  const out = p.payload as PayloadOf[F];
+  // Las notas del adaptador son solo de lectura: una revisión nueva se guarda como v2 limpia.
+  if (family === "QUALITY") delete (out as QualityConfig).adapter;
+  return out;
 }
 
 /** Guarda el borrador (solo ADMIN). No cambia lo activo. `expectedVersion` null = no hay borrador previo. */

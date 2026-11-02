@@ -1,4 +1,4 @@
-import { INDICATOR_KEYS, defaultQualityConfig, type AgeBand, type IndicatorKey, type QualityConfig, type ThresholdRule } from "@/domain/quality-config";
+import { BACKLOG_UNIT, INDICATOR_KEYS, METRIC_UNIT, QUALITY_SCOPES, defaultQualityConfig, DIAGNOSIS_FAMILIES, type AgeBand, type DiagnosisFamily, type IndicatorKey, type MetricUnit, type QScope, type QualityConfig, type ThresholdRule } from "@/domain/quality-config";
 import { PROFILE_KEYS, PULSE_METRICS, REFERENCE_PLANS, type ProfileKey, type ProfileSelector, type PulseConfig, type PulseReference } from "@/domain/pulse-catalog";
 import { DomainError } from "@/server/errors";
 
@@ -29,7 +29,7 @@ export function parseAgeBands(text: string): AgeBand[] {
 }
 export const formatAgeBands = (b: readonly AgeBand[]): string => b.map((x) => `${x.from}-${x.to ?? ""}`).join(", ");
 
-function ruleFrom(raw: Raw, p: string, base: ThresholdRule): ThresholdRule {
+function ruleFrom(raw: Raw, p: string, base: ThresholdRule, unit: MetricUnit = base.unit): ThresholdRule {
   if (raw[`${p}_method`] === undefined) return base;
   const method = raw[`${p}_method`] as ThresholdRule["method"];
   if (!["ABSOLUTE", "PERCENTILE", "CATEGORICAL"].includes(method)) throw new DomainError("Método de umbral no válido.");
@@ -42,6 +42,7 @@ function ruleFrom(raw: Raw, p: string, base: ThresholdRule): ThresholdRule {
     referenceId: nz(raw[`${p}_ref`]),
     minSample: minSample === 0 ? null : minSample,
     calibration: raw[`${p}_cal`] === "CALIBRADO" ? "CALIBRADO" : "SIN_CALIBRAR",
+    unit,
   };
 }
 
@@ -51,8 +52,24 @@ export function buildQualityDraft(raw: Raw, base: QualityConfig): QualityConfig 
     cfg.weights.mode = raw.w_mode === "CUSTOM" ? "CUSTOM" : "EQUAL";
     for (const k of INDICATOR_KEYS) cfg.weights.custom[k] = (raw[`w_${k}`] ?? cfg.weights.custom[k] ?? "").trim();
   }
-  for (const k of INDICATOR_KEYS) if (k !== "HEALTH") cfg.indicators[k].rule = ruleFrom(raw, `r_${k}`, cfg.indicators[k].rule);
-  cfg.incidents.backlogRule = ruleFrom(raw, "r_BACKLOG", cfg.incidents.backlogRule);
+  // Reglas por ámbito (Grupo / Cliente): campos r_<indicador>_<ámbito>_*; la unidad la fija el catálogo, no el formulario.
+  for (const sc of QUALITY_SCOPES as readonly QScope[]) {
+    for (const k of INDICATOR_KEYS) if (k !== "HEALTH") cfg.indicators[k].rules[sc] = ruleFrom(raw, `r_${k}_${sc}`, cfg.indicators[k].rules[sc], METRIC_UNIT[k]);
+    for (const t of ["INCIDENT", "PROBLEM"] as const) cfg.incidents.backlog[t][sc] = ruleFrom(raw, `r_BACKLOG_${t}_${sc}`, cfg.incidents.backlog[t][sc], BACKLOG_UNIT);
+  }
+  if (raw.sp_mode !== undefined) {
+    const mode = raw.sp_mode === "LATEST_BEFORE" ? "LATEST_BEFORE" : "EXACT";
+    cfg.snapshotPolicy = { mode, maxDays: mode === "LATEST_BEFORE" ? intOrNull(raw.sp_days, "sp_days") : null };
+  }
+  if (raw.dg_present !== undefined) {
+    const mappings: { cause: string; family: DiagnosisFamily }[] = [];
+    for (const line of (raw.dg_text ?? "").split(/\n+/).map((l) => l.trim()).filter(Boolean)) {
+      const m = /^(.+?)\s*=>\s*([A-Z_]+)$/.exec(line);
+      if (!m || !(DIAGNOSIS_FAMILIES as readonly string[]).includes(m[2])) throw new DomainError("Revise los campos marcados.", { dg_text: `Línea «${line}» no válida: use «causa => FAMILIA» con una familia del catálogo.` });
+      mappings.push({ cause: m[1].trim(), family: m[2] as DiagnosisFamily });
+    }
+    cfg.diagnosis = { mappings };
+  }
   if (raw.h_positive !== undefined) {
     const c = (v: string): "green" | "yellow" | "red" => (v === "green" || v === "yellow" || v === "red" ? v : "yellow");
     cfg.health.mapping = { positive: c(raw.h_positive), mixed: c(raw.h_mixed), negative: c(raw.h_negative) };

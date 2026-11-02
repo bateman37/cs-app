@@ -289,7 +289,7 @@ export async function evolutionIn(tx: Tx, q: QualityQuery, id: string, cfg: Qual
     const date = m === lastM ? q.base.date : `${year}-${String(m).padStart(2, "0")}-01`;
     const mode = m === lastM ? q.base.mode : "FULL_MONTH";
     const qm: QualityQuery = { ...q, base: { ...q.base, date, mode, q: "", page: 1, pageSize: 1, status: "todos" }, sel: id, color: "", sim: "" };
-    const v = await computeQuality(tx, qm, { now, configOverride: cfg, skipActiveCompare: true, skipStamp: true });
+    const v = await computeQuality(tx, qm, { now, configOverride: cfg, skipActiveCompare: true, skipStamp: true, focusIds: [id] });
     meta ??= { qualityRevision: v.config.revisionNo, qualityPersisted: v.config.persisted, pulseRevision: v.pulseRevision, simulated: q.sim === "borrador" };
     const r = v.rows.find((x) => x.id === id);
     if (!r) continue;

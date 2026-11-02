@@ -154,7 +154,9 @@ async function materialize(job: ClaimedExport, req: ExportRequest, ds: DatasetDe
       };
       await tx.exportJob.update({
         where: { id: job.id },
-        data: { materializedAt: readAt, materialStamp: stamp, materialContext: materialContext as unknown as Prisma.InputJsonValue, rowCount: BigInt(total), laterThanScreen: requested.requestedStamp !== stamp, status: "GENERATING", phase: "generando", progressDone: 0, progressTotal: BigInt(total) },
+        // La fila del trabajo está bloqueada (FOR UPDATE) durante la preparación: los latidos esperan a este commit, así que el lease se renueva aquí mismo
+        // para que una preparación larga no deje el lease vencido justo al confirmarse.
+        data: { leaseExpiresAt: new Date(Date.now() + uploadConfig().leaseMs), heartbeatAt: new Date(), materializedAt: readAt, materialStamp: stamp, materialContext: materialContext as unknown as Prisma.InputJsonValue, rowCount: BigInt(total), laterThanScreen: requested.requestedStamp !== stamp, status: "GENERATING", phase: "generando", progressDone: 0, progressTotal: BigInt(total) },
       });
     },
     { isolationLevel: "RepeatableRead", maxWait: 10_000, timeout: cfg.materializeTimeoutMs },

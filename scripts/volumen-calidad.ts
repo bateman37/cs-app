@@ -114,13 +114,22 @@ import { performance } from "node:perf_hooks";
   const g = globalThis as unknown as { csappQueryCount?: number };
   const Q = (p: Record<string, string> = {}) => parseQualityQuery({ fecha: "2026-10-31", modo: "FULL_MONTH", ...p }, NOW).query;
   const rows: string[] = [];
-  const run = async <T>(name: string, fn: () => Promise<T>, size?: (r: T) => number) => {
-    g.csappQueryCount = 0;
+  // Tres medidas por operación (la primera es «fría»: caché de PostgreSQL y de módulos por calentar); se informa mediana y rango. `reps = 1` en operaciones con efectos.
+  const run = async <T>(name: string, fn: () => Promise<T>, size?: (r: T) => number, reps = 3) => {
+    const times: number[] = [];
+    let r!: T;
+    let queries = 0;
     const m0 = process.memoryUsage().rss;
-    const s = performance.now();
-    const r = await fn();
-    const ms = performance.now() - s;
-    const line = `| ${name} | ${(ms / 1000).toFixed(2)} | ${g.csappQueryCount} | ${size ? (size(r) / 1024).toFixed(0) : "—"} | ${((process.memoryUsage().rss - m0) / 1048576).toFixed(0)} / ${(process.memoryUsage().rss / 1048576).toFixed(0)} |`;
+    for (let i = 0; i < reps; i++) {
+      g.csappQueryCount = 0;
+      const s = performance.now();
+      r = await fn();
+      times.push((performance.now() - s) / 1000);
+      queries = g.csappQueryCount ?? 0;
+    }
+    const sorted = [...times].sort((a, b) => a - b);
+    const med = sorted[Math.floor(sorted.length / 2)];
+    const line = `| ${name} | ${med.toFixed(2)} (${sorted[0].toFixed(2)}–${sorted[sorted.length - 1].toFixed(2)}; 1.ª ${times[0].toFixed(2)}) | ${queries} | ${size ? (size(r) / 1024).toFixed(0) : "—"} | ${((process.memoryUsage().rss - m0) / 1048576).toFixed(0)} / ${(process.memoryUsage().rss / 1048576).toFixed(0)} |`;
     rows.push(line);
     console.log(line);
     return r;
@@ -146,15 +155,15 @@ import { performance } from "node:perf_hooks";
     const { tmpdir } = await import("node:os");
     const nodePath = await import("node:path");
     process.env.CSAPP_EXPORT_DIR = mkdtempSync(nodePath.join(tmpdir(), "vol-exp-"));
-    await run("Conciliación (tres niveles, todo el ámbito, 2026 hasta 31/10)", () => runReconciliation(admin.id, { scope: "group", sel: "", desde: "2026-01-01", hasta: "2026-10-31", servicio: "TOTAL" }), json);
+    await run("Conciliación (tres niveles, todo el ámbito, 2026 hasta 31/10)", () => runReconciliation(admin.id, { scope: "group", sel: "", desde: "2026-01-01", hasta: "2026-10-31", servicio: "TOTAL" }), json, 1);
     for (const ds of ["tickets", "horas", "pap", "bugs"]) {
-      await run(`Exportación completa «${ds}»: solicitud (totales + sello)`, () => createExport(admin.id, { dataset: ds, scope: "group", sel: "", desde: "2026-01-01", hasta: "2026-10-31", servicio: "TOTAL" }), json);
-      await run(`Exportación completa «${ds}»: preparación + generación en el trabajador`, () => runExportOnce("volumen"), () => 0);
+      await run(`Exportación completa «${ds}»: solicitud (totales + sello)`, () => createExport(admin.id, { dataset: ds, scope: "group", sel: "", desde: "2026-01-01", hasta: "2026-10-31", servicio: "TOTAL" }), json, 1);
+      await run(`Exportación completa «${ds}»: preparación + generación en el trabajador`, () => runExportOnce("volumen"), () => 0, 1);
     }
   } catch (e) {
     if (!(e instanceof Error) || !/Cannot find module|Failed to load url/i.test(e.message)) throw e;
     console.log("(conciliación/exportación no existen en esta versión)");
   }
-  console.log(`\n| Medida | s | sentencias | KB | RSS Δ / total MB |\n| --- | --- | --- | --- | --- |\n${rows.join("\n")}`);
+  console.log(`\n| Medida | s: mediana (rango; 1.ª fría) | sentencias | KB | RSS Δ / total MB |\n| --- | --- | --- | --- | --- |\n${rows.join("\n")}`);
   await prisma.$disconnect();
 })();

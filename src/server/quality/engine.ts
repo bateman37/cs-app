@@ -107,7 +107,9 @@ const emptyStock = (): StockType => ({ count: 0, ages: [], aged: 0, bands: [], i
 
 // ---------------------------------------------------------------- Cálculo
 
-export type QualityOptions = { now?: Date; allRows?: boolean; configOverride?: QualityConfig | null; skipActiveCompare?: boolean; skipStamp?: boolean };
+export type QualityOptions = { now?: Date; allRows?: boolean; configOverride?: QualityConfig | null; skipActiveCompare?: boolean; skipStamp?: boolean;
+  /** Solo se evalúan y explican estas entidades (la cohorte de referencia sigue calculándose con TODAS): la evolución mensual de una ficha no paga la cartera completa. */
+  focusIds?: string[] };
 
 export async function getQuality(actorId: string, q: QualityQuery, opts: QualityOptions = {}): Promise<QualityView> {
   return readSnapshot(actorId, (tx) => computeQuality(tx, q, opts));
@@ -232,6 +234,7 @@ export async function computeQuality(tx: Tx, q: QualityQuery, opts: QualityOptio
 
   type Raw = { input: Omit<EntityInput, "scope" | "health">; explain: Record<IndicatorKey, Explain>; users: Users };
   const rawOf = new Map<string, Raw>();
+  const focus = opts.focusIds ? new Set(opts.focusIds) : null;
   const gapNote = (c: Coverage) => `${c.reason}`;
   const withCoverage = (value: Dec | null, c: Coverage[], extraPartial: string | null, reasonBase: string | null): ComponentInput => {
     if (value === null) return { value: null, reason: reasonBase };
@@ -308,6 +311,7 @@ export async function computeQuality(tx: Tx, q: QualityQuery, opts: QualityOptio
     const incidents = { flow, backlogIncident: backlogComp("incident"), backlogProblem: backlogComp("problem") };
     const mkNum = (n: number) => String(n);
     const explain = {} as Record<IndicatorKey, Explain>;
+    if (focus && !focus.has(e.id)) { rawOf.set(e.id, { input: { dedication: ded, pap, n3, bugs, incidents }, explain, users: u }); continue; } // fuera del foco: solo magnitudes para la cohorte
     explain.HEALTH = ex("Categoría mensual propia del ámbito (positivo / mixto / negativo / sin feedback).", null, null, "categoría", ["Client Health (matriz mensual)"], [], {}, []);
     explain.DEDICATION = ex("Σ horas elegibles de los perfiles elegidos (servicio " + svcFilter + ") ÷ usuarios·mes", selConfigured ? hours.toString() : null, u.userMonths?.toString() ?? null, UNIT_LABEL.HOURS_PER_USER_MONTH, ["Tiempos Zendesk / Wrike (TimeActivity)"], dedNotes, { ...byProfile, ...bySvc, "selección": selConfigured ? profileSel.join(", ") : "sin configurar" }, dedCovs);
     explain.PAP_CORRECTIVE = ex("PAP únicos por lista+ID con alguna causa correctiva y producción en el periodo × 100 ÷ usuarios·mes", p ? mkNum(p.corrective) : "0", u.userMonths?.toString() ?? null, UNIT_LABEL.PER_100_USER_MONTHS, ["PAP"], [...usersNote, ...papNote], { estándar: mkNum(p?.standard ?? 0), "proyecto (config./personalización/procesos/infra.)": mkNum(p?.project ?? 0), "origen cliente": mkNum(p?.clientOrigin ?? 0), "total PAP del periodo": mkNum(p?.total ?? 0), "sin fecha": mkNum(p?.noDate ?? 0), "sin causa": mkNum(p?.unknownState ?? 0), "nota": "Las pertenencias pueden solaparse; el total correctivo no las suma." }, papCovs);
@@ -358,6 +362,7 @@ export async function computeQuality(tx: Tx, q: QualityQuery, opts: QualityOptio
   const evaluateAll = (config: QualityConfig): Map<string, QualityRow> => {
     const rows = new Map<string, QualityRow>();
     for (const e of all) {
+      if (focus && !focus.has(e.id)) continue;
       const r = rawOf.get(e.id) as Raw;
       const h = healthMap.get(e.id) ?? null;
       const hState = h ? healthStateOf(h.state) : null;
@@ -380,6 +385,14 @@ export async function computeQuality(tx: Tx, q: QualityQuery, opts: QualityOptio
     return rows;
   };
   const rowsMap = evaluateAll(cfg);
+  if (focus) {
+    const frows = all.filter((e) => focus.has(e.id)).map((e) => rowsMap.get(e.id) as QualityRow);
+    return {
+      query: q, period, config: { revisionNo: active.revisionNo, persisted: active.persisted, adapterNotes: cfg.adapter?.notes ?? [], simulated: Boolean(opts.configOverride) }, pulseRevision: pulse.revisionNo, manifest, stamp, readAt,
+      totalEntities: all.length, filteredEntities: frows.length, cards: { green: 0, yellow: 0, red: 0, noGlobal: 0, total: 0, uncalibrated: 0, dataPending: 0 }, rows: frows, page: 1, pageCount: 1, coverage, backlog, notes: [...baseNotes],
+      healthSummary: { withFeedback: 0, blank: 0, uncalibrated: 0 }, dedicationProfiles: { selected: profileSel, confirmed: cfg.dedication.selectionConfirmed }, config_payload: cfg, activeCards: null,
+    };
+  }
   const cardsOf = (m: Map<string, QualityRow>): PortfolioCards => {
     const c: PortfolioCards = { green: 0, yellow: 0, red: 0, noGlobal: 0, total: visible.length, uncalibrated: 0, dataPending: 0 };
     for (const e of visible) {

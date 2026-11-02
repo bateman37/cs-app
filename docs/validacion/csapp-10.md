@@ -37,7 +37,7 @@ Linux 6.18 (Firecracker), Intel Xeon 2,8 GHz, **4 vCPU, 15 GB**, equipo comparti
 | `npm run ensayo:instalacion` | **27/27** |
 | `npm run ensayo:actualizacion` (09 → 10 → 09 → 10) | **17/17** |
 | `npm run ensayo:restauracion` (dos volúmenes) | **89/89** |
-| `npm run test:largo` (300 000 filas, sin reducir) | Ver «Tests largos» al final |
+| `npm run test:largo` (300 000 filas, sin reducir) | 7 archivos, **12 pruebas correctas** (1 577 s) |
 
 ## Instalación y operación (`npm run ensayo:instalacion`, 27/27)
 
@@ -108,4 +108,4 @@ Requieren `TEST_DATABASE_URL` a una base `cs_app…_test`, usuario con `CREATEDB
 
 ## Tests largos (`npm run test:largo`)
 
-Pendiente de la ejecución final (se completa al cerrar la entrega).
+7 archivos, **12 pruebas correctas** (1 577 s), con el trabajador real, SIGKILL y 300 000 filas sin reducir (igual que en 09). La advertencia de `pg` aparece como en 09 (ver arriba).

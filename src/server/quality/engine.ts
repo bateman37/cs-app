@@ -128,7 +128,8 @@ export async function loadStock(tx: Tx, scope: Scope, ids: string[], batchId: st
   const out = new Map<string, StockEntity>();
   if (ids.length === 0) return out;
   const rows = await tx.$queryRaw<{ entity: string; type: string; status: string; created_on: string; status_known: boolean; type_known: boolean }[]>(Prisma.sql`
-    SELECT s.entity, s.type, s.status, s.created_on, s.status_known, s.type_known FROM (${stockSetSql(scope, ids, batchId)}) s WHERE s.entity IS NOT NULL`);
+    SELECT s.entity, s.type, s.status, s.created_on, s.status_known, s.type_known FROM (${stockSetSql(scope, ids, batchId, { activeOnly: true })}) s
+    WHERE s.entity IS NOT NULL`); // los resueltos no entran en el stock: no se leen fila a fila
   const ent = (id: string): StockEntity => {
     let e = out.get(id);
     if (!e) out.set(id, (e = { incident: emptyStock(), problem: emptyStock(), observedOther: 0, resolved: 0, unknownStatus: 0, questionTask: 0, usersAtD: null }));

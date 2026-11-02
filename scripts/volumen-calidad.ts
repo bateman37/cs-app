@@ -125,7 +125,7 @@ import { performance } from "node:perf_hooks";
     console.log(line);
     return r;
   };
-  const json = (r: unknown) => JSON.stringify(r).length;
+  const json = (r: unknown) => JSON.stringify(r, (_k, v) => (typeof v === "bigint" ? v.toString() : v)).length;
   await run("Cartera Grupo Cliente (1 página de 50, referencias por percentiles)", () => getQuality(admin.id, Q(), { now: NOW }), json);
   await run("Cartera Cliente (1500 clientes)", () => getQuality(admin.id, Q({ ambito: "client" }), { now: NOW }), json);
   await run("Filtro por color y orden por global (misma cohorte)", () => getQuality(admin.id, Q({ color: "yellow", orden: "global", dir: "desc" }), { now: NOW }), json);

@@ -194,16 +194,18 @@ export async function getBacklog(actorId: string, q: QualityQuery, page: number,
     const exact = choice.kind === "EXACT";
     const D = used.observedOn;
     const rows = await tx.$queryRaw<{ ticket_id: string; entity: string; type: string; status: string; created_on: string; status_known: boolean; cause: string | null; hosting: string | null }[]>(Prisma.sql`
-      SELECT s.ticket_id, s.entity, s.type, s.status, s.created_on, s.status_known, s.cause, s.hosting FROM (${stockSetSql(scopeOf(q), ids, used.batchId)}) s WHERE s.entity IS NOT NULL ORDER BY s.created_on, s.ticket_id`);
+      SELECT s.ticket_id, s.entity, s.type, s.status, s.created_on, s.status_known, s.cause, s.hosting FROM (${stockSetSql(scopeOf(q), ids, used.batchId, { activeOnly: true })}) s
+      WHERE s.entity IS NOT NULL ORDER BY s.created_on, s.ticket_id`);
+    const resolvedN = Number((await tx.$queryRaw<{ n: bigint }[]>(Prisma.sql`SELECT count(*) AS n FROM (${stockSetSql(scopeOf(q), ids, used.batchId)}) s WHERE s.entity IS NOT NULL AND s.status_known AND s.status NOT IN ('new', 'open', 'pending', 'hold')`))[0].n);
     const active = new Set(["new", "open", "pending", "hold"]);
     const th = cfg.incidents.concerningDays;
     const out: BacklogRow[] = [];
     const acc = { incident: [] as number[], problem: [] as number[] };
     const aged = { incident: 0, problem: 0 };
-    const other = { resolved: 0, questionTask: 0, unknownStatus: 0, invalidDates: 0 };
+    const other = { resolved: resolvedN, questionTask: 0, unknownStatus: 0, invalidDates: 0 };
     for (const r of rows) {
       if (!r.status_known) { other.unknownStatus++; continue; }
-      if (!active.has(r.status)) { other.resolved++; continue; }
+      if (!active.has(r.status)) continue;
       if (r.type !== "incident" && r.type !== "problem") { other.questionTask++; continue; }
       const age = ageDays(r.created_on, D);
       if (age === null) { other.invalidDates++; continue; }
@@ -274,7 +276,7 @@ export async function evolutionIn(tx: Tx, q: QualityQuery, id: string, cfg: Qual
     const inMonth = batches.filter((b) => b.observedOn.slice(0, 7) === monthEnd.slice(0, 7) && b.observedOn <= cutM).sort((a, b) => (a.observedOn < b.observedOn ? 1 : -1))[0];
     let stockAged: EvolutionPoint["stockAged"] = null;
     if (inMonth && cfg.incidents.concerningDays.incident !== null && cfg.incidents.concerningDays.problem !== null) {
-      const rows = await tx.$queryRaw<{ type: string; status: string; created_on: string }[]>(Prisma.sql`SELECT s.type, s.status, s.created_on FROM (${stockSetSql(scope, [id], inMonth.batchId)}) s WHERE s.entity IS NOT NULL AND s.status IN ('new', 'open', 'pending', 'hold') AND s.type IN ('incident', 'problem')`);
+      const rows = await tx.$queryRaw<{ type: string; status: string; created_on: string }[]>(Prisma.sql`SELECT s.type, s.status, s.created_on FROM (${stockSetSql(scope, [id], inMonth.batchId, { activeOnly: true })}) s WHERE s.entity IS NOT NULL AND s.status IN ('new', 'open', 'pending', 'hold') AND s.type IN ('incident', 'problem')`);
       stockAged = { incident: 0, problem: 0 };
       for (const r of rows) {
         const a = ageDays(r.created_on, inMonth.observedOn);

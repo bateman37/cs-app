@@ -104,7 +104,9 @@ export type StockTicket = { ticketId: string; entity: string; type: string; stat
  * se resuelve con la vigencia a la fecha de creación y el alojamiento con el contrato de clasificación de la creación. Devuelve TODOS los observados del
  * ámbito (activos, resueltos y de otros tipos) para contar cobertura; los activos de incidente/problema alimentan edades y detalle.
  */
-export function stockSetSql(scope: QScopeDb, ids: string[], batchId: string): Prisma.Sql {
+export function stockSetSql(scope: QScopeDb, ids: string[], batchId: string, opts: { activeOnly?: boolean } = {}): Prisma.Sql {
+  // `activeOnly` filtra ANTES de resolver organización y alojamiento (no se paga la resolución de los resueltos); los de estado desconocido se conservan.
+  const only = opts.activeOnly ? Prisma.sql`AND (NOT rv."statusKnown" OR lower(rv.status) IN ('new', 'open', 'pending', 'hold'))` : Prisma.empty;
   const col = scope === "group" ? Prisma.raw("tv.group_id") : Prisma.raw("tv.client_id");
   return Prisma.sql`
     SELECT o."ticketId" AS ticket_id, ${col} AS entity, lower(rv."ticketType") AS type, lower(rv.status) AS status, to_char(rv."createdOn", 'YYYY-MM-DD') AS created_on,
@@ -113,7 +115,7 @@ export function stockSetSql(scope: QScopeDb, ids: string[], batchId: string): Pr
     JOIN "UploadBatch" b ON b.id = o."batchId" AND b.status = 'COMPLETED'
     JOIN "ZdTicketRevision" rv ON rv.id = o."revisionId"
     JOIN LATERAL (${ticketViewForRevision()}) tv ON true
-    WHERE o."batchId" = ${batchId} AND ${col} = ANY(${ids})`;
+    WHERE o."batchId" = ${batchId} ${only} AND ${col} = ANY(${ids})`;
 }
 import { ticketViewSql } from "@/server/zendesk/derive";
 function ticketViewForRevision(): Prisma.Sql {

@@ -68,6 +68,7 @@
     "ops:preparar": "tsx scripts/ops.ts preparar",
     "ops:salud": "tsx scripts/ops.ts salud",
     "start:todo": "tsx scripts/ops.ts iniciar",
-    "stop:todo": "tsx scripts/ops.ts parar"
+    "stop:todo": "tsx scripts/ops.ts parar",
+    "e2e:grandes": "tsx scripts/e2e/grandes.ts"
   }
 }

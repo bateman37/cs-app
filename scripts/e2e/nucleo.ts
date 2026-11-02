@@ -46,6 +46,8 @@ export type Ctx = {
 
 let server: ChildProcess | null = null;
 let worker: ChildProcess | null = null;
+/** PID de los procesos propios (web compilada y trabajador compilado) para medir su memoria durante todo un intervalo. */
+export const ownPids = () => ({ web: server?.pid ?? null, worker: worker?.pid ?? null });
 
 async function startWorkerProcess(dbUrl: string): Promise<void> {
   if (worker) return;

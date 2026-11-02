@@ -115,7 +115,7 @@ export async function getQuality(actorId: string, q: QualityQuery, opts: Quality
 
 function age(a: number[], p: number): Dec | null {
   if (a.length === 0) return null;
-  return percentileInc(sortDec(a.map((x) => Dec.int(x))), p * 100, 10000);
+  return percentileInc(sortDec(a.map((x) => Dec.int(x))), Math.round(p * 10000), 10000);
 }
 export { age as agePercentile };
 

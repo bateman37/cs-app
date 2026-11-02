@@ -152,7 +152,7 @@ Documentación: [exportaciones](../arquitectura/exportaciones-csapp09.md), [conc
 | Dato | Valor |
 | --- | --- |
 | Rama / base | `feature/CSAPP-10-instalacion-recuperacion-cierre`, desde `676df60` (cabeza de la rama de la PR 7 tras fusionar en ella la PR 10 de CSAPP-09). `main` (`f71b5b7`) **no** contiene 06–09. PR **apilada contra `claude/new-session-omvsmd`**, sin fusionar ni desplegar; sin force-push |
-| PR | PR_PENDIENTE |
+| PR | [PR 11](https://github.com/bateman37/cs-app/pull/11), apilada contra `claude/new-session-omvsmd`, sin fusionar ni desplegar |
 | Migración | `20261105090000_operacion_latido_instalacion` (`WorkerInstance`, `InstallationMeta`); solo añade; las ocho anteriores intactas |
 | Implementado | Latido por trabajador (reposo y procesando) y salud (CLI, Administración › Operación, `/api/salud` mínima); identidad de instalación y almacenes; supervisor `start:todo`/`stop:todo` y `ops` (verificar, preparar, salud, diagnóstico); modo operativo estricto; copia/verificación/restauración con parada controlada; evolución de Calidad por conjuntos (−60 % a −84 %, 189 → 23 sentencias, salida idéntica); puente de conciliación `REC-N4-*`; recorridos de cargas y descargas grandes por navegador; ensayos de instalación, actualización y restauración; documentación vigente única |
 | Probado | Linux: suite rápida 685, recorrido de navegador 359/359, grandes 21/21, ensayos 27/27, 17/17 y 89/89. Ver [validación](../validacion/csapp-10.md) |

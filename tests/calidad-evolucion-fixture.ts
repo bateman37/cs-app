@@ -149,9 +149,9 @@ export async function buildEvolutionWorld(adminId: string): Promise<EvolutionWor
         const day = 1 + Math.floor(rnd() * 28);
         const created = `2026-${pad(m)}-${pad(day)}`;
         const destinations = rnd() < 0.2 ? ["PMO_N3"] : rnd() < 0.1 ? ["IT_N3"] : rnd() < 0.05 ? ["PMO_N3", "IT_N3"] : [];
-        const target = rnd() < 0.5 ? flow : pick(photos);
+        const target = rnd() < 0.5 ? photos[4] : pick(photos); // photos[4] es el lote de flujo (31/10, todos los estados)
         const created2 = created > target.extract ? target.extract : created;
-        await seedTicket(target.id, { id: `E${n++}`, org, type: pick(types), status: pick(statuses), created: target === flow ? created : created2, cause: pick(causes), destinations, observedOn: target.extract });
+        await seedTicket(target.id, { id: `E${n++}`, org, type: pick(types), status: pick(statuses), created: target.id === flow.id ? created : created2, cause: pick(causes), destinations, observedOn: target.extract });
       }
     }
   }

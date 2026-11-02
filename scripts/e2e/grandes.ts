@@ -242,6 +242,57 @@ async function grandes(ctx: Ctx): Promise<void> {
     ctx.check("Grande cancelación: cancelar la descarga no elimina el export LISTO ni sus archivos, y el descriptor se libera", still.status === "READY" && still.files.length === job.files.length && fdCancel <= fdBefore, `${still.status} fds ${fdBefore}→${fdCancel}`);
     ctx.check("Grande cancelación: el archivo sigue sirviéndose con sesión (privado)", resp.status() === 200 || resp.status() === 206, String(resp.status()));
     out.cancelacion = { rss: rssCancel, fdAntes: fdBefore, fdDespues: fdCancel };
+
+    // ---- Lectura LENTA (contrapresión): un lector que consume ~1 MB/s no puede hacer que la web acumule el archivo en memoria.
+    const cookie = (await context.cookies()).map((c) => `${c.name}=${c.value}`).join("; ");
+    const slowRead = async (url: string, seconds: number, chunkDelayMs: number) => {
+      const http = await import("node:http");
+      const mem = sampler();
+      let got = 0;
+      await new Promise<void>((resolve) => {
+        const req = http.get(url, { headers: { cookie } }, (res) => {
+          const t = setTimeout(() => { req.destroy(); resolve(); }, seconds * 1000);
+          res.on("data", (c: Buffer) => { got += c.length; res.pause(); setTimeout(() => res.resume(), chunkDelayMs); });
+          res.on("end", () => { clearTimeout(t); resolve(); });
+          res.on("close", () => { clearTimeout(t); resolve(); });
+        });
+        req.on("error", () => resolve());
+      });
+      return { leidoMB: Math.round(got / 1048576 * 10) / 10, rss: await mem.stop() };
+    };
+    const bigUrl = `${ctx.base}/api/exportaciones/${job.id}/archivo/${data[0].id}`;
+    const fdPre = await fdCount(ownPids().web, ctx.exportDir);
+    const slow = await slowRead(bigUrl, 30, 60);
+    await new Promise((r) => setTimeout(r, 2000));
+    const fdPost = await fdCount(ownPids().web, ctx.exportDir);
+    const sizeMB = Number(data[0].bytes) / 1048576;
+    out.lecturaLenta = { ...slow, tamanoArchivoMB: Math.round(sizeMB * 10) / 10, fdAntes: fdPre, fdDespues: fdPost };
+    ctx.check("Grande lectura lenta: la web NO acumula el archivo (RSS máximo muy inferior al tamaño del archivo) y cierra el descriptor al abortar el lector", slow.leidoMB < sizeMB && fdPost <= fdPre && (sizeMB < 80 || slow.rss.web.maxMB - (slow.rss.web.minMB ?? 0) < sizeMB / 2), JSON.stringify(out.lecturaLenta));
+
+    // ---- Archivo menor (≈ 1/8 del anterior): la memoria de la web no crece con el tamaño de la descarga
+    await bigPage.goto(`${ctx.base}/calidad?fecha=2026-10-31&modo=FULL_MONTH&servicio=TOTAL`);
+    await bigPage.getByLabel("Conjunto").selectOption("horas");
+    await bigPage.getByLabel("Desde").fill("2025-01-01");
+    await bigPage.getByLabel("Hasta").fill("2025-03-31");
+    await bigPage.getByRole("button", { name: "Exportar detalle completo" }).click();
+    let small;
+    const ts2 = Date.now();
+    for (;;) {
+      small = await ctx.prisma.exportJob.findFirst({ orderBy: { createdAt: "desc" }, include: { files: true } });
+      if (small && small.id !== job.id && ["READY", "FAILED"].includes(small.status)) break;
+      if (Date.now() - ts2 > 20 * 60_000) throw new Error("exportación menor sin terminar");
+      await new Promise((r) => setTimeout(r, 1000));
+    }
+    const sd = small.files.find((f) => f.kind === "DATA");
+    if (sd) {
+      const memS = sampler();
+      const rs = await (await bigPage.request.get(`${ctx.base}/api/exportaciones/${small.id}/archivo/${sd.id}`)).body();
+      const rssS = await memS.stop();
+      out.descargaMenor = { filas: Number(sd.rows), bytes: Number(sd.bytes), leidos: rs.length, rss: rssS };
+      const growthBig = (rssDl.web.maxMB - (rssDl.web.minMB ?? 0));
+      const growthSmall = rssS.web.maxMB - (rssS.web.minMB ?? 0);
+      ctx.check("Grande descarga menor: el crecimiento de RSS de la web NO es proporcional al tamaño (grande ≈ mismo orden que el pequeño)", rs.length === Number(sd.bytes) && growthBig < Math.max(150, growthSmall * 6 + 100), `grande +${growthBig} MB, menor +${growthSmall} MB`);
+    }
     await context.close();
   } finally {
     await writeFile(MEASURES, JSON.stringify(out, null, 2));

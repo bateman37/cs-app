@@ -12,6 +12,8 @@ import { loadavg } from "node:os";
  *  - CSAPP_SKIP_SEED=1   no migra, vacía ni siembra: mide sobre la base ya sembrada con la misma fixture (medidas repetidas sobre los mismos datos).
  *  - CSAPP_REPS=n        repeticiones por operación (por defecto 3).
  *  - CSAPP_ONLY=evol     solo las evoluciones mensuales (cartera, ficha y detalles no se miden).
+ *  - CSAPP_EVOLUTION_REFERENCE=1  mide también la ruta de referencia de 09 (por mes con computeQuality), tal cual y con JIT desactivado.
+ *  - CSAPP_PROFILE=1     duración y texto de las sentencias más costosas de cada evolución.
  *  - CSAPP_EVOLUTION_DUMP=ruta  escribe la salida íntegra de las evoluciones (config. activa; grupo y cliente) en un JSON, para compararlas entre versiones.
  */
 (async () => {
@@ -126,6 +128,19 @@ import { loadavg } from "node:os";
   const g = globalThis as unknown as { csappQueryCount?: number };
   const Q = (p: Record<string, string> = {}) => parseQualityQuery({ fecha: "2026-10-31", modo: "FULL_MONTH", ...p }, NOW).query;
   const rows: string[] = [];
+  // CSAPP_PROFILE=1: recoge duración y texto de cada sentencia de la última repetición para localizar el coste (no afecta a las medidas: solo se lee el evento).
+  const stmts: { ms: number; q: string }[] = [];
+  let collecting = false;
+  if (process.env.CSAPP_PROFILE === "1") (prisma as unknown as { $on: (e: "query", cb: (ev: { duration: number | bigint; query: string }) => void) => void }).$on("query", (ev) => { if (collecting) stmts.push({ ms: Number(ev.duration), q: ev.query }); });
+  const profileReport = (title: string) => {
+    if (process.env.CSAPP_PROFILE !== "1") return;
+    const by = new Map<string, { n: number; ms: number }>();
+    for (const s of stmts) { const k = s.q.replace(/\s+/g, " ").slice(0, 110); const a = by.get(k) ?? { n: 0, ms: 0 }; a.n++; a.ms += s.ms; by.set(k, a); }
+    const total = stmts.reduce((x, y) => x + y.ms, 0);
+    console.log(`PERFIL ${title}: ${stmts.length} sentencias, ${total.toFixed(0)} ms en SQL`);
+    for (const [k, v] of [...by.entries()].sort((a, b) => b[1].ms - a[1].ms).slice(0, 14)) console.log(`   ${v.ms.toFixed(0).padStart(6)} ms  x${String(v.n).padStart(3)}  ${k}`);
+    stmts.length = 0;
+  };
   // Tres medidas por operación (la primera es «fría»: caché de PostgreSQL y de módulos por calentar); se informa mediana y rango. `reps = 1` en operaciones con efectos.
   const run = async <T>(name: string, fn: () => Promise<T>, size?: (r: T) => number, repsOverride?: number) => {
     const reps = repsOverride ?? Number(process.env.CSAPP_REPS ?? 3);
@@ -135,11 +150,15 @@ import { loadavg } from "node:os";
     const m0 = process.memoryUsage().rss;
     for (let i = 0; i < reps; i++) {
       g.csappQueryCount = 0;
+      collecting = i === reps - 1 && name.startsWith("Evolución");
+      stmts.length = 0;
       const s = performance.now();
       r = await fn();
       times.push((performance.now() - s) / 1000);
       queries = g.csappQueryCount ?? 0;
+      collecting = false;
     }
+    if (name.startsWith("Evolución")) profileReport(name);
     const sorted = [...times].sort((a, b) => a - b);
     const med = sorted[Math.floor(sorted.length / 2)];
     const line = `| ${name} | ${med.toFixed(2)} (${sorted[0].toFixed(2)}–${sorted[sorted.length - 1].toFixed(2)}; 1.ª ${times[0].toFixed(2)}) | ${queries} | ${size ? (size(r) / 1024).toFixed(0) : "—"} | ${((process.memoryUsage().rss - m0) / 1048576).toFixed(0)} / ${(process.memoryUsage().rss / 1048576).toFixed(0)} / ${(process.resourceUsage().maxRSS / 1024).toFixed(0)} | ${loadavg()[0].toFixed(2)} |`;
@@ -162,6 +181,12 @@ import { loadavg } from "node:os";
   const activeCfg = (await readSnapshot(admin.id, (tx) => getActive(tx, "QUALITY"))).payload;
   const evoG = await run("Evolución mensual · Grupo (config. activa con percentiles)", () => readSnapshot(admin.id, (tx) => evolutionIn(tx, Q({ sel: "vg7" }), "vg7", activeCfg, today)), json);
   const evoC = await run("Evolución mensual · Cliente (config. activa con percentiles)", () => readSnapshot(admin.id, (tx) => evolutionIn(tx, Q({ ambito: "client", sel: "vc7" }), "vc7", activeCfg, today)), json);
+  if (process.env.CSAPP_EVOLUTION_REFERENCE === "1") {
+    // Ruta de referencia de CSAPP-09 (un computeQuality completo por mes), SOLO para atribuir la mejora: tal cual y con JIT desactivado en la transacción.
+    const { evolutionReferenceIn } = await import("../src/server/quality/detail");
+    await run("Evolución mensual · Grupo · referencia 09 (por mes con computeQuality)", () => readSnapshot(admin.id, (tx) => evolutionReferenceIn(tx, Q({ sel: "vg7" }), "vg7", activeCfg, today)), json);
+    await run("Evolución mensual · Grupo · referencia 09 con JIT desactivado", () => readSnapshot(admin.id, async (tx) => { await tx.$executeRaw`SET LOCAL jit = off`; return evolutionReferenceIn(tx, Q({ sel: "vg7" }), "vg7", activeCfg, today); }), json);
+  }
   if (process.env.CSAPP_EVOLUTION_DUMP) {
     const { writeFileSync } = await import("node:fs");
     writeFileSync(process.env.CSAPP_EVOLUTION_DUMP, JSON.stringify({ grupo: evoG, cliente: evoC }, (_k, v) => (typeof v === "bigint" ? v.toString() : v), 1));

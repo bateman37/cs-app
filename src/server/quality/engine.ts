@@ -107,7 +107,7 @@ const emptyStock = (): StockType => ({ count: 0, ages: [], aged: 0, bands: [], i
 
 // ---------------------------------------------------------------- Cálculo
 
-export type QualityOptions = { now?: Date; allRows?: boolean; configOverride?: QualityConfig | null; skipActiveCompare?: boolean };
+export type QualityOptions = { now?: Date; allRows?: boolean; configOverride?: QualityConfig | null; skipActiveCompare?: boolean; skipStamp?: boolean };
 
 export async function getQuality(actorId: string, q: QualityQuery, opts: QualityOptions = {}): Promise<QualityView> {
   return readSnapshot(actorId, (tx) => computeQuality(tx, q, opts));
@@ -168,7 +168,7 @@ export async function computeQuality(tx: Tx, q: QualityQuery, opts: QualityOptio
   const all = await loadEntities(tx, scope, groups);
   const ids = all.map((e) => e.id);
   const readAt = (await tx.$queryRaw<{ t: Date }[]>(Prisma.sql`SELECT now() AS t`))[0].t.toISOString();
-  const stamp = (await readDataStamp(tx)).stamp;
+  const stamp = opts.skipStamp ? "" : (await readDataStamp(tx)).stamp;
   const declarations = await loadDeclarations(tx);
   const ticketBatches = await loadTicketBatches(tx);
 

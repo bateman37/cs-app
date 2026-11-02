@@ -289,15 +289,18 @@ export function evaluateGlobal(g: GlobalTemplate, weights: EffectiveWeights, col
     return { color: null, score: null, status: "SIN_METODO", reason: "No se ha elegido método y límites del global: no se genera color final." };
   }
   if (!weights.computable) return { color: null, score: null, status: "COBERTURA_INSUFICIENTE", reason: weights.reasons[0] ?? "Cobertura técnica insuficiente." };
-  let score = Dec.ZERO;
+  // Todas las fracciones comparten denominador: se suma exacto (severidad × numerador) y se divide UNA vez (un solo redondeo).
+  let acc = Dec.ZERO;
+  let den = 1n;
   for (const k of INDICATOR_KEYS) {
     const f = weights.fraction[k];
     if (f.num === 0n) continue;
     const c = colors[k];
     if (c === null) return { color: null, score: null, status: "SIN_COLORES", reason: `${INDICATOR_NAME[k]} no tiene color (sin calibrar o sin dato): no se calcula el global.` };
-    const sev = Dec.parse(g.severity[c]) as Dec;
-    score = score.add(sev.ratio(f.num, f.den));
+    acc = acc.add((Dec.parse(g.severity[c].replace(",", ".")) as Dec).mulInt(f.num));
+    den = f.den;
   }
+  const score = acc.divInt(den);
   const gm = Dec.parse(g.greenMax.replace(",", ".")) as Dec;
   const ym = Dec.parse(g.yellowMax.replace(",", ".")) as Dec;
   const color: Color = score.cmp(gm) <= 0 ? "green" : score.cmp(ym) <= 0 ? "yellow" : "red";
@@ -318,7 +321,7 @@ const ruleZ = z.object({
 });
 const indicatorZ = z.object({
   /** Normalización/ámbito declarados para no comparar tasas mensuales con anuales ni un stock con usuarios mes. */
-  unit: z.string().max(60),
+  unit: z.string().max(200),
   normalization: z.enum(["POR_USUARIO_MES", "POR_100_USUARIOS_MES", "POR_USUARIO_STOCK", "CATEGORIA", "ANUAL_EQUIVALENTE"]),
   scope: z.enum(["GRUPO", "CLIENTE"]),
   rule: ruleZ,
@@ -330,6 +333,8 @@ export const qualityConfigSchema = z.object({
   health: z.object({ mapping: z.object({ positive: colorZ, mixed: colorZ, negative: colorZ }), confirmed: z.boolean() }),
   dedication: z.object({ profiles: z.array(z.string().max(40)).max(10), selectionConfirmed: z.boolean() }),
   incidents: z.object({
+    /** Regla del componente de backlog envejecido (stock por usuario AL CORTE); el flujo usa la regla del indicador. */
+    backlogRule: ruleZ,
     ageBands: z.array(z.object({ from: z.number().int().min(0).max(100000), to: z.number().int().min(0).max(100000).nullable() })).max(20),
     concerningDays: z.object({ incident: z.number().int().min(0).max(100000).nullable(), problem: z.number().int().min(0).max(100000).nullable() }),
     /** BACK 07: peor señal entre flujo y backlog envejecido. PROPUESTA, desactivada hasta que el Administrador la active. */
@@ -363,7 +368,7 @@ export function defaultQualityConfig(): QualityConfig {
     },
     health: { mapping: { ...PROPOSED_HEALTH_MAPPING }, confirmed: false },
     dedication: { profiles: [], selectionConfirmed: false },
-    incidents: { ageBands: [], concerningDays: { incident: null, problem: null }, worstOfFlowAndBacklog: false },
+    incidents: { backlogRule: emptyRule("LOWER_BETTER"), ageBands: [], concerningDays: { incident: null, problem: null }, worstOfFlowAndBacklog: false },
     global: { template: "WEIGHTED_SEVERITY", enabled: false, severity: { ...PROPOSED_SEVERITY }, greenMax: null, yellowMax: null },
   };
 }
@@ -388,14 +393,71 @@ export function validateQualityConfig(cfg: QualityConfig): ConfigIssue[] {
     if (cfg.incidents.concerningDays.incident === null || cfg.incidents.concerningDays.problem === null) {
       issues.push({ path: "incidents.worstOfFlowAndBacklog", message: "La composición «peor señal» necesita el umbral preocupante de incidentes y de problemas antes de activarse." });
     }
-    if (cfg.indicators.INCIDENTS_PROBLEMS.rule.calibration !== "CALIBRADO") {
-      issues.push({ path: "incidents.worstOfFlowAndBacklog", message: "La composición «peor señal» necesita componentes configurados (umbrales calibrados) antes de activarse." });
+    if (cfg.indicators.INCIDENTS_PROBLEMS.rule.calibration !== "CALIBRADO" || cfg.incidents.backlogRule.calibration !== "CALIBRADO") {
+      issues.push({ path: "incidents.worstOfFlowAndBacklog", message: "La composición «peor señal» necesita los dos componentes (flujo y backlog envejecido) con umbrales calibrados antes de activarse." });
     }
   }
+  if (cfg.incidents.backlogRule.calibration === "CALIBRADO") for (const m of validateRule(cfg.incidents.backlogRule)) issues.push({ path: "incidents.backlogRule", message: `Backlog envejecido: ${m}` });
   for (const m of validateGlobal({ ...cfg.global, template: "WEIGHTED_SEVERITY" })) issues.push({ path: "global", message: m });
   for (const c of ["green", "yellow", "red"] as const) {
     const d = Dec.parse(cfg.global.severity[c].replace(",", "."));
     if (d === null || d.sign() < 0 || d.cmp(Dec.int(1)) > 0) issues.push({ path: "global.severity", message: "Las severidades deben estar en [0, 1]." });
   }
   return issues;
+}
+
+
+// ---------------------------------------------------------------- Simulación (sin escribir nada)
+
+export type SimInput = {
+  availability: Availability;
+  /** Valor numérico (texto decimal) o, para Client Health, la categoría. */
+  value: string;
+  /** Solo Incidentes y problemas con la composición «peor señal»: stock envejecido por usuario al corte. */
+  backlogValue?: string;
+  /** Muestra manual de referencia (para reglas por percentiles). */
+  reference?: string;
+};
+export type SimRow = { key: IndicatorKey; name: string; availability: Availability; color: Color | null; status: RuleOutcome["status"] | "BLANCO" | "AUSENTE" | "CATEGORIA"; reason: string; cuts?: { a: string; b: string }; backlog?: RuleOutcome };
+export type SimResult = { weights: EffectiveWeights | null; weightIssues: WeightIssue[]; rows: SimRow[]; global: GlobalOutcome; configIssues: ConfigIssue[] };
+
+const numOrNull = (t: string | undefined): Dec | null => (t === undefined || t.trim() === "" ? null : Dec.parse(t.trim().replace(",", ".")));
+const sample = (t: string | undefined): Dec[] => (t ?? "").split(/[;\s]+/).map((x) => numOrNull(x)).filter((x): x is Dec => x !== null);
+
+/** Evalúa una configuración (borrador o activa) con ESCENARIOS manuales. No lee ni escribe hechos reales, pesos activos ni colores publicados. */
+export function simulateQuality(cfg: QualityConfig, scenario: Record<IndicatorKey, SimInput>): SimResult {
+  const wu = weightUnits({ mode: cfg.weights.mode, custom: cfg.weights.custom as Record<IndicatorKey, string> });
+  const availability = Object.fromEntries(INDICATOR_KEYS.map((k) => [k, scenario[k].availability])) as Record<IndicatorKey, Availability>;
+  const weights = wu.units ? effectiveWeights(wu.units, availability) : null;
+  const colors = {} as Record<IndicatorKey, Color | null>;
+  const rows: SimRow[] = INDICATOR_KEYS.map((k) => {
+    const sc = scenario[k];
+    const base = { key: k, name: INDICATOR_NAME[k], availability: sc.availability };
+    if (sc.availability === "BLANK") {
+      colors[k] = null;
+      return { ...base, color: null, status: "BLANCO" as const, reason: k === BLANKABLE ? "Sin feedback: celda en blanco; su peso se redistribuye entre los demás." : "Solo Client Health puede quedar en blanco." };
+    }
+    if (sc.availability === "MISSING") {
+      colors[k] = null;
+      return { ...base, color: null, status: "AUSENTE" as const, reason: "Fuente ausente: no se convierte en cero ni en verde." };
+    }
+    if (k === "HEALTH") {
+      const c = healthColor((sc.value as HealthState) || null, cfg.health.mapping);
+      colors[k] = c.color;
+      return { ...base, color: c.color, status: "CATEGORIA" as const, reason: `Mapeo ${cfg.health.confirmed ? "confirmado" : "propuesto (no confirmado)"}: ${sc.value || "sin estado"}.` };
+    }
+    const flow = evaluateRule(cfg.indicators[k].rule, numOrNull(sc.value), sample(sc.reference));
+    let color = flow.color;
+    let backlog: RuleOutcome | undefined;
+    let reason = flow.reason;
+    if (k === "INCIDENTS_PROBLEMS" && cfg.incidents.worstOfFlowAndBacklog) {
+      backlog = evaluateRule(cfg.incidents.backlogRule, numOrNull(sc.backlogValue), null);
+      color = worstSignal([flow.color, backlog.color]);
+      reason = `Peor señal entre flujo (${flow.color ?? flow.status}) y backlog envejecido (${backlog.color ?? backlog.status}). ${flow.reason}`;
+    }
+    colors[k] = color;
+    return { ...base, color, status: flow.status, reason, cuts: flow.cuts, backlog };
+  });
+  const global = weights ? evaluateGlobal({ ...cfg.global, template: "WEIGHTED_SEVERITY" }, weights, colors) : ({ color: null, score: null, status: "SIN_METODO", reason: "Pesos no válidos: no se calcula el global." } as GlobalOutcome);
+  return { weights, weightIssues: wu.issues, rows, global, configIssues: validateQualityConfig(cfg) };
 }

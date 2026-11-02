@@ -158,3 +158,31 @@ details.chart-table > summary { cursor: pointer; color: var(--blue); font-size: 
   .filters-grid { grid-template-columns: 1fr 1fr; }
 }
 .visually-hidden { position: absolute; width: 1px; height: 1px; overflow: hidden; clip: rect(0 0 0 0); white-space: nowrap; }
+
+/* CSAPP-07: secciones de configuración y Pulse Rent. El color nunca es la única señal: toda banda lleva su texto. */
+.subtabs { display: flex; flex-wrap: wrap; gap: 0.25rem; margin: 0 0 1rem; border-bottom: 2px solid var(--border); }
+.subtab { padding: 0.5rem 0.9rem; text-decoration: none; color: var(--text); }
+.subtab-active { border-bottom: 3px solid var(--blue); font-weight: 600; margin-bottom: -2px; }
+.band { display: inline-block; padding: 0.05rem 0.4rem; border-radius: 4px; font-size: 0.75rem; font-weight: 600; border: 1px solid transparent; white-space: nowrap; }
+.band-verde_intenso { background: #14663a; color: #fff; }
+.band-verde_claro { background: #cdeedb; color: #0d4a28; border-color: #8ccaa4; }
+.band-amarillo { background: #fbf0b3; color: #5a4a00; border-color: #d8c04a; }
+.band-naranja { background: #f9cf9c; color: #6a3500; border-color: #e0993d; }
+.band-rojo { background: #b42318; color: #fff; }
+.pulse { font-size: 0.88rem; }
+.pulse td.num, .pulse th.num { text-align: right; font-variant-numeric: tabular-nums; }
+.pulse .sticky-col { position: sticky; left: 0; z-index: 1; min-width: 12rem; max-width: 16rem; background: var(--surface); box-shadow: 1px 0 0 var(--border); }
+.pulse thead .sticky-col { z-index: 3; }
+.pulse thead th { vertical-align: bottom; white-space: normal; min-width: 8.5rem; }
+.pulse thead .fam { text-align: center; border-bottom: 2px solid var(--border); background: #f1f1f8; }
+.pulse .cell-link { display: block; text-decoration: none; color: inherit; }
+.pulse .cell-link:hover { background: #f4f4fb; }
+.pulse small.block { display: block; }
+.metric-picker { display: grid; grid-template-columns: repeat(auto-fit, minmax(16rem, 1fr)); gap: 0.25rem 1rem; }
+.metric-picker label { display: flex; gap: 0.4rem; align-items: baseline; font-size: 0.88rem; }
+.dist-svg { width: 100%; max-width: 640px; height: auto; display: block; }
+.band-legend { display: flex; flex-wrap: wrap; gap: 0.4rem 1rem; list-style: none; padding: 0; margin: 0.4rem 0; font-size: 0.85rem; }
+.form-inline { display: flex; flex-wrap: wrap; gap: 0.5rem; align-items: flex-end; }
+@media (max-width: 640px) { .pulse .sticky-col { min-width: 8rem; max-width: 10rem; } }
+.kv dd, .kv dt { min-width: 0; overflow-wrap: anywhere; }
+@media (max-width: 640px) { .kv { grid-template-columns: 1fr; gap: 0 0; } .kv dt { margin-top: 0.4rem; } .kv .badge { white-space: normal; } }

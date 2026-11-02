@@ -5,7 +5,6 @@ import { performance } from "node:perf_hooks";
 (async () => {
   const { activateTestTarget, assertConnectedTo, guardedTruncateAll } = await import("../src/lib/test-guard");
   const approved = activateTestTarget(); // guard central: destino explícito `_test`, fijado antes de importar singletons
-  const url = approved.url;
   process.env.CSAPP_COUNT_QUERIES = "1";
   process.env.BETTER_AUTH_SECRET ||= "x".repeat(40);
   const groups = Number(process.argv[2] ?? 1500);

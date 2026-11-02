@@ -502,7 +502,6 @@ export async function computePulse(tx: Tx, q: PulseQuery, opts: PulseOptions = {
   const base = q.base;
   const cut = effectiveCut(base.date, base.mode);
   const groups = await loadGroupMeta(tx, cut);
-  const groupById = new Map(groups.map((g) => [g.id, g]));
   await snapshotPoint("pulse:after-meta");
 
   // 1. Referencias: estadística (distribuciones) y económica (cartera). Independientes de las filas visibles.

@@ -52,6 +52,9 @@ async function grandes(ctx: Ctx): Promise<void> {
   const sha = (f: string) => new Promise<{ sha: string; bytes: number }>((res, rej) => { const h = createHash("sha256"); let b = 0; createReadStream(f).on("data", (c) => { h.update(c); b += (c as Buffer).length; }).on("end", () => res({ sha: h.digest("hex"), bytes: b })).on("error", rej); });
   try {
     await seedVolumeMasters(ctx.prisma);
+    // Un Grupo Cliente con todos los Clientes sintéticos: la vista de Calidad (y su panel de exportación) exige al menos un Grupo; las horas se atribuyen a él.
+    const grupo = await ctx.prisma.clientGroup.create({ data: { name: "Grupo sintético E2E (grandes)" } });
+    await ctx.prisma.client.updateMany({ data: { groupId: grupo.id } });
     const tg = Date.now();
     await writeTimes(path.join(dir, "tiempos.xlsx"), volumeTimes(TIMES, { tickets: 8000 }));
     await writeCsv(path.join(dir, "wrike.csv"), volumeWrike(WRIKE, { tickets: 8000 }), { bom: true });
@@ -120,8 +123,8 @@ async function grandes(ctx: Ctx): Promise<void> {
     const activable = await ctx.prisma.uploadBatch.count({ where: { originalName: "no-es-xlsx.xlsx", status: { in: ["READY", "ACTIVATION_QUEUED", "ACTIVATING", "COMPLETED"] } } });
     const rejected = await ctx.prisma.uploadBatch.findFirst({ where: { originalName: "no-es-xlsx.xlsx" } });
     ctx.check("Grande formato incorrecto: un texto con extensión .xlsx se rechaza y no deja ningún lote activable", activable === 0 && (rejected === null || ["REJECTED", "FAILED"].includes(rejected.status)), `${rejected?.status}`);
-    // Interrumpida: se cierra una pestaña a mitad de la recepción del XLSX grande.
-    const before = await ctx.prisma.uploadBatch.count();
+    // Interrumpida: se cierra la pestaña cuando la base ya registra la recepción EN CURSO (RECEIVING) del XLSX grande.
+    const known = new Set((await ctx.prisma.uploadBatch.findMany({ select: { id: true } })).map((b) => b.id));
     const ctx2 = await login(ctx, ctx.accounts.adminEmail, ctx.accounts.adminPassword);
     await ctx2.page.goto(`${ctx.base}/administracion/cargas`);
     await ctx2.page.locator("summary", { hasText: /^Zendesk · tiempos$/ }).first().click();
@@ -129,14 +132,27 @@ async function grandes(ctx: Ctx): Promise<void> {
     await f2.locator('input[type="file"]').setInputFiles(path.join(dir, "tiempos.xlsx"));
     await f2.getByLabel("Fecha de extracción").fill("2026-10-01").catch(() => undefined);
     await f2.getByRole("button", { name: "Subir y validar" }).click();
-    await ctx2.page.waitForTimeout(150);
-    await ctx2.context.close(); // la pestaña desaparece con la subida en curso
-    await new Promise((r) => setTimeout(r, 5000));
-    const rows = await ctx.prisma.uploadBatch.findMany({ orderBy: { createdAt: "desc" }, take: Math.max(1, (await ctx.prisma.uploadBatch.count()) - before) });
-    const interrupted = rows.filter((b) => !["COMPLETED"].includes(b.status) && b.id !== t1.id && b.id !== t2.id && b.originalName === "tiempos.xlsx");
-    const jobs = interrupted.length ? await ctx.prisma.uploadJob.count({ where: { batchId: { in: interrupted.map((b) => b.id) } } }) : 0;
-    ctx.check("Grande subida interrumpida: la recepción cortada no queda activable ni encola trabajo de preparación", interrupted.every((b) => !["READY", "ACTIVATION_QUEUED", "ACTIVATING"].includes(b.status)) && jobs === 0, interrupted.map((b) => `${b.status}`).join(","));
-    out.subidaInterrumpida = interrupted.map((b) => b.status);
+    let caught = "";
+    const tc = Date.now();
+    while (Date.now() - tc < 20_000 && !caught) {
+      const b = (await ctx.prisma.uploadBatch.findMany({ where: { originalName: "tiempos.xlsx" }, orderBy: { createdAt: "desc" }, take: 5 })).find((x) => !known.has(x.id));
+      if (b) caught = b.status === "RECEIVING" ? b.id : `rápida:${b.status}`;
+      else await new Promise((r) => setTimeout(r, 20));
+    }
+    if (caught.startsWith("rápida") || !caught) {
+      out.subidaInterrumpida = `no ensayable a esta escala (${caught || "sin lote"}): la recepción termina antes de poder cortarla`;
+    } else {
+      await ctx2.context.close(); // la pestaña desaparece con la subida en curso
+      await new Promise((r) => setTimeout(r, 8000));
+      const b = await ctx.prisma.uploadBatch.findUniqueOrThrow({ where: { id: caught } });
+      const completa = Number(b.sizeBytes) === (await stat(path.join(dir, "tiempos.xlsx"))).size;
+      const jobs = await ctx.prisma.uploadJob.count({ where: { batchId: b.id } });
+      const files = await readdir(path.join(ctx.uploadDir, "files")).catch(() => [] as string[]);
+      out.subidaInterrumpida = { estado: b.status, detalle: b.statusDetail, trabajosEncolados: jobs, archivosEnAlmacen: files.length, llegoCompleta: completa };
+      if (completa) out.subidaInterrumpida = { ...(out.subidaInterrumpida as object), nota: "el archivo llegó completo antes del corte (escala pequeña): no es una interrupción real" };
+      else ctx.check("Grande subida interrumpida: la recepción cortada no queda activable, no encola preparación y no deja un archivo completo huérfano", !["READY", "ACTIVATION_QUEUED", "ACTIVATING", "COMPLETED"].includes(b.status) && jobs === 0 && !files.includes(b.storageId), `${b.status} trabajos ${jobs}`);
+    }
+    await ctx2.context.close().catch(() => undefined);
 
     // ---- 3) CSV original de Wrike ≥ 1 000 000 filas
     const w1 = await phase("Wrike", path.join(dir, "wrike.csv"), WRIKE, "wrikeCsv", false);
@@ -153,10 +169,10 @@ async function grandes(ctx: Ctx): Promise<void> {
     const facts = Number((await ctx.prisma.$queryRaw<{ n: bigint }[]>`SELECT count(*) AS n FROM "TimeActivity"`)[0].n);
     out.hechosHoras = facts;
     const bigPage = page;
-    await bigPage.goto(`${ctx.base}/calidad?fecha=2026-10-31&modo=FULL_MONTH`);
+    await bigPage.goto(`${ctx.base}/calidad?fecha=2026-10-31&modo=FULL_MONTH&servicio=TOTAL`);
     await bigPage.getByLabel("Conjunto").selectOption("horas");
-    await bigPage.getByLabel("Desde").fill("2024-01-01");
-    await bigPage.getByLabel("Hasta").fill("2026-12-31");
+    await bigPage.getByLabel("Desde").fill("2020-01-01");
+    await bigPage.getByLabel("Hasta").fill("2030-12-31");
     await bigPage.getByRole("button", { name: "Exportar detalle completo" }).click();
     await bigPage.getByText(/Exportación solicitada/).first().waitFor({ timeout: 30_000 });
     const memExport = sampler();
@@ -178,7 +194,7 @@ async function grandes(ctx: Ctx): Promise<void> {
     (out.exportacion as Record<string, unknown>).rssGeneracion = memExportStats;
 
     // Descarga completa por navegador (enlace del panel), con RSS durante todo el intervalo y latencia de una consulta ligera en paralelo.
-    await bigPage.goto(`${ctx.base}/calidad?fecha=2026-10-31&modo=FULL_MONTH`);
+    await bigPage.goto(`${ctx.base}/calidad?fecha=2026-10-31&modo=FULL_MONTH&servicio=TOTAL`);
     const link = bigPage.locator(`a[href="/api/exportaciones/${job.id}/archivo/${data[0].id}"]`).first();
     await link.waitFor({ timeout: 30_000 });
     const light = await login(ctx, ctx.accounts.adminEmail, ctx.accounts.adminPassword);

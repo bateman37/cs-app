@@ -43,6 +43,8 @@ model User {
   workItemLinks     WorkItemLink[]
   financeDecisions  FinanceDecision[]
   settingsRevisions EconomicSettingsRevision[]
+  configRevisions   ConfigRevision[]         @relation("ConfigRevisionActivatedBy")
+  configDrafts      ConfigDraft[]            @relation("ConfigDraftUpdatedBy")
 }
 
 model Session {
@@ -1329,4 +1331,38 @@ model ServiceAssignment {
   updatedAt   DateTime  @updatedAt
 
   @@index([matchKind, searchValue])
+}
+
+/// Revisión inmutable de una familia de configuración tipada (CSAPP-07): PULSE (Pulse Rent) o QUALITY (Calidad). La economía conserva su tabla.
+/// `payload` es un contrato versionado y validado en servidor (zod), no un documento de fórmulas. Volver a una anterior crea una NUEVA revisión
+/// (kind ROLLBACK, restoredFromRevisionNo). Un disparador impide UPDATE y DELETE.
+model ConfigRevision {
+  id                     BigInt   @id @default(autoincrement())
+  family                 String
+  revisionNo             Int
+  payload                Json
+  reason                 String?
+  kind                   String
+  restoredFromRevisionNo Int?
+  activatedAt            DateTime @default(now())
+  activatedById          String?
+
+  activatedBy User? @relation("ConfigRevisionActivatedBy", fields: [activatedById], references: [id], onDelete: Restrict)
+
+  @@unique([family, revisionNo])
+}
+
+/// Borrador único por familia: editable, simulable y NO activo. `baseRevisionNo` y `version` detectan ediciones obsoletas.
+model ConfigDraft {
+  id             BigInt   @id @default(autoincrement())
+  family         String   @unique
+  payload        Json
+  baseRevisionNo Int
+  version        Int      @default(1)
+  note           String?
+  createdAt      DateTime @default(now())
+  updatedAt      DateTime @updatedAt
+  updatedById    String?
+
+  updatedBy User? @relation("ConfigDraftUpdatedBy", fields: [updatedById], references: [id], onDelete: Restrict)
 }

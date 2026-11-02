@@ -1,6 +1,6 @@
 # Estado de CS App
 
-Actualizado el 1 de noviembre de 2026 tras ejecutar [CSAPP-DOC-00-v1](../../prompts/CSAPP-DOC-00-v1.md), [CSAPP-01-v1](../../prompts/CSAPP-01-v1.md), [CSAPP-02-v1](../../prompts/CSAPP-02-v1.md), [CSAPP-03-v1](../../prompts/CSAPP-03-v1.md) [CSAPP-04-v1](../../prompts/CSAPP-04-v1.md) [CSAPP-05-v1](../../prompts/CSAPP-05-v1.md) y [CSAPP-06-v1](../../prompts/CSAPP-06-v1.md).
+Actualizado el 1 de noviembre de 2026 tras ejecutar [CSAPP-DOC-00-v1](../../prompts/CSAPP-DOC-00-v1.md), [CSAPP-01-v1](../../prompts/CSAPP-01-v1.md), [CSAPP-02-v1](../../prompts/CSAPP-02-v1.md), [CSAPP-03-v1](../../prompts/CSAPP-03-v1.md) [CSAPP-04-v1](../../prompts/CSAPP-04-v1.md) [CSAPP-05-v1](../../prompts/CSAPP-05-v1.md) [CSAPP-06-v1](../../prompts/CSAPP-06-v1.md) y [CSAPP-07-v1](../../prompts/CSAPP-07-v1.md).
 
 ## Resultado de CSAPP-DOC-00
 
@@ -102,6 +102,22 @@ Documentación: [finanzas y motor económico](../arquitectura/finanzas-motor-csa
 
 Documentación: [analítica](../arquitectura/analitica-csapp06.md), [Comparativa](../producto/comparativa.md), [Análisis Cliente](../producto/analisis-cliente.md), [catálogo CAL 31-36](../calculos/catalogo.md).
 
+## Resultado de CSAPP-07 (Pulse Rent y configuración)
+
+| Dato | Valor |
+| --- | --- |
+| Rama / base | `feature/CSAPP-07-pulse-rent-configuracion`, **apilada sobre la cabeza de la PR 7** (`8c92ab8`, CSAPP-06, sin fusionar; `main` f71b5b7 incluye CSAPP-05, merge de la PR 6, pero no 06). La rama designada por la sesión (`claude/new-session-omvsmd`) estaba ocupada por la PR 7 y no se contaminó; push normal, sin force |
+| PR | Apilada contra `claude/new-session-omvsmd` (ver enlace en la PR), sin fusionar. Cuando 06 entre en `main`, rebasar la base conservando historia |
+| Migración | `20261102090000_pulse_calidad_configuracion` (`ConfigRevision`, `ConfigDraft`) |
+| Implementado | Guard central de pruebas (prevención, no limpieza); `/pulse-rent` con 38 métricas (M01-M38), referencias explícitas, normalización, percentiles, cinco bandas, explicación, detalle y CSV; Administración › Configuración con secciones Economía / Pulse Rent / Calidad (borrador, simulación, activación, vuelta atrás, revisiones inmutables); pesos exactos de Calidad y simulador |
+| Probado | Linux: `npm test` 475 pruebas / 33 archivos, trabajador 300 000 filas, recorrido 291 comprobaciones, volumen 1 500 grupos. Ver [validación](../validacion/csapp-07.md) |
+| No probado | Windows/PowerShell; aceptación de Dennis; archivos reales; lector de pantalla |
+| Confirmado / propuesto / activado | **Confirmado:** pesos iguales 1/6 y la regla de redistribución sin Health; **propuestas desactivadas** (no aceptadas): umbrales, mínimos de muestra, composición «peor señal», mapeo de Client Health, plantilla del global; **activado por el Administrador:** nada (todo parte inicial/sin calibrar) |
+| Incidente de CSAPP-06 | Prevención implementada y probada. **Residuo pendiente de decisión de Dennis:** 2 cuentas sintéticas en la base `cs_app` del contenedor (no tocadas) |
+| Pendiente de Dennis | Revisar la PR, ejecutar la [guía](guia-powershell-csapp07.md), cargar fuentes, decidir sobre el residuo, aceptar o ajustar ECO 08, ZDT 11-13, ZTM 06-08, lista PAP, estados de bugs y los parámetros de Calidad |
+
+Documentación: [arquitectura](../arquitectura/pulse-configuracion-csapp07.md), [Pulse Rent](../producto/pulse-rent.md), [guía de configuración](guia-configuracion-csapp07.md), [catálogo CAL 37-44](../calculos/catalogo.md).
+
 ## Estado por trabajo
 
 Niveles: diseñado, documentado, implementado, probado, aceptado. Un criterio de aceptación escrito no es una prueba ejecutada.
@@ -113,12 +129,13 @@ Niveles: diseñado, documentado, implementado, probado, aceptado. Un criterio de
 | CSAPP-02 | Sí | Sí | Sí (PR 3 fusionada) | Sí en Linux con perfil sintético; Windows sin probar | No |
 | CSAPP-03 | Sí | Sí | Sí (PR 4 fusionada) | Sí en Linux con XLSX sintéticos; Windows sin probar | No |
 | CSAPP-04 | Sí | Sí | Sí (PR 5 fusionada según Git) | Sí en Linux con datos sintéticos; Windows sin probar | No |
-| CSAPP-05 | Sí | Sí | Sí (PR 6 sin fusionar) | Sí en Linux con datos sintéticos; Windows sin probar | No |
+| CSAPP-05 | Sí | Sí | Sí (PR 6 fusionada según Git) | Sí en Linux con datos sintéticos; Windows sin probar | No |
 | CSAPP-06 | Sí | Sí | Sí (PR sin fusionar) | Sí en Linux con datos sintéticos; Windows sin probar | No |
-| CSAPP-06 a CSAPP-10 | Sí, en [roadmap](roadmap.md) y contratos | Sí | No | No | No |
+| CSAPP-07 | Sí | Sí | Sí (PR apilada sin fusionar) | Sí en Linux con datos sintéticos; Windows sin probar | No |
+| CSAPP-08 a CSAPP-10 | Sí, en [roadmap](roadmap.md) y contratos | Sí | No | No | No |
 | Cargas reales | — | Política en [precarga y pruebas](precarga-y-pruebas.md) | No | No | No; las probará Dennis |
 
-CSAPP-06 a CSAPP-10 siguen sin iniciar y sin prompt redactado. La próxima acción es revisar la PR 6 de CSAPP-05, que Dennis cargue 2025 y 2026 de cada categoría y repita para validar la sustitución, y enviar el prompt de CSAPP-06.
+CSAPP-08 a CSAPP-10 siguen sin iniciar y sin prompt redactado. La próxima acción es revisar las PR 7 (CSAPP-06) y la apilada de CSAPP-07, que Dennis cargue sus fuentes, decida sobre las dos cuentas sintéticas de `cs_app` y envíe el prompt de CSAPP-08.
 
 ## Vigente
 

@@ -117,3 +117,21 @@ CAL 34. **Explicación de desviaciones.** Desviación contra objetivo = (objetiv
 CAL 35. **Desviación de horas.** `(horas reales − horas objetivo) / horas objetivo`, distinta de la de €/jornada; objetivo cero (ingreso cero) o sin ingreso propio: no calculable con motivo. Vive en el motor, no en la pantalla.
 
 CAL 36. **Estado y validación.** Las series mensuales propagan `provisional` y `partial` reales; con reproceso pendiente las magnitudes se conservan pero `validated=false`. El sello de datos por dominio (recuento, suma de versiones/revisiones, última modificación) sustituye a `MAX(drvVersion)` como identificador de estado. Versión del motor: **eco-v2**.
+
+## Pulse Rent y configuración (CSAPP-07)
+
+CAL 37. **Percentil inclusivo continuo.** Muestra ordenada numéricamente de N valores válidos; posición `(N−1)×q`; interpolación lineal entre los adyacentes; decimales exactos. `[0,10,20,30]` → P10 = 3, P25 = 7,5, mediana = 15, P75 = 22,5, P90 = 27, media = 15. N = 0: sin referencia; N = 1: cortes iguales al valor.
+
+CAL 38. **Bandas de Pulse.** Magnitudes de carga: `x≤P10` verde intenso, `≤P25` verde claro, `≤P75` amarillo, `≤P90` naranja, `>P90` rojo. Tarifa y €/jornada: `<P10` rojo, `<P25` naranja, `<P75` amarillo, `<P90` verde claro, `≥P90` verde intenso. Con cortes coincidentes se evalúa en ese orden, sin épsilon.
+
+CAL 39. **Exposición y normalización.** `UM = Σ usuarios_mes × días/días_del_mes`; horas por usuario y mes `H/UM`; equivalente anual `12·H/UM`; eventos por 100 usuarios `100·E/UM` (anual `1200·E/UM`); tarifa `12·R/UM` (año completo: ingreso anual / usuarios medios). 65 hasta mayo y 68 desde junio, a octubre completo: UM = 665 y stock 68. Corte parcial: se pondera la exposición, no las horas ni los eventos.
+
+CAL 40. **Equivalencia histórica de horas.** `H_CUM / U_corte / nº de mes × 12` (usuarios constantes y meses completos). Modo separado; no en corte parcial.
+
+CAL 41. **Cartera de referencia.** `ΣR / ΣH × jornada` sobre los grupos de la referencia económica; con 1000/10 h y 1000/30 h es 400 €/jornada, distinto de la media de los ratios (533,33). Cero horas con ingreso confirmado no bloquea; ingreso desconocido o perímetro parcial → cartera incompleta (no se publica). Desviación = `(cartera − grupo) / cartera`.
+
+CAL 42. **Escalados.** N3 = unión de ticket_id con destino PMO N3 o IT N3 (dos etiquetas cuentan una); mes de creación del ticket; `N2→N3 = tickets con N2 y N3 / tickets con N2`.
+
+CAL 43. **Pesos de Calidad.** Iguales: 1/6 exacto cada uno. Personalizados: seis porcentajes ≥ 0 con hasta dos decimales, suma exacta 10000 centésimas. Sin Client Health: `peso_i / (total − peso_Health)` (iguales: 20 %; 20+20+15+15+15+15 → 25 + 18,75×4). Fuente técnica ausente con peso positivo: global no calculable (no se redistribuye). Peso cero: no influye ni bloquea.
+
+CAL 44. **Reglas de umbral (simulación).** Menor mejor: verde `x≤a`, amarillo `a<x≤b`, rojo `x>b`. Mayor mejor: rojo `x<a`, amarillo `a≤x<b`, verde `x≥b`. Percentiles: dos posiciones ordenadas en [0,100] sobre una referencia explícita. Sin calibrar, sin referencia, sin dato o regla inválida: sin color. Global propuesto: severidad 0/0,5/1 con pesos efectivos y dos límites elegidos en [0,1]; sin límites no hay color final. Envejecido = edad **>** umbral; stock por usuarios al corte, flujo por exposición.

@@ -1,6 +1,7 @@
-import { testDatabaseUrl } from "./test-db";
+import "dotenv/config";
+import { activateTestTarget } from "@/lib/test-guard";
 
-// Antes de que cualquier módulo lea la configuración: la aplicación apunta a la base de pruebas.
-process.env.DATABASE_URL = testDatabaseUrl();
+// Antes de que cualquier módulo lea la configuración: la aplicación apunta a la base de pruebas aprobada (y a ninguna otra).
+activateTestTarget();
 process.env.BETTER_AUTH_SECRET ||= "test-secret-0123456789abcdef0123456789abcdef";
 process.env.BETTER_AUTH_URL ||= "http://localhost:3000";

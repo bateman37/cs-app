@@ -11,14 +11,14 @@ Estado de la regla: **Confirmado** = decidido por Dennis; **Propuesto** = parám
 | Funcional sencillo para negocio | [Resumen](producto/funcional-resumen.md) | enlaza, no define | Confirmado |
 | Cuatro vistas, Administración, ámbitos | [Alcance](producto/alcance.md) | — | Confirmado |
 | Grupo Cliente, Cliente, personal, usuarios | [Maestros](producto/maestros.md) | MST 01-08, USR 01-05 | Mixto (aprobar reapertura de años en USR 03; exclusión por arranque en MST 04 pendiente) |
-| Administración, pesos y configuración | [Administración](producto/administracion.md) | ADM 01-11 | Mixto (umbrales de Calidad y backlog propuestos) |
+| Administración, pesos y configuración | [Administración](producto/administracion.md) | ADM 01-15 | Mixto (umbrales de Calidad y backlog propuestos; pesos iguales confirmados; configuración implementada en CSAPP-07) |
 | Comparativa | [Contrato de vista](producto/comparativa.md) | ECO 01-08 | Mixto (Silver en ECO 08 propuesto); implementada en CSAPP-06 |
 | Análisis Cliente | [Contrato de vista](producto/analisis-cliente.md) | — | Confirmado; implementado en CSAPP-06 |
-| Pulse Rent | [Contrato de vista](producto/pulse-rent.md) | PUL 01-05 | Confirmado (bandas del Excel) |
+| Pulse Rent | [Contrato de vista](producto/pulse-rent.md) | PUL 01-05 | Confirmado (bandas del Excel); implementado en CSAPP-07 |
 | Seis indicadores de Calidad | [Calidad](producto/calidad.md) | QLT 01-10, QHL 01 | Mixto (color de Incidentes y problemas propuesto) |
 | Stock y antigüedad | [Backlog](producto/backlog-antiguedad.md) | BACK 01-12 | Mixto (BACK 07-08 propuesta a calibrar) |
 | Origen y actuación | [Diagnóstico](producto/diagnostico-origen.md) | DIA 01-07 | Confirmado; catálogo de causas configurable |
-| Fórmulas y denominadores | [Catálogo](calculos/catalogo.md) | CAL 01-36 | Confirmado; implementado en CSAPP-05 el motor económico (CAL 17-30) y corregido en CSAPP-06 (CAL 31-36, eco-v2); tolerancias de conciliación propuestas (CAL 08) |
+| Fórmulas y denominadores | [Catálogo](calculos/catalogo.md) | CAL 01-44 | Confirmado; implementado en CSAPP-05 el motor económico (CAL 17-30) y corregido en CSAPP-06 (CAL 31-36, eco-v2); tolerancias de conciliación propuestas (CAL 08) |
 | Importación común y avisos | [Proceso común](importaciones/proceso-comun.md) | IMP 01-07 | Confirmado |
 | Tickets: único perfil de ocho campos | [Tickets](importaciones/zendesk-tickets.md) | ZDT 01-10 (11-13 implementación) | Confirmado; ZDT 11-13 interpretaciones implementadas pendientes de aceptación |
 | Bugs VFS y VSW separados | [Bugs de producto](importaciones/bugs-producto.md) | BUG 01-08 | Confirmado; implementado en CSAPP-04 |
@@ -53,6 +53,9 @@ Estado de la regla: **Confirmado** = decidido por Dennis; **Propuesto** = parám
 | Implementado en CSAPP-06: servicios analíticos, sello de datos, CSV y permisos | [Analítica](arquitectura/analitica-csapp06.md) | CAL 31-36 | Implementado; probado en Linux |
 | Guía PowerShell de CSAPP-06 | [Guía](plan/guia-powershell-csapp06.md) | — | Sin probar en Windows |
 | Resultados de validación de CSAPP-06 | [Validación](validacion/csapp-06.md) | — | Registro |
+| Implementado en CSAPP-07: Pulse Rent, configuración versionada, guard de pruebas | [Decisiones técnicas](arquitectura/pulse-configuracion-csapp07.md) | CAL 37-44, ADM 12-15 | Implementado; probado en Linux |
+| Guías de CSAPP-07: PowerShell y configuración | [PowerShell](plan/guia-powershell-csapp07.md) · [Configuración](plan/guia-configuracion-csapp07.md) | — | Sin probar en Windows |
+| Resultados de validación de CSAPP-07 | [Validación](validacion/csapp-07.md) | — | Registro |
 | DOC-00 y diez entregas | [Roadmap](plan/roadmap.md) | — | Confirmado |
 | Precarga futura y pruebas de Dennis | [Política](plan/precarga-y-pruebas.md) | — | Confirmado |
 | Progreso real | [Estado](plan/estado.md) | — | Registro vivo |

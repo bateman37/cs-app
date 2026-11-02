@@ -3,7 +3,7 @@ import { Dec, parseYmd } from "@/domain/finance";
 import { todayMadrid } from "@/domain/vigencia";
 import { DIAGNOSIS_FAMILIES, INDICATOR_KEYS, INDICATOR_NAME, UNIT_LABEL, type IndicatorKey, ageDays, diagnosisFamily, isAged, type DiagnosisFamily, type QualityConfig } from "@/domain/quality-config";
 import { chooseSnapshot } from "@/domain/quality-coverage";
-import { qualityPeriod, type QualityQuery } from "@/domain/quality-query";
+import { qualityPeriod, type QualityPeriod, type QualityQuery } from "@/domain/quality-query";
 import { INCIDENT_INFRA_CAUSE } from "@/domain/zendesk";
 import { N3_DESTINATIONS, ticketSetSql, timeCol } from "@/server/pulse/sql";
 import { getActive } from "@/server/pulse/config";
@@ -11,7 +11,8 @@ import { readSnapshot, type Tx } from "@/server/analytics/snapshot";
 import { SERVICE_OF_SQL } from "@/server/economics/engine";
 import { loadTicketBatches } from "./coverage";
 import { stockSetSql, ticketFacts, validBugLinkSql, type QScopeDb } from "./facts";
-import { agePercentile, computeQuality } from "./engine";
+import { agePercentile, computeQuality, type BacklogInfo, type QualityRow } from "./engine";
+import { evolutionMonths, evolutionRows } from "./evolution";
 import { readDataStamp } from "@/server/analytics/stamp";
 
 /**
@@ -272,13 +273,48 @@ export type Evolution = {
   note: string;
 };
 
+/** Punto mensual de la serie a partir de la fila evaluada de ese mes (común a la implementación por conjuntos y a la de referencia). */
+function evolutionPoint(month: number, period: { from: string; cut: string; provisional: boolean }, r: QualityRow, backlog: BacklogInfo): EvolutionPoint {
+  const indicators = {} as Record<IndicatorKey, EvolutionIndicator>;
+  for (const k of INDICATOR_KEYS) {
+    const i = r.evaluation.indicators[k];
+    const e = r.explain[k];
+    indicators[k] = {
+      key: k, name: INDICATOR_NAME[k], value: i.value, unit: UNIT_LABEL[i.unit], color: i.color, status: i.status, availability: i.availability, reason: i.reason, sampleN: i.n ?? null, cuts: i.cuts ?? null,
+      numerator: e.numerator, denominator: e.denominator, breakdown: e.breakdown, notes: e.notes, coverage: e.coverage.map((c) => ({ source: c.source, state: c.state })),
+      components: (i.components ?? []).map((c) => ({ id: c.id, label: c.label, value: c.value, color: c.color, status: c.status, n: c.n ?? null })),
+    };
+  }
+  return {
+    month, period: { from: period.from, cut: period.cut, provisional: period.provisional }, users: r.users, indicators,
+    global: { color: r.evaluation.global.color, score: r.evaluation.global.score, status: r.evaluation.global.status, reason: r.evaluation.global.reason },
+    backlog: { kind: backlog.choice.kind, observedOn: backlog.observedOn, exact: backlog.exact, provisional: backlog.provisional, usersMonth: backlog.usersMonth, note: backlog.note },
+    healthState: r.health.state, uncalibrated: r.flags.uncalibrated,
+  };
+}
+
 /**
- * Evolución: CADA mes se evalúa con la MISMA función que la ficha mensual (`computeQuality`) sobre su propia cohorte, usuarios, cobertura, fotografía y referencias
- * (percentiles recalculados con la cohorte de ese mes); nunca se prestan umbrales de otro mes. Todos los puntos usan la misma revisión de configuración y se leen
- * en la misma instantánea. Un mes sin cobertura no es un cero confirmado; el stock sigue la política de fotografía (EXACT/antigüedad máxima) y una foto anterior
- * conserva su fecha y su carácter provisional. Coste: un número constante de consultas por mes (documentado), no una por entidad/indicador.
+ * Evolución mensual de una entidad (CSAPP-09 §3, CSAPP-10 §5): CADA mes se evalúa con el MISMO evaluador que la ficha mensual (`evaluateMonth`) sobre su propia
+ * cohorte, usuarios, cobertura, fotografía y referencias (percentiles recalculados con la cohorte de ese mes); nunca se prestan umbrales de otro mes. Todos
+ * los puntos usan la misma revisión de configuración y se leen en la misma instantánea. Un mes sin cobertura no es un cero confirmado; el stock sigue la
+ * política de fotografía (EXACT/antigüedad máxima) y una foto anterior conserva su fecha y su carácter provisional.
+ * Coste (CSAPP-10): los hechos de todos los meses se leen por conjuntos agrupados por mes (`evolutionRows`): el número de sentencias no depende del
+ * número de meses ni de entidades. La ruta antigua (un `computeQuality` completo por mes) se conserva SOLO como referencia de pruebas: `evolutionReferenceIn`.
  */
 export async function evolutionIn(tx: Tx, q: QualityQuery, id: string, cfg: QualityConfig, today = todayMadrid()): Promise<Evolution> {
+  const { lastM, year, per } = evolutionMonths(q, today);
+  const src = await evolutionRows(tx, q, id, cfg, today);
+  const points: EvolutionPoint[] = [];
+  for (const m of src?.months ?? []) if (m.row) points.push(evolutionPoint(m.month, m.period, m.row, m.backlog));
+  return evolutionTail(tx, q, id, { year, lastM, per, points, meta: src ? { ...src.meta, simulated: q.sim === "borrador" } : null });
+}
+
+/**
+ * SOLO PARA PRUEBAS (CSAPP-10): implementación de REFERENCIA de la evolución, la de CSAPP-09 — un `computeQuality` completo (con la cohorte de la cartera)
+ * por mes. Es correcta pero cara (≈12 evaluaciones completas); no la usa ningún código de producción. `tests/csapp10-evolucion-paridad.test.ts` comprueba
+ * que `evolutionIn` da el mismo resultado campo a campo.
+ */
+export async function evolutionReferenceIn(tx: Tx, q: QualityQuery, id: string, cfg: QualityConfig, today = todayMadrid()): Promise<Evolution> {
   const per = qualityPeriod(q.base.date, q.base.mode, today);
   const year = per.year;
   const lastM = per.future ? 0 : per.month;
@@ -293,23 +329,14 @@ export async function evolutionIn(tx: Tx, q: QualityQuery, id: string, cfg: Qual
     meta ??= { qualityRevision: v.config.revisionNo, qualityPersisted: v.config.persisted, pulseRevision: v.pulseRevision, simulated: q.sim === "borrador" };
     const r = v.rows.find((x) => x.id === id);
     if (!r) continue;
-    const indicators = {} as Record<IndicatorKey, EvolutionIndicator>;
-    for (const k of INDICATOR_KEYS) {
-      const i = r.evaluation.indicators[k];
-      const e = r.explain[k];
-      indicators[k] = {
-        key: k, name: INDICATOR_NAME[k], value: i.value, unit: UNIT_LABEL[i.unit], color: i.color, status: i.status, availability: i.availability, reason: i.reason, sampleN: i.n ?? null, cuts: i.cuts ?? null,
-        numerator: e.numerator, denominator: e.denominator, breakdown: e.breakdown, notes: e.notes, coverage: e.coverage.map((c) => ({ source: c.source, state: c.state })),
-        components: (i.components ?? []).map((c) => ({ id: c.id, label: c.label, value: c.value, color: c.color, status: c.status, n: c.n ?? null })),
-      };
-    }
-    points.push({
-      month: m, period: { from: v.period.from, cut: v.period.cut, provisional: v.period.provisional }, users: r.users, indicators,
-      global: { color: r.evaluation.global.color, score: r.evaluation.global.score, status: r.evaluation.global.status, reason: r.evaluation.global.reason },
-      backlog: { kind: v.backlog.choice.kind, observedOn: v.backlog.observedOn, exact: v.backlog.exact, provisional: v.backlog.provisional, usersMonth: v.backlog.usersMonth, note: v.backlog.note },
-      healthState: r.health.state, uncalibrated: r.flags.uncalibrated,
-    });
+    points.push(evolutionPoint(m, v.period, r, v.backlog));
   }
+  return evolutionTail(tx, q, id, { year, lastM, per, points, meta });
+}
+
+/** Cola común de la serie: CUM técnico, sello de la lectura y referencia. */
+async function evolutionTail(tx: Tx, q: QualityQuery, id: string, s: { year: number; lastM: number; per: QualityPeriod; points: EvolutionPoint[]; meta: { qualityRevision: number; qualityPersisted: boolean; pulseRevision: number; simulated: boolean } | null }): Promise<Evolution> {
+  const { year, lastM, per, points, meta } = s;
   // CUM técnico: mismo corte del año anterior (magnitudes; NO un global anual ni un promedio de semáforos).
   const scope = scopeOf(q);
   const ymFrom = `${year}-01-01`;

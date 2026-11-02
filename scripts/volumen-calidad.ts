@@ -137,6 +137,24 @@ import { performance } from "node:perf_hooks";
   await run("Detalle de una familia (1.ª página)", () => diagnosisTickets(admin.id, Q(), "ESTANDAR", 1, 50, NOW), json);
   await run("Matriz de Client Health (1.ª página)", () => getHealthMatrix(admin.id, { scope: "group", year: 2026, q: "", page: 1, pageSize: 50 }), json);
   await run("CSV completo de la cartera", () => qualityCsv(admin.id, Q(), "cartera", { now: NOW }), (r) => r.body.length);
+  // CSAPP-09: conciliación y exportación completa (solo en esta rama; no existen en 08).
+  try {
+    const { runReconciliation } = await import("../src/server/reconciliation/service");
+    const { createExport } = await import("../src/server/exports/service");
+    const { runExportOnce } = await import("../src/server/exports/run");
+    const { mkdtempSync } = await import("node:fs");
+    const { tmpdir } = await import("node:os");
+    const nodePath = await import("node:path");
+    process.env.CSAPP_EXPORT_DIR = mkdtempSync(nodePath.join(tmpdir(), "vol-exp-"));
+    await run("Conciliación (tres niveles, todo el ámbito, 2026 hasta 31/10)", () => runReconciliation(admin.id, { scope: "group", sel: "", desde: "2026-01-01", hasta: "2026-10-31", servicio: "TOTAL" }), json);
+    for (const ds of ["tickets", "horas", "pap", "bugs"]) {
+      await run(`Exportación completa «${ds}»: solicitud (totales + sello)`, () => createExport(admin.id, { dataset: ds, scope: "group", sel: "", desde: "2026-01-01", hasta: "2026-10-31", servicio: "TOTAL" }), json);
+      await run(`Exportación completa «${ds}»: preparación + generación en el trabajador`, () => runExportOnce("volumen"), () => 0);
+    }
+  } catch (e) {
+    if (!(e instanceof Error) || !/Cannot find module|Failed to load url/i.test(e.message)) throw e;
+    console.log("(conciliación/exportación no existen en esta versión)");
+  }
   console.log(`\n| Medida | s | sentencias | KB | RSS Δ / total MB |\n| --- | --- | --- | --- | --- |\n${rows.join("\n")}`);
   await prisma.$disconnect();
 })();

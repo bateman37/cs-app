@@ -214,11 +214,12 @@ async function writeFilePart(job: ClaimedExport, jobId: string, ds: DatasetDef, 
     let last = from - 1;
     let page = 0;
     while (last < to) {
-      const rows = await prisma.$queryRaw<{ seq: string; cells: (string | null)[] }[]>(Prisma.sql`
-        SELECT seq::text AS seq, cells FROM "ExportRow" WHERE "jobId" = ${jobId} AND "fileKey" = ${f.fileKey} AND seq > ${last} AND seq <= ${to} ORDER BY seq LIMIT ${cfg.pageRows}`);
+      // OJO: la columna de salida NO se llama `seq` (un `ORDER BY seq` ordenaría por el texto de salida, orden léxico, y saltaría filas).
+      const rows = await prisma.$queryRaw<{ pos: string; cells: (string | null)[] }[]>(Prisma.sql`
+        SELECT r.seq::text AS pos, r.cells FROM "ExportRow" r WHERE r."jobId" = ${jobId} AND r."fileKey" = ${f.fileKey} AND r.seq > ${last} AND r.seq <= ${to} ORDER BY r.seq LIMIT ${cfg.pageRows}`);
       if (rows.length === 0) break;
       await put(rows.map((r) => csvLine(toCsvCells(f.columns, r.cells))).join("\r\n") + "\r\n");
-      last = Number(rows[rows.length - 1].seq);
+      last = Number(rows[rows.length - 1].pos);
       done += rows.length;
       page++;
       await reportProgress(job, done);

@@ -15,7 +15,6 @@ const fmtBytes = (b: string) => { const n = Number(b); return n > 1048576 ? `${(
 export function ExportJobCard({ initial, allowActions = true }: { initial: ExportView; allowActions?: boolean }) {
   const router = useRouter();
   const [job, setJob] = useState(initial);
-  useEffect(() => setJob(initial), [initial]);
   useEffect(() => {
     if (!ACTIVE.has(job.status) || !job.mine) return;
     const t = setInterval(async () => {

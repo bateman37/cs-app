@@ -30,7 +30,7 @@ export async function ExportPanel({ userId, scope, sel, selName, from, to, servi
       {jobs.length > 0 ? (
         <>
           <h4>Sus exportaciones recientes</h4>
-          <ul style={{ padding: 0 }}>{jobs.map((j) => <ExportJobCard key={j.id} initial={j} />)}</ul>
+          <ul style={{ padding: 0 }}>{jobs.map((j) => <ExportJobCard key={`${j.id}:${j.status}:${j.progressDone}:${j.attempts}`} initial={j} />)}</ul>
         </>
       ) : <p className="muted">Todavía no ha solicitado exportaciones.</p>}
     </section>

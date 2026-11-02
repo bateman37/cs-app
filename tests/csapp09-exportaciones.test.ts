@@ -79,6 +79,22 @@ describe("exportación completa de hechos", () => {
     delete process.env.CSAPP_EXPORT_PAGE_ROWS;
   });
 
+  it("más de 10 filas y bloques pequeños: orden numérico estable, sin saltos ni repeticiones (regresión: ORDER BY sobre el texto de salida)", async () => {
+    const { g, c, zd } = await world();
+    for (let i = 1; i <= 25; i++) await addZd({ batchId: zd.id, date: `2026-10-${String((i % 28) + 1).padStart(2, "0")}`, minutes: i, groupId: g.id, clientId: c.id });
+    process.env.CSAPP_EXPORT_PAGE_ROWS = "3";
+    const job = await createExport(admin.id, req());
+    await runExportOnce(WK);
+    const done = await getExport(admin.id, job.id);
+    expect(done).toMatchObject({ status: "READY", progressDone: "25" });
+    const { rows } = await csvOf((await authorizeDownload(admin.id, job.id, done.files.find((f) => f.fileKey === "horas")!.id)).storageId);
+    expect(rows).toHaveLength(25);
+    expect(new Set(rows.map((r) => r.id_entrada)).size).toBe(25);
+    expect(rows.reduce((s, r) => s + Number(r.minutos.replace(",", ".")), 0)).toBe(325); // 1 + … + 25
+    expect(rows.map((r) => r.fecha_trabajo)).toEqual([...rows.map((r) => r.fecha_trabajo)].sort());
+    delete process.env.CSAPP_EXPORT_PAGE_ROWS;
+  });
+
   it("tickets: la suma de cuenta_numerador es el numerador del sexto indicador (un problema con dos bugs cuenta una vez; un bug con dos problemas, dos) y N3 no se duplica", async () => {
     const { g, c } = await world();
     const tb = await batchOf(admin.id, "zendesk-tickets", "2026-10-31");

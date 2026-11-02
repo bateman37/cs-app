@@ -123,7 +123,7 @@ Documentación: [arquitectura](../arquitectura/pulse-configuracion-csapp07.md), 
 | Dato | Valor |
 | --- | --- |
 | Rama / base | `feature/CSAPP-08-calidad-client-health`, creada desde la cabeza de la PR 7 (`e0f17e4c8e1a47ad08d10b8eeaf2e5f407c66bb5`, que ya contiene 06 y 07 tras integrar la PR 8); `main` (`f71b5b7`) no los contiene. La rama de la sesión (`claude/new-session-omvsmd`) es la de la PR 7 y no se contaminó; push normal, sin force |
-| PR | Apilada contra `claude/new-session-omvsmd`, sin fusionar ni desplegar (ver el enlace en la PR). Cuando 06/07 entren en `main`, ajustar la base conservando historia |
+| PR | [PR 9](https://github.com/bateman37/cs-app/pull/9), apilada contra `claude/new-session-omvsmd`, sin fusionar ni desplegar. Cuando 06/07 entren en `main`, ajustar la base conservando historia |
 | Migración | `20261103090000_calidad_health_cobertura` (`HealthFeedback`, `HealthFeedbackEvent`, `QualityNote`, `UploadCoverageDeclaration`, índices y restricciones); las seis anteriores y la `ConfigRevision` v1 intactas |
 | Implementado | `/calidad` (cartera, Client Health editable, diagnóstico por origen, backlog por antigüedad, detalle explicado, evolución, CSV) con el motor común por conjuntos y evaluador puro; `quality-config-v2` con adaptador de v1; contrato de cobertura declarada en Cargas, compartido con Pulse; simulación del borrador sobre datos; integración en Análisis Cliente; correcciones de §2 con contraejemplos |
 | Probado | Linux con datos sintéticos: ver [validación](../validacion/csapp-08.md). Windows sin probar; sin lector de pantalla |

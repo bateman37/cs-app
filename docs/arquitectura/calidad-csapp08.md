@@ -56,7 +56,7 @@ La cobertura por fuente, periodo y tipo de dato la sustenta una declaración vig
 
 ## Sello de datos y lectura coherente
 
-`readDataStamp` añade observaciones de tickets, estado de lotes, Client Health y declaraciones de cobertura. Una observación nueva **sin cambio de contenido**, una reversión, un feedback editado o una configuración distinta invalidan el resultado anterior. El detalle y el CSV comparan el sello recibido y avisan de una lectura nueva (`x-lectura-nueva`); no simulan la instantánea antigua.
+`readDataStamp` añade observaciones de tickets, estado de lotes, Client Health y declaraciones de cobertura. **CSAPP-09** audita el sello como **detector de cambios** (no certificado ni archivo): añade las observaciones de Work Items (una observación nueva sin cambio de contenido cambia la frescura sin crear un bug nuevo), los punteros de observación vigente de tickets y Work Items, el estado derivado y la fecha de derivación de los vínculos y su evidencia (que un lote sustente o deje de sustentar un vínculo): seis omisiones demostradas por `tests/csapp09-sello.test.ts`, que falla con el sello anterior. El CSV de Client Health se lee en **una** instantánea con sello y fecha de lectura (antes paginaba con llamadas independientes y devolvía un sello vacío). Ver [validación de CSAPP-09](../validacion/csapp-09.md). Una observación nueva **sin cambio de contenido**, una reversión, un feedback editado o una configuración distinta invalidan el resultado anterior. El detalle y el CSV comparan el sello recibido y avisan de una lectura nueva (`x-lectura-nueva`); no simulan la instantánea antigua.
 
 ## Permisos
 

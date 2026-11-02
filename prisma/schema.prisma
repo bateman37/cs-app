@@ -1586,3 +1586,42 @@ model ReconRun {
 
   @@index([createdAt])
 }
+
+// ---------------------------------------------------------------- CSAPP-10: operación (latido por trabajador, identidad de instalación)
+
+enum WorkerState {
+  IDLE
+  BUSY
+  STOPPING
+  STOPPED
+}
+
+/// Latido por trabajador, en reposo o procesando (CSAPP-10 §4). La ausencia de trabajos recientes ya no se toma como prueba de que esté caído.
+model WorkerInstance {
+  id              String      @id
+  pid             Int
+  host            String
+  version         String
+  sha             String
+  state           WorkerState @default(IDLE)
+  /// Trabajo en curso (tipo `upload:PREPARE`, `export:GENERATING`…) e identificador; nulo en reposo.
+  currentKind     String?
+  currentJobId    String?
+  currentBatchId  String?
+  /// Último avance observable del trabajo en curso (cada bloque); permite distinguir «presente pero sin avanzar».
+  progressAt      DateTime?
+  startedAt       DateTime    @default(now())
+  lastSeenAt      DateTime    @default(now())
+  stoppedAt       DateTime?
+  /// Petición de cierre ordenado (multiplataforma: no depende de señales POSIX).
+  stopRequestedAt DateTime?
+
+  @@index([lastSeenAt])
+}
+
+/// Metadatos clave/valor de la instalación (identificador estable que enlaza base y almacenes privados).
+model InstallationMeta {
+  key       String   @id
+  value     String
+  updatedAt DateTime @default(now())
+}

@@ -1,5 +1,7 @@
 # Guía PowerShell de CSAPP-02: migrar, configurar, arrancar web y trabajador, probar
 
+> **Guía histórica (CSAPP-02).** Describe el arranque de esa entrega y puede contradecir la operación actual. La guía **vigente** de instalación, arranque y operación es [instalación y operación](../operacion/instalacion-operacion.md); los comandos de aquí no se usan en una instalación operativa.
+
 Escrita para Windows 10/11 con PowerShell, Node.js 22 LTS y PostgreSQL ≥13 local. **No se ha ejecutado en Windows**: lo probado es Linux (ver [validación](../validacion/csapp-02.md)). Si un comando falla, avisar. Parte de que [CSAPP-01](guia-powershell-csapp01.md) ya funciona (`.env`, base `cs_app`, cuentas). Todo desde la carpeta del repositorio. No se imprime ninguna credencial.
 
 ## 1. Actualizar sin borrar nada

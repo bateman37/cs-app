@@ -1,5 +1,7 @@
 # Guía PowerShell de CSAPP-04: migrar, arrancar y probar Wrike, PAP y bugs VFS/VSW
 
+> **Guía histórica (CSAPP-04).** Describe el arranque de esa entrega y puede contradecir la operación actual. La guía **vigente** de instalación, arranque y operación es [instalación y operación](../operacion/instalacion-operacion.md); los comandos de aquí no se usan en una instalación operativa.
+
 Escrita para Windows 10/11 con PowerShell, Node.js 22 LTS y PostgreSQL ≥13 local. **No se ha ejecutado en Windows**: lo probado es Linux (ver [validación](../validacion/csapp-04.md)). Parte de que [CSAPP-01](guia-powershell-csapp01.md), [CSAPP-02](guia-powershell-csapp02.md) y [CSAPP-03](guia-powershell-csapp03.md) ya funcionan. Todo desde la carpeta del repositorio. No se imprime ninguna credencial. **No se precarga ningún dato: los archivos reales los carga usted.**
 
 ## 1. Actualizar sin borrar nada

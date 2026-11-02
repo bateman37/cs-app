@@ -28,12 +28,12 @@ const ZERO = Dec.ZERO;
 export type Scope = "group" | "client";
 const QSC: Record<Scope, QScope> = { group: "GRUPO", client: "CLIENTE" };
 
-type Ent = { id: string; name: string; parent: string | null; groupId: string | null; isActive: boolean };
+export type Ent = { id: string; name: string; parent: string | null; groupId: string | null; isActive: boolean };
 const fold = (s: string) => s.normalize("NFD").replace(/[̀-ͯ]/g, "").toLowerCase();
 
 const toCriteria = (m: GroupMeta): CriteriaMeta => ({ support: m.support, hosting: m.hosting, complexity: m.complexity, product: { ...m.product, contains: m.product.contains } });
 
-async function loadEntities(tx: Tx, scope: Scope, groups: GroupMeta[]): Promise<Ent[]> {
+export async function loadEntities(tx: Tx, scope: Scope, groups: GroupMeta[]): Promise<Ent[]> {
   if (scope === "group") return groups.map((g) => ({ id: g.id, name: g.name, parent: null, groupId: g.id, isActive: g.isActive }));
   const gn = new Map(groups.map((g) => [g.id, g.name]));
   const rows = await tx.client.findMany({ where: { isInternal: false }, select: { id: true, name: true, isActive: true, groupId: true }, orderBy: [{ name: "asc" }, { id: "asc" }] });
@@ -42,8 +42,8 @@ async function loadEntities(tx: Tx, scope: Scope, groups: GroupMeta[]): Promise<
 
 // ---------------------------------------------------------------- Usuarios (propios de cada ámbito)
 
-type UserLookup = (id: string, y: number, m: number) => number | null;
-async function loadUsers(tx: Tx, scope: Scope, ids: string[], years: number[]): Promise<UserLookup> {
+export type UserLookup = (id: string, y: number, m: number) => number | null;
+export async function loadUsers(tx: Tx, scope: Scope, ids: string[], years: number[]): Promise<UserLookup> {
   const col = scope === "group" ? '"groupId"' : '"clientId"';
   const map = new Map<string, number>();
   if (ids.length > 0) {
@@ -125,13 +125,10 @@ function bandsOf(ages: number[], bands: { from: number; to: number | null }[]): 
   return bands.map((b) => ages.filter((a) => a >= b.from && (b.to === null || a <= b.to)).length);
 }
 
-/** Cálculo del stock de una fotografía agregado por entidad (una consulta). */
-export async function loadStock(tx: Tx, scope: Scope, ids: string[], batchId: string, thresholds: { incident: number | null; problem: number | null }, observedOn: string, bands: { from: number; to: number | null }[]): Promise<Map<string, StockEntity>> {
+type StockRow = { entity: string; type: string; status: string; created_on: string; status_known: boolean; type_known: boolean };
+/** Acumula las filas observadas de UNA fotografía por entidad (edad al día observado, envejecidos por umbral y tramos). */
+function accumulateStock(rows: StockRow[], thresholds: { incident: number | null; problem: number | null }, observedOn: string, bands: { from: number; to: number | null }[]): Map<string, StockEntity> {
   const out = new Map<string, StockEntity>();
-  if (ids.length === 0) return out;
-  const rows = await tx.$queryRaw<{ entity: string; type: string; status: string; created_on: string; status_known: boolean; type_known: boolean }[]>(Prisma.sql`
-    SELECT s.entity, s.type, s.status, s.created_on, s.status_known, s.type_known FROM (${stockSetSql(scope, ids, batchId, { activeOnly: true })}) s
-    WHERE s.entity IS NOT NULL`); // los resueltos no entran en el stock: no se leen fila a fila
   const ent = (id: string): StockEntity => {
     let e = out.get(id);
     if (!e) out.set(id, (e = { incident: emptyStock(), problem: emptyStock(), observedOther: 0, resolved: 0, unknownStatus: 0, questionTask: 0, usersAtD: null }));
@@ -155,78 +152,68 @@ export async function loadStock(tx: Tx, scope: Scope, ids: string[], batchId: st
   return out;
 }
 
-const cov = (declarations: Declaration[], source: CoverageSource, from: string, to: string, kind: "FLOW" | "STOCK" = "FLOW") => coverageOf(source, declarations, from, to, kind);
+/** Cálculo del stock de una fotografía agregado por entidad (una consulta). */
+export async function loadStock(tx: Tx, scope: Scope, ids: string[], batchId: string, thresholds: { incident: number | null; problem: number | null }, observedOn: string, bands: { from: number; to: number | null }[]): Promise<Map<string, StockEntity>> {
+  if (ids.length === 0) return new Map();
+  const rows = await tx.$queryRaw<StockRow[]>(Prisma.sql`
+    SELECT s.entity, s.type, s.status, s.created_on, s.status_known, s.type_known FROM (${stockSetSql(scope, ids, batchId, { activeOnly: true })}) s
+    WHERE s.entity IS NOT NULL`); // los resueltos no entran en el stock: no se leen fila a fila
+  return accumulateStock(rows, thresholds, observedOn, bands);
+}
 
-export async function computeQuality(tx: Tx, q: QualityQuery, opts: QualityOptions = {}): Promise<QualityView> {
-  const today = todayMadrid(opts.now ?? new Date());
-  const active = await getActive(tx, "QUALITY", q.qrev ?? undefined);
-  const cfg: QualityConfig = opts.configOverride ?? active.payload;
-  const pulse = await getActive(tx, "PULSE", q.prev ?? undefined);
-  const manifest = await getManifest(tx);
-  const period = qualityPeriod(q.base.date, q.base.mode, today);
-  const scope: Scope = q.scope;
-  const groups = await loadGroupMeta(tx, period.cut);
-  await snapshotPoint("quality:after-meta");
-  const all = await loadEntities(tx, scope, groups);
-  const ids = all.map((e) => e.id);
-  const readAt = (await tx.$queryRaw<{ t: Date }[]>(Prisma.sql`SELECT now() AS t`))[0].t.toISOString();
-  const stamp = opts.skipStamp ? "" : (await readDataStamp(tx)).stamp;
-  const declarations = await loadDeclarations(tx);
-  const ticketBatches = await loadTicketBatches(tx);
+/** Stock de VARIAS fotografías con una sola consulta (cada una con su día observado); mismas filas y mismo cálculo que `loadStock` por lote. */
+export async function loadStocks(tx: Tx, scope: Scope, ids: string[], photos: { batchId: string; observedOn: string }[], thresholds: { incident: number | null; problem: number | null }, bands: { from: number; to: number | null }[]): Promise<Map<string, Map<string, StockEntity>>> {
+  const out = new Map<string, Map<string, StockEntity>>(photos.map((p) => [p.batchId, new Map<string, StockEntity>()]));
+  if (ids.length === 0 || photos.length === 0) return out;
+  const rows = await tx.$queryRaw<(StockRow & { batch_id: string })[]>(Prisma.sql`
+    SELECT s.batch_id, s.entity, s.type, s.status, s.created_on, s.status_known, s.type_known FROM (${stockSetSql(scope, ids, photos.map((p) => p.batchId), { activeOnly: true })}) s
+    WHERE s.entity IS NOT NULL`);
+  const by = new Map<string, StockRow[]>();
+  for (const r of rows) (by.get(r.batch_id) ?? by.set(r.batch_id, []).get(r.batch_id)!).push(r);
+  for (const p of photos) out.set(p.batchId, accumulateStock(by.get(p.batchId) ?? [], thresholds, p.observedOn, bands));
+  return out;
+}
 
-  // --- Filtros de FILAS (identidad, producto/soporte/alojamiento/complejidad vigentes, estado): no tocan las referencias.
-  const needle = fold(q.base.q);
-  const visibleGroups = new Set(filterGroups(groups, { ...q.base, q: "" }).map((g) => g.id));
-  const filtersOn = q.base.support.length + q.base.hosting.length + q.base.complexity.length > 0 || q.base.product !== "" || q.base.coverage !== "todas";
-  const visible = all.filter((e) => {
-    if (q.base.status !== "todos" && (q.base.status === "activos") !== e.isActive) return false;
-    if (needle !== "" && !fold(e.name).includes(needle) && !fold(e.parent ?? "").includes(needle)) return false;
-    if (scope === "group") return visibleGroups.has(e.id);
-    return !filtersOn || (e.groupId !== null && visibleGroups.has(e.groupId));
-  });
+export const cov = (declarations: Declaration[], source: CoverageSource, from: string, to: string, kind: "FLOW" | "STOCK" = "FLOW") => coverageOf(source, declarations, from, to, kind);
 
-  const baseNotes: string[] = [];
-  if (period.future) baseNotes.push("El mes elegido todavía no ha empezado: no hay datos ni se inventan.");
-  if (period.clamped && !period.future) baseNotes.push(`El corte pedido (${period.requested}) es posterior a hoy: se usa hoy (${period.cut}); un mes en curso no se certifica cerrado ni recibe datos futuros.`);
-  if (period.provisional) baseNotes.push("Periodo provisional: el mes no está cerrado.");
+export type HealthRows = Awaited<ReturnType<typeof loadHealthForMonth>>;
+/** Todo lo que el evaluador necesita de UN mes, ya leído: la cartera lo lee de un periodo; la evolución, de todos los meses a la vez. */
+export type MonthFacts = {
+  period: QualityPeriod; groups: GroupMeta[]; all: Ent[]; users: UserLookup; usersD: UserLookup | null; dYM: { y: number; m: number; d: number } | null;
+  tFacts: Map<string, TicketFacts>; pFacts: Map<string, PapFacts>; hourRows: HourRow[]; healthMap: HealthRows;
+  coverage: Record<CoverageSource, Coverage>; bugSource: boolean; unresolvedLinks: number;
+  choice: SnapshotChoice; usedBatch: Extract<SnapshotChoice, { kind: "EXACT" | "EARLIER" }> | null; observedOn: string | null; stock: Map<string, StockEntity>; backlog: BacklogInfo;
+};
 
-  // --- Hechos por conjuntos
-  const years = [period.year];
-  const users = await loadUsers(tx, scope, ids, years);
-  const from = period.from;
-  const to = period.cut;
-  const tFacts: Map<string, TicketFacts> = period.future ? new Map() : await ticketFacts(tx, scope, ids, from, to);
-  await snapshotPoint("quality:after-tickets");
-  const pFacts: Map<string, PapFacts> = period.future ? new Map() : await papFacts(tx, scope, ids, from, to);
-  const profileSel = cfg.dedication.profiles.filter((k) => (PROFILE_KEYS as readonly string[]).includes(k));
-  const hourRows: HourRow[] = period.future ? [] : await hourFacts(tx, scope, ids, from, to, selectorsOf(pulse.payload));
-  await snapshotPoint("quality:after-hours");
-  const healthMap = await loadHealthForMonth(tx, scope, ids, period.year, period.month);
-
-  // --- Cobertura compartida (declaraciones de lotes completados)
-  const coverage: Record<CoverageSource, Coverage> = {
-    tickets: cov(declarations, "tickets", from, to), zd_time: cov(declarations, "zd_time", from, to), wrike_time: cov(declarations, "wrike_time", from, to), pap: cov(declarations, "pap", from, to),
-  };
-  const needsWrike = to >= PMO_CUTOFF && (profileSel.length === 0 || profileSel.includes("PMO_N3"));
-  const bugSource = (await tx.$queryRaw<{ n: bigint }[]>(Prisma.sql`SELECT count(*) AS n FROM "WorkItemObservation" o JOIN "UploadBatch" b ON b.id = o."batchId" AND b.status = 'COMPLETED'`))[0].n > 0n;
-  const unresolvedLinks = Number((await tx.$queryRaw<{ n: bigint }[]>(Prisma.sql`SELECT count(*) AS n FROM "WorkItemLink" WHERE "drvState" IN ('PENDING_TICKET', 'NO_CLIENT') AND COALESCE("manualState", '') <> 'REJECTED'`))[0].n);
-
-  // --- Backlog: fotografía compatible para el corte (nunca una posterior; nunca el estado actual)
-  const policy = cfg.snapshotPolicy;
-  const choice = chooseSnapshot(to, ticketBatches.map((b) => ({ batchId: b.batchId, observedOn: b.observedOn, extractionKnown: b.extractionKnown, population: b.population, statusScope: b.statusScope })), policy);
+/** Fotografía compatible para un corte según la política de la configuración y descripción del backlog (función pura sobre los lotes ya leídos). */
+export function snapshotOf(to: string, ticketBatches: Awaited<ReturnType<typeof loadTicketBatches>>, cfg: QualityConfig) {
+  const choice = chooseSnapshot(to, ticketBatches.map((b) => ({ batchId: b.batchId, observedOn: b.observedOn, extractionKnown: b.extractionKnown, population: b.population, statusScope: b.statusScope })), cfg.snapshotPolicy);
   const usedBatch = choice.kind === "EXACT" || choice.kind === "EARLIER" ? choice : null;
   const observedOn = usedBatch?.observedOn ?? null;
-  const thresholds = cfg.incidents.concerningDays;
-  const stock = usedBatch && observedOn ? await loadStock(tx, scope, ids, usedBatch.batchId, thresholds, observedOn, cfg.incidents.ageBands) : new Map<string, StockEntity>();
-  await snapshotPoint("quality:after-stock");
   const dYM = observedOn ? parseYmd(observedOn) : null;
-  const usersD = dYM ? await loadUsers(tx, scope, ids, [dYM.y]) : null;
   const unknownFreshness = ticketBatches.filter((b) => !b.extractionKnown).length;
   const backlog: BacklogInfo = {
     choice, observedOn, usersMonth: dYM ? { year: dYM.y, month: dYM.m } : null, exact: choice.kind === "EXACT", provisional: choice.kind === "EARLIER", unknownFreshnessBatches: unknownFreshness, note: choice.note,
     earlierInfo: choice.kind === "NONE" ? choice.earlier && { observedOn: choice.earlier.observedOn, gapDays: choice.earlier.gapDays } : null,
   };
+  return { choice, usedBatch, observedOn, dYM, backlog };
+}
+/** Perfiles de dedicación elegidos que existen en el catálogo. */
+export const profilesOf = (cfg: QualityConfig): string[] => cfg.dedication.profiles.filter((k) => (PROFILE_KEYS as readonly string[]).includes(k));
 
+/**
+ * Evaluador de UN mes sobre hechos ya leídos (puro: no consulta nada). Es el ÚNICO lugar donde se construyen magnitudes, explicaciones, referencias por
+ * percentiles de la cohorte y colores: la cartera, la ficha y la evolución mensual lo comparten (no hay una segunda fórmula de colores).
+ * Con `focus` solo se evalúan y explican esas entidades; la cohorte de referencia sigue calculándose con TODAS.
+ */
+export function evaluateMonth(f: MonthFacts, q: QualityQuery, cfg: QualityConfig, pulseRefs: PulseReference[], focus: Set<string> | null) {
+  const { period, groups, all, users, usersD, dYM, tFacts, pFacts, hourRows, healthMap, coverage, bugSource, unresolvedLinks, choice, usedBatch, observedOn, stock, backlog } = f;
+  const scope: Scope = q.scope;
+  const from = period.from;
+  const to = period.cut;
+  const profileSel = profilesOf(cfg);
+  const needsWrike = to >= PMO_CUTOFF && (profileSel.length === 0 || profileSel.includes("PMO_N3"));
+  const thresholds = cfg.incidents.concerningDays;
   // --- Magnitudes por entidad (primera pasada: sin referencias)
   const hoursBy = new Map<string, HourRow[]>();
   for (const r of hourRows) (hoursBy.get(r.entity) ?? hoursBy.set(r.entity, []).get(r.entity)!).push(r);
@@ -234,7 +221,6 @@ export async function computeQuality(tx: Tx, q: QualityQuery, opts: QualityOptio
 
   type Raw = { input: Omit<EntityInput, "scope" | "health">; explain: Record<IndicatorKey, Explain>; users: Users };
   const rawOf = new Map<string, Raw>();
-  const focus = opts.focusIds ? new Set(opts.focusIds) : null;
   const gapNote = (c: Coverage) => `${c.reason}`;
   const withCoverage = (value: Dec | null, c: Coverage[], extraPartial: string | null, reasonBase: string | null): ComponentInput => {
     if (value === null) return { value: null, reason: reasonBase };
@@ -322,7 +308,6 @@ export async function computeQuality(tx: Tx, q: QualityQuery, opts: QualityOptio
   }
 
   // --- Referencias: valores de la MISMA métrica y ámbito sobre la referencia elegida (no copia columnas de Pulse); ceros válidos, no calculables excluidos.
-  const pulseRefs = pulse.payload.references;
   const refMember = (r: PulseReference): Set<string> => {
     const members = new Set<string>();
     const ok = new Set(groups.filter((g) => referenceMembership(r, toCriteria(g)).member).map((g) => g.id));
@@ -384,6 +369,74 @@ export async function computeQuality(tx: Tx, q: QualityQuery, opts: QualityOptio
     }
     return rows;
   };
+  return { evaluateAll, selConfigured, profileSel };
+}
+
+export async function computeQuality(tx: Tx, q: QualityQuery, opts: QualityOptions = {}): Promise<QualityView> {
+  const today = todayMadrid(opts.now ?? new Date());
+  const active = await getActive(tx, "QUALITY", q.qrev ?? undefined);
+  const cfg: QualityConfig = opts.configOverride ?? active.payload;
+  const pulse = await getActive(tx, "PULSE", q.prev ?? undefined);
+  const manifest = await getManifest(tx);
+  const period = qualityPeriod(q.base.date, q.base.mode, today);
+  const scope: Scope = q.scope;
+  const groups = await loadGroupMeta(tx, period.cut);
+  await snapshotPoint("quality:after-meta");
+  const all = await loadEntities(tx, scope, groups);
+  const ids = all.map((e) => e.id);
+  const readAt = (await tx.$queryRaw<{ t: Date }[]>(Prisma.sql`SELECT now() AS t`))[0].t.toISOString();
+  const stamp = opts.skipStamp ? "" : (await readDataStamp(tx)).stamp;
+  const declarations = await loadDeclarations(tx);
+  const ticketBatches = await loadTicketBatches(tx);
+
+  // --- Filtros de FILAS (identidad, producto/soporte/alojamiento/complejidad vigentes, estado): no tocan las referencias.
+  const needle = fold(q.base.q);
+  const visibleGroups = new Set(filterGroups(groups, { ...q.base, q: "" }).map((g) => g.id));
+  const filtersOn = q.base.support.length + q.base.hosting.length + q.base.complexity.length > 0 || q.base.product !== "" || q.base.coverage !== "todas";
+  const visible = all.filter((e) => {
+    if (q.base.status !== "todos" && (q.base.status === "activos") !== e.isActive) return false;
+    if (needle !== "" && !fold(e.name).includes(needle) && !fold(e.parent ?? "").includes(needle)) return false;
+    if (scope === "group") return visibleGroups.has(e.id);
+    return !filtersOn || (e.groupId !== null && visibleGroups.has(e.groupId));
+  });
+
+  const baseNotes: string[] = [];
+  if (period.future) baseNotes.push("El mes elegido todavía no ha empezado: no hay datos ni se inventan.");
+  if (period.clamped && !period.future) baseNotes.push(`El corte pedido (${period.requested}) es posterior a hoy: se usa hoy (${period.cut}); un mes en curso no se certifica cerrado ni recibe datos futuros.`);
+  if (period.provisional) baseNotes.push("Periodo provisional: el mes no está cerrado.");
+
+  // --- Hechos por conjuntos
+  const years = [period.year];
+  const users = await loadUsers(tx, scope, ids, years);
+  const from = period.from;
+  const to = period.cut;
+  const tFacts: Map<string, TicketFacts> = period.future ? new Map() : await ticketFacts(tx, scope, ids, from, to);
+  await snapshotPoint("quality:after-tickets");
+  const pFacts: Map<string, PapFacts> = period.future ? new Map() : await papFacts(tx, scope, ids, from, to);
+  const profileSel = cfg.dedication.profiles.filter((k) => (PROFILE_KEYS as readonly string[]).includes(k));
+  const hourRows: HourRow[] = period.future ? [] : await hourFacts(tx, scope, ids, from, to, selectorsOf(pulse.payload));
+  await snapshotPoint("quality:after-hours");
+  const healthMap = await loadHealthForMonth(tx, scope, ids, period.year, period.month);
+
+  // --- Cobertura compartida (declaraciones de lotes completados)
+  const coverage: Record<CoverageSource, Coverage> = {
+    tickets: cov(declarations, "tickets", from, to), zd_time: cov(declarations, "zd_time", from, to), wrike_time: cov(declarations, "wrike_time", from, to), pap: cov(declarations, "pap", from, to),
+  };
+  const bugSource = (await tx.$queryRaw<{ n: bigint }[]>(Prisma.sql`SELECT count(*) AS n FROM "WorkItemObservation" o JOIN "UploadBatch" b ON b.id = o."batchId" AND b.status = 'COMPLETED'`))[0].n > 0n;
+  const unresolvedLinks = Number((await tx.$queryRaw<{ n: bigint }[]>(Prisma.sql`SELECT count(*) AS n FROM "WorkItemLink" WHERE "drvState" IN ('PENDING_TICKET', 'NO_CLIENT') AND COALESCE("manualState", '') <> 'REJECTED'`))[0].n);
+
+  // --- Backlog: fotografía compatible para el corte (nunca una posterior; nunca el estado actual)
+  const snap = snapshotOf(to, ticketBatches, cfg);
+  const { choice, usedBatch, observedOn, dYM, backlog } = snap;
+  const thresholds = cfg.incidents.concerningDays;
+  const stock = usedBatch && observedOn ? await loadStock(tx, scope, ids, usedBatch.batchId, thresholds, observedOn, cfg.incidents.ageBands) : new Map<string, StockEntity>();
+  await snapshotPoint("quality:after-stock");
+  const usersD = dYM ? await loadUsers(tx, scope, ids, [dYM.y]) : null;
+
+  // --- Evaluador común (el mismo que usa la evolución mensual): magnitudes por entidad, referencias y colores
+  const facts: MonthFacts = { period, groups, all, users, usersD, dYM, tFacts, pFacts, hourRows, healthMap, coverage, bugSource, unresolvedLinks, choice, usedBatch, observedOn, stock, backlog };
+  const focus = opts.focusIds ? new Set(opts.focusIds) : null;
+  const { evaluateAll, selConfigured } = evaluateMonth(facts, q, cfg, pulse.payload.references, focus);
   const rowsMap = evaluateAll(cfg);
   if (focus) {
     const frows = all.filter((e) => focus.has(e.id)).map((e) => rowsMap.get(e.id) as QualityRow);

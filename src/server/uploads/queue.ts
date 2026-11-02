@@ -1,6 +1,7 @@
 import { Prisma } from "@/generated/prisma/client";
 import { prisma } from "@/lib/db";
 import { uploadConfig } from "./config";
+import { noteProgress } from "@/server/ops/worker-instance";
 
 /**
  * Cola de trabajos en PostgreSQL (sin Redis). Reclamación atómica con FOR UPDATE SKIP LOCKED,
@@ -104,6 +105,7 @@ export async function assertFence(tx: Tx, job: ClaimedJob): Promise<void> {
     WHERE id = ${job.id} AND fence = ${job.fence} AND "leaseOwner" = ${job.leaseOwner} AND status = 'RUNNING'
     FOR UPDATE`);
   if (rows.length === 0) throw new LostLeaseError();
+  noteProgress("upload"); // avance observable para el latido del trabajador (CSAPP-10 §4)
 }
 
 export async function markJobDone(tx: Tx, job: ClaimedJob): Promise<void> {

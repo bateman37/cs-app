@@ -15,6 +15,7 @@ import { analitica } from "./casos/12-analitica";
 import { pulse, pulseVacio } from "./casos/13-pulse";
 import { calidad } from "./casos/14-calidad";
 import { exportaciones } from "./casos/15-exportaciones";
+import { operacion } from "./casos/16-operacion";
 import { extra } from "./casos/99-extensiones";
 
 /**
@@ -22,7 +23,7 @@ import { extra } from "./casos/99-extensiones";
  * agota el cupo de acceso del origen. Nuevas pantallas: añadir un módulo en ./casos y registrarlo aquí.
  */
 // E2E_SOLO=finanzas ejecuta únicamente ese caso (depuración); sin la variable se ejecuta el recorrido completo.
-const todos = { cuentas, acceso, maestros, consulta, persistencia, cargas, personalUsuarios, zendesk, wrikePapBugs, finanzas, pulseVacio, analitica, pulse, calidad, exportaciones, extra, limite };
+const todos = { cuentas, acceso, maestros, consulta, persistencia, cargas, personalUsuarios, zendesk, wrikePapBugs, finanzas, pulseVacio, analitica, pulse, calidad, exportaciones, operacion, extra, limite };
 const solo = process.env.E2E_SOLO?.split(",").map((s) => s.trim());
 runAll(solo ? solo.map((n) => todos[n as keyof typeof todos]).filter(Boolean) : Object.values(todos)).then(
   (code) => process.exit(code),

@@ -92,8 +92,9 @@ const include = { files: { orderBy: [{ fileKey: "asc" as const }, { part: "asc" 
 
 /** Sin trabajador un trabajo en cola no avanza: se avisa en pantalla (no queda un spinner indefinido). */
 const WORKER_STALE_MS = 90_000;
+/** Presencia por latido de instancia (en reposo o procesando; CSAPP-10 §4). El latido de un trabajo en curso sigue contando, pero su ausencia ya NO prueba que el trabajador esté caído. */
 async function workerAlive(): Promise<boolean> {
-  const r = await prisma.$queryRaw<{ alive: boolean }[]>(Prisma.sql`SELECT EXISTS (SELECT 1 FROM "UploadJob" WHERE "heartbeatAt" > now() - ${WORKER_STALE_MS} * interval '1 millisecond') OR EXISTS (SELECT 1 FROM "ExportJob" WHERE "heartbeatAt" > now() - ${WORKER_STALE_MS} * interval '1 millisecond') AS alive`);
+  const r = await prisma.$queryRaw<{ alive: boolean }[]>(Prisma.sql`SELECT EXISTS (SELECT 1 FROM "WorkerInstance" WHERE state <> 'STOPPED' AND "lastSeenAt" > now() - ${WORKER_STALE_MS} * interval '1 millisecond') OR EXISTS (SELECT 1 FROM "UploadJob" WHERE "heartbeatAt" > now() - ${WORKER_STALE_MS} * interval '1 millisecond') OR EXISTS (SELECT 1 FROM "ExportJob" WHERE "heartbeatAt" > now() - ${WORKER_STALE_MS} * interval '1 millisecond') AS alive`);
   return r[0]?.alive === true;
 }
 

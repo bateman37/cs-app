@@ -1,5 +1,7 @@
 # Guía PowerShell y prueba manual de CSAPP-01
 
+> **Guía histórica (CSAPP-01).** Describe el arranque de esa entrega y puede contradecir la operación actual. La guía **vigente** de instalación, arranque y operación es [instalación y operación](../operacion/instalacion-operacion.md); los comandos de aquí no se usan en una instalación operativa.
+
 Escrita para Windows 10/11 con PowerShell, Node.js 22 LTS y PostgreSQL ≥13 local (sin Docker). **No se ha ejecutado en Windows**: si un comando falla, avisar. Todo desde la carpeta del repositorio.
 
 ## 1. Instalar

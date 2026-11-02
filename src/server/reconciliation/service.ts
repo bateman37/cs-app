@@ -1,6 +1,9 @@
 import { Prisma } from "@/generated/prisma/client";
 import { prisma } from "@/lib/db";
 import { Dec } from "@/domain/finance";
+import { compare, d, mk, ZERO, type Check } from "./checks";
+import { bridgeChecks } from "./bridge";
+export type { Check, CheckStatus } from "./checks";
 import { csvDocument, type CsvValue } from "@/domain/csv";
 import { authorize } from "@/server/authorize";
 import { DomainError } from "@/server/errors";
@@ -19,24 +22,9 @@ import { ENGINE_VERSION } from "@/server/exports/config";
  * conserva sus resultados y avisa. Tres niveles — 1 fuente y lote, 2 hechos elegibles, 3 resultado (servicio de Calidad ↔ conjuntos de exportación ↔ SQL directo)
  * — con IDs estables (docs/validacion/conciliacion-contrato.md). Las pertenencias solapadas se etiquetan NO ADITIVAS y no se fuerza que coincidan.
  */
-export type CheckStatus = "OK" | "DIFERENCIA" | "INFORMATIVO" | "NO_DISPONIBLE";
-export type Check = {
-  id: string; level: 1 | 2 | 3; title: string; status: CheckStatus; additive: boolean; unit: string;
-  expected: string | null; observed: string | null; difference: string | null; tolerance: string;
-  identities: string[]; exclusions: { reason: string; count: number; amount: string | null }[]; sources: string[]; notes: string[];
-};
 export type ReconParams = Pick<ExportRequest, "scope" | "sel" | "desde" | "hasta" | "servicio">;
 export type ReconRunView = { id: string; createdAt: string; actor: string; params: ReconParams; stamp: string; readAt: string; results: Check[]; manifest: Record<string, unknown>; summary: { ok: number; difference: number; informative: number; unavailable: number }; stale: boolean; currentStamp: string | null };
 
-const ZERO = Dec.ZERO;
-const d = (v: string | null | undefined) => (v === null || v === undefined ? ZERO : (Dec.parse(String(v)) as Dec));
-const mk = (c: Partial<Check> & Pick<Check, "id" | "level" | "title" | "unit">): Check => ({ status: "INFORMATIVO", additive: true, expected: null, observed: null, difference: null, tolerance: "0", identities: [], exclusions: [], sources: [], notes: [], ...c });
-function compare(c: Check, expected: Dec | null, observed: Dec | null, tol: Dec = ZERO): Check {
-  if (expected === null || observed === null) return { ...c, status: "NO_DISPONIBLE", expected: expected?.toString() ?? null, observed: observed?.toString() ?? null };
-  const diff = observed.sub(expected);
-  const abs = diff.sign() < 0 ? diff.neg() : diff;
-  return { ...c, expected: expected.toString(), observed: observed.toString(), difference: diff.toString(), tolerance: tol.toString(), status: abs.cmp(tol) <= 0 ? "OK" : "DIFERENCIA" };
-}
 const q = async <T>(tx: Tx, sql: Prisma.Sql) => tx.$queryRaw<T[]>(sql);
 
 export async function runChecks(tx: Tx, p: ReconParams): Promise<{ checks: Check[]; manifest: Record<string, unknown> }> {
@@ -114,6 +102,8 @@ export async function runChecks(tx: Tx, p: ReconParams): Promise<{ checks: Check
   const papFile = DATASETS[2].files[0];
   const pc = (await q<{ n: bigint }>(tx, Prisma.sql`SELECT count(*) AS n FROM (${papFile.sql(params)}) q WHERE q.es_correctivo = 'true'`))[0].n;
   checks.push(compare(mk({ id: "REC-N3-07", level: 3, title: "PAP correctivos únicos (lista+ID; cualquier causa correctiva; sin filtro silencioso Resultado=OK): servicio = conjunto «pap»", unit: "PAP", sources: ["papFacts", "export:pap"], notes: ["Varias causas no multiplican el PAP; el origen cliente participa (desglose no aditivo)."] }), d(String(papCorr)), d(pc.toString())));
+  // ---------------- Nivel 4: puente Comparativa / Análisis Cliente / Pulse Rent / Calidad (misma lectura, mismo periodo, servicio y ámbito)
+  checks.push(...(await bridgeChecks(tx, { p: { scope: p.scope, sel: p.sel, desde: p.desde, hasta: p.hasta, servicio: p.servicio }, from, to, ids: scopeIds, hf, tf, pf })));
   const finFile = DATASETS[4].files[0];
   const ff = await q<{ m: string }>(tx, Prisma.sql`SELECT COALESCE(sum(q.ingreso::numeric), 0)::text AS m FROM (${finFile.sql(params)}) q`);
   const finDirect = fin.reduce((s, f) => s.add(d(f.income)), ZERO);

@@ -62,12 +62,13 @@ export async function requestWorkerStop(id?: string): Promise<number> {
  * Bucle de latido independiente de los trabajos. Un fallo de base de datos NO detiene el proceso: se reintenta en el siguiente latido (la base puede volver).
  * `onStopRequested` se invoca una vez cuando la base pide el cierre.
  */
-export function startHeartbeat(opts: { id: string; intervalMs: number; isStopping: () => boolean; onStopRequested: () => void; log?: (level: "INFO" | "WARN", m: string) => void }): () => void {
+export function startHeartbeat(opts: { id: string; intervalMs: number; isStopping: () => boolean; onStopRequested: () => void; log?: (level: "INFO" | "WARN", m: string) => void; beatFn?: typeof beat }): () => void {
+  const doBeat = opts.beatFn ?? beat;
   let requested = false;
   let down = false;
   const tick = async () => {
     try {
-      const r = await beat(opts.id, opts.isStopping());
+      const r = await doBeat(opts.id, opts.isStopping());
       if (down) { down = false; opts.log?.("INFO", "Base de datos recuperada: el latido se reanuda."); }
       if (r.stopRequested && !requested) { requested = true; opts.onStopRequested(); }
     } catch (e) {

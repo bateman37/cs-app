@@ -59,6 +59,7 @@
     "test:largo": "vitest run tests/cargas-trabajador.test.ts tests/cargas-volumen.test.ts tests/zendesk-volumen.test.ts tests/csapp04-volumen.test.ts tests/finanzas-trabajador.test.ts tests/finanzas-volumen.test.ts",
     "test:todo": "vitest run",
     "e2e:volumen": "tsx scripts/e2e/volumen.ts",
-    "benchmark:analitica": "tsx scripts/volumen-analitica.ts"
+    "benchmark:analitica": "tsx scripts/volumen-analitica.ts",
+    "benchmark:pulse": "tsx scripts/volumen-pulse.ts"
   }
 }

@@ -80,7 +80,7 @@ export default async function Page({ searchParams }: { searchParams: Promise<Sea
           ) : null}
           {view.totalEntities === 0 ? (
             <div className="empty">
-              <p><strong>Aún no hay {SCOPE_LABEL[query.scope]}s.</strong> Pulse Rent se rellena con los maestros y las cargas; no muestra datos de muestra.</p>
+              <p><strong>Aún no hay {{ group: "Grupos Cliente", client: "Clientes", implementation: "implantaciones" }[query.scope]}.</strong> Pulse Rent se rellena con los maestros y las cargas; no muestra datos de muestra.</p>
               {isAdmin ? <p><Link href="/administracion/clientes">Maestros</Link> · <Link href="/administracion/cargas">Cargas</Link></p> : <p className="muted">Pida a un Administrador que cargue los maestros y las fuentes.</p>}
             </div>
           ) : (

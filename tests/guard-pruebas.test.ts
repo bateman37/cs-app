@@ -147,3 +147,31 @@ describe("recorrido válido contra la base de pruebas aislada", () => {
     expect(db).toMatch(/_test$/);
   });
 });
+
+describe("el cliente global no se abre al importar y respeta el destino aprobado", () => {
+  it("importar el módulo no crea ninguna conexión; con un entorno aprobado distinto, el primer uso se niega", async () => {
+    const { vi } = await import("vitest");
+    const g = globalThis as unknown as { prisma?: unknown; prismaTarget?: unknown };
+    const saved = { prisma: g.prisma, prismaTarget: g.prismaTarget, url: process.env.DATABASE_URL, approved: process.env.CSAPP_APPROVED_TEST_DB };
+    try {
+      delete g.prisma;
+      delete g.prismaTarget;
+      vi.resetModules();
+      // Entorno inconsistente a propósito: el destino aprobado es la base de pruebas, pero DATABASE_URL apunta a la base de trabajo.
+      process.env.DATABASE_URL = "postgresql://u:p@localhost:5432/cs_app?schema=public";
+      process.env.CSAPP_APPROVED_TEST_DB = "cs_app_test";
+      const mod = await import("@/lib/db"); // importación anticipada: NO debe abrir nada
+      expect(g.prismaTarget).toBeUndefined();
+      expect(g.prisma).toBeUndefined();
+      expect(() => (mod.prisma as unknown as { user: unknown }).user).toThrow(/no se abre/); // primer uso: rechazado antes de conectar
+      expect(g.prisma).toBeUndefined();
+    } finally {
+      g.prisma = saved.prisma;
+      g.prismaTarget = saved.prismaTarget;
+      process.env.DATABASE_URL = saved.url;
+      if (saved.approved === undefined) delete process.env.CSAPP_APPROVED_TEST_DB;
+      else process.env.CSAPP_APPROVED_TEST_DB = saved.approved;
+      vi.resetModules();
+    }
+  });
+});

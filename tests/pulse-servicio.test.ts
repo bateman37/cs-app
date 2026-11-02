@@ -359,6 +359,25 @@ describe("detalle, CSV y permisos", () => {
     const stats = parse((await pulseCsv(admin.id, q, "estadisticas")).body.slice(1), { delimiter: ";", columns: true }) as Record<string, string>[];
     expect(stats.map((s) => s.metrica)).toEqual(["M01", "M02", "M04"]);
   });
+  it("CSV: neutraliza textos que empiezan por fórmula sin alterar los negativos válidos; un ticket sin horas sigue contando en eventos", async () => {
+    const w = await world();
+    await prisma.clientGroup.update({ where: { id: w.gs[0].id }, data: { name: "=HYPERLINK(\"x\")" } });
+    for (let i = 0; i < 2; i++) await users(w, i, Array(12).fill(10));
+    await seedFinance(admin.id, "SOPORTE", 2026, w.gs.map((g) => ({ groupId: g.id, income: "1200" })));
+    await seedFinance(admin.id, "SOPORTE", 2025, w.gs.map((g) => ({ groupId: g.id, income: "0" })));
+    await hours(w, 0, { minutes: 600 });
+    await hours(w, 1, { minutes: 1800 });
+    // Ticket con destino N3 y SIN ninguna hora registrada: sigue en los eventos.
+    await addTicket(w.tb.id, { ticketId: "SINHORAS", entorno: "Soporte", org: "700", cause: APP_CAUSE, created: "2026-05-10", destinations: ["PMO_N3"] });
+    const q = Q({ m: "M20,M30", norm: "bruto", ref: "custom", rsoporte: "GOLD", ralojamiento: "OP", rhomog: "1" });
+    const v = await getPulse(admin.id, q);
+    expect(row(v, "=HYPERLINK(\"x\")").cells.M30.value).toBe("1");
+    const csv = (await pulseCsv(admin.id, q, "filas")).body;
+    expect(csv).toContain('"\'=HYPERLINK(""x"")"');
+    const m20 = row(v, "=HYPERLINK(\"x\")").cells.M20.value as string;
+    expect(Dec.parse(m20)!.sign()).toBeLessThan(0);
+    expect(csv).toContain(`;${m20.replace(".", ",")};`); // el negativo conserva su signo y sigue siendo número
+  });
   it("Consulta lee; un actor inexistente no", async () => {
     await world();
     expect((await getPulse(reader.id, Q())).totalEntities).toBe(5);

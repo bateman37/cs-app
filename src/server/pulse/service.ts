@@ -123,7 +123,7 @@ function resolveReference(q: PulseQuery, cfg: PulseConfig, id: string): PulseRef
     };
   }
   const r = cfg.references.find((x) => x.id === id);
-  if (!r) throw new DomainError(`La referencia «${id}» no existe en la revisión ${"activa"} de Pulse Rent.`);
+  if (!r) throw new DomainError(`La referencia «${id}» no existe en esta revisión de Pulse Rent: elija otra o use una personalizada.`);
   return r;
 }
 
@@ -451,39 +451,39 @@ async function loadOps(tx: Tx, q: PulseQuery, cfg: PulseConfig, ids: string[], f
   const needHours = metrics.some((m) => m.spec.t === "hours");
   const needTickets = metrics.some((m) => ["n2_to_n3", "n3_tickets", "n3_pct_all"].includes(m.spec.t)) && q.scope !== "implementation";
   const papKinds = [...new Set(metrics.flatMap((m) => (m.spec.t === "pap" ? [m.spec.kind] : [])))].filter((k) => papPredicate(k) !== null);
-  const jobs: Promise<void>[] = [];
+  const jobs: (() => Promise<void>)[] = [];
   // Una consulta por familia de hechos (no una por entidad/mes/percentil). La instantánea REPEATABLE READ de `tx` hace coherentes las lecturas.
   if (needHours) {
     jobs.push(
-      (async () => {
+      async () => {
         const rows = await tx.$queryRaw<{ entity: string; profile: string; cls: string; minutes: string }[]>(Prisma.sql`
           SELECT x.entity, x.profile, x.cls, sum(x.minutes)::text AS minutes FROM (${classifiedActivitySql({ scope: q.scope, ids, from, to, service: q.base.service, selectors: selectorsOf(cfg) })}) x GROUP BY 1, 2, 3`);
         for (const r of rows) ops.minutes.set(`${r.entity}|${r.profile}|${r.cls}`, Dec.parse(r.minutes) as Dec);
-      })(),
+      },
     );
   }
   if (needTickets && q.scope !== "implementation") {
     jobs.push(
-      (async () => {
+      async () => {
         const rows = await tx.$queryRaw<{ entity: string; total: bigint; n2: bigint; n3: bigint; n2n3: bigint }[]>(Prisma.sql`
           SELECT x.entity, count(*) AS total, count(*) FILTER (WHERE ${ticketPredicate("n2")}) AS n2, count(*) FILTER (WHERE ${ticketPredicate("n3")}) AS n3, count(*) FILTER (WHERE ${ticketPredicate("n2_to_n3")}) AS n2n3
           FROM (${ticketSetSql(q.scope as "group" | "client", ids, from, to)}) x WHERE x.entity IS NOT NULL GROUP BY 1`);
         for (const r of rows) ops.tickets.set(r.entity, { total: Number(r.total), n2: Number(r.n2), n3: Number(r.n3), n2n3: Number(r.n2n3) });
-      })(),
+      },
     );
   }
   if (papKinds.length > 0) {
     jobs.push(
-      (async () => {
+      async () => {
         const cols = Prisma.join(papKinds.map((k) => Prisma.sql`count(*) FILTER (WHERE ${papPredicate(k) as Prisma.Sql}) AS ${Prisma.raw(`"${k}"`)}`));
         const rows = await tx.$queryRaw<Record<string, string | bigint>[]>(Prisma.sql`
           SELECT x.entity, ${cols} FROM (${papSetSql(q.scope, ids)}) x WHERE x."productionDate" BETWEEN ${from}::date AND ${to}::date GROUP BY 1`);
         for (const r of rows) ops.pap.set(r.entity as string, new Map(papKinds.map((k) => [k, Number(r[k])])));
-      })(),
+      },
     );
   }
   // Las consultas comparten la transacción (una conexión): se encadenan, no se paralelizan en conexiones distintas.
-  for (const j of jobs) await j;
+  for (const j of jobs) await j();
   return ops;
 }
 

@@ -26,3 +26,7 @@ Los datos de prueba automatizada viven en fixtures y una base de test separada. 
 No borrar automáticamente datos cargados por Dennis al ejecutar seed, instalar una actualización o arrancar la aplicación. El seed de maestros debe ser idempotente y respetar modificaciones del administrador.
 
 En DOC-00 no se ejecuta ninguna precarga, ni siquiera maestros: solo se documenta la política para entregas futuras. Los CSV de producto aportados, incluido el VSW de varios años, son ejemplos de formato; Dennis realizará las cargas VFS y VSW desde Administración cuando corresponda. No ejecutar semillas o importadores al incorporar este paquete.
+
+## Guard de pruebas sobre bases (CSAPP-07)
+
+Toda prueba, restablecimiento, siembra, benchmark o migración de prueba que muta datos pasa por `src/lib/test-guard.ts`: exige `TEST_DATABASE_URL` explícita con nombre `cs_app…_test` (leído del path, no de la contraseña ni de la query) distinto de la base de trabajo, y comprueba `current_database()` en la conexión que ejecuta la operación antes de cualquier DDL, TRUNCATE, siembra, cuenta o migración. Un fallo no modifica nada. Ver [arquitectura](../arquitectura/pulse-configuracion-csapp07.md#5-prevención-de-pruebas-sobre-la-base-equivocada-3-del-prompt). Los residuos de una ejecución anterior en una base de trabajo no se limpian por iniciativa de una entrega: quedan registrados para decisión de Dennis.

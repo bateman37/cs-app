@@ -61,17 +61,16 @@ export async function pulseDetail(actorId: string, q: PulseQuery, entityId: stri
           predicate += ` · clase ${spec.cls === "incident" ? "incidente Vincle confirmado" : spec.cls === "other" ? "otro soporte clasificado" : "sin clasificar / pendiente"}`;
         }
       }
-      const [rows, agg] = await Promise.all([
-        tx.$queryRaw<{ source: string; workDate: string; ticketId: string | null; profile: string; cls: string; minutes: string }[]>(Prisma.sql`
+      // Sentencias en serie: una transacción interactiva usa una sola conexión.
+      const rows = await tx.$queryRaw<{ source: string; workDate: string; ticketId: string | null; profile: string; cls: string; minutes: string }[]>(Prisma.sql`
           SELECT x.source, to_char(x."workDate", 'YYYY-MM-DD') AS "workDate", x."ticketId", x.profile, x.cls, x.minutes::text AS minutes
-          FROM (${src}) x WHERE ${where} ORDER BY x."workDate", x.source, x."entryId" LIMIT ${pageSize} OFFSET ${off}`),
-        tx.$queryRaw<{ n: bigint; m: string | null }[]>(Prisma.sql`SELECT count(*) AS n, sum(x.minutes)::text AS m FROM (${src}) x WHERE ${where}`),
-      ]);
+          FROM (${src}) x WHERE ${where} ORDER BY x."workDate", x.source, x."entryId" LIMIT ${pageSize} OFFSET ${off}`);
+      const agg = await tx.$queryRaw<{ n: bigint; m: string | null }[]>(Prisma.sql`SELECT count(*) AS n, sum(x.minutes)::text AS m FROM (${src}) x WHERE ${where}`);
       const minutes = Dec.parse(agg[0].m ?? "0") as Dec;
       return {
         ...base, kind: "hours", predicate,
         columns: [{ key: "workDate", label: "Fecha" }, { key: "source", label: "Fuente" }, { key: "ticketId", label: "Ticket" }, { key: "profile", label: "Perfil" }, { key: "cls", label: "Clase de causa" }, { key: "minutes", label: "Minutos" }],
-        rows, total: Number(agg[0].n), numerator: minutes.divInt(60).toString(), numeratorUnit: "horas",
+        rows: rows.map((r) => ({ ...r, minutes: (Dec.parse(r.minutes) as Dec).toString() })), total: Number(agg[0].n), numerator: minutes.divInt(60).toString(), numeratorUnit: "horas",
         note: "Las horas con elegibilidad pendiente (PMO desconocido) y las de otros servicios quedan fuera del perímetro y se explican en Análisis Cliente.",
       };
     }
@@ -81,13 +80,11 @@ export async function pulseDetail(actorId: string, q: PulseQuery, entityId: stri
         return { ...base, kind: "none", predicate: "Sin evidencia positiva de no facturación", columns: [], rows: [], total: 0, numerator: null, numeratorUnit: "PAP", note: "Los PAP evolutivos observados se abren desde M37; esta métrica no está disponible sin evidencia de facturación." };
       }
       const src = Prisma.sql`SELECT x.* FROM (${papSetSql(q.scope, [entityId])}) x WHERE x."productionDate" BETWEEN ${per.from}::date AND ${per.to}::date AND ${pred}`;
-      const [rows, tot] = await Promise.all([
-        tx.$queryRaw<DetailRow[]>(Prisma.sql`
+      const rows = await tx.$queryRaw<DetailRow[]>(Prisma.sql`
           SELECT y."listKey", y."papId", y.title, to_char(y."productionDate", 'YYYY-MM-DD') AS production, y.result, y.state,
             (SELECT string_agg(c."rawToken", ' · ' ORDER BY c.normalized) FROM "PapCause" c WHERE c."revisionId" = y.rev_id) AS causes
-          FROM (${src}) y ORDER BY y."productionDate", y."listKey", y."papId" LIMIT ${pageSize} OFFSET ${off}`),
-        tx.$queryRaw<{ n: bigint }[]>(Prisma.sql`SELECT count(*) AS n FROM (${src}) y`),
-      ]);
+          FROM (${src}) y ORDER BY y."productionDate", y."listKey", y."papId" LIMIT ${pageSize} OFFSET ${off}`);
+      const tot = await tx.$queryRaw<{ n: bigint }[]>(Prisma.sql`SELECT count(*) AS n FROM (${src}) y`);
       return {
         ...base, kind: "pap", predicate: `PAP únicos (lista + ID) con fecha de producción en el periodo y categoría «${metric.label}»`,
         columns: [{ key: "listKey", label: "Lista" }, { key: "papId", label: "ID" }, { key: "title", label: "Título" }, { key: "production", label: "Producción" }, { key: "result", label: "Resultado" }, { key: "state", label: "Estado correctivo" }, { key: "causes", label: "Causas" }],
@@ -102,12 +99,10 @@ export async function pulseDetail(actorId: string, q: PulseQuery, entityId: stri
     const kind = spec.t === "n2_to_n3" ? "n2_to_n3" : spec.t === "n3_tickets" ? "n3" : spec.t === "n3_pct_all" ? "n3" : null;
     if (kind === null) return { ...base, kind: "none", predicate: "Magnitud derivada del motor económico o de la matriz de usuarios", columns: [], rows: [], total: 0, numerator: null, numeratorUnit: "", note: "El detalle de ingresos, horas y usuarios está en Análisis Cliente (ficha y detalle que concilia)." };
     const src = Prisma.sql`SELECT x.* FROM (${ticketSetSql(q.scope, [entityId], per.from, per.to)}) x WHERE ${ticketPredicate(kind)}`;
-    const [rows, tot] = await Promise.all([
-      tx.$queryRaw<DetailRow[]>(Prisma.sql`
+    const rows = await tx.$queryRaw<DetailRow[]>(Prisma.sql`
         SELECT y.ticket_id AS "ticketId", to_char(y.created_on, 'YYYY-MM-DD') AS created, y.type, y.status, y.cause, array_to_string(y.destinations, ' · ') AS destinations
-        FROM (${src}) y ORDER BY y.created_on, y.ticket_id LIMIT ${pageSize} OFFSET ${off}`),
-      tx.$queryRaw<{ n: bigint }[]>(Prisma.sql`SELECT count(*) AS n FROM (${src}) y`),
-    ]);
+        FROM (${src}) y ORDER BY y.created_on, y.ticket_id LIMIT ${pageSize} OFFSET ${off}`);
+    const tot = await tx.$queryRaw<{ n: bigint }[]>(Prisma.sql`SELECT count(*) AS n FROM (${src}) y`);
     return {
       ...base, kind: "tickets",
       predicate: spec.t === "n2_to_n3" ? "Tickets únicos con destino N2 y N3 (numerador de N2→N3; el denominador son los tickets con N2)" : "Tickets únicos con destino N3 (PMO o IT) creados en el periodo; dos tags N3 cuentan uno",

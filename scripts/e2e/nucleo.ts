@@ -47,6 +47,7 @@ let worker: ChildProcess | null = null;
 
 async function startWorkerProcess(dbUrl: string): Promise<void> {
   if (worker) return;
+  assertSameDatabase(dbUrl, resolveTestTarget().url, "El trabajador de cargas"); // web, trabajador y preparación comparten el destino aprobado
   const bundle = path.join(ROOT, "worker-dist/worker.mjs");
   worker = spawn(process.execPath, [bundle], {
     cwd: ROOT,
@@ -95,6 +96,7 @@ async function waitReady(): Promise<void> {
 }
 
 export async function startServer(dbUrl: string): Promise<void> {
+  assertSameDatabase(dbUrl, resolveTestTarget().url, "El proceso web");
   const nextBin = path.join(ROOT, "node_modules/next/dist/bin/next");
   server = spawn(process.execPath, [nextBin, "start", "-p", String(PORT)], { cwd: ROOT, env: serverEnv(dbUrl), stdio: "ignore" });
   await waitReady();

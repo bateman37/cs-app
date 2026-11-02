@@ -1,6 +1,5 @@
 import { Prisma } from "@/generated/prisma/client";
 import { prisma } from "@/lib/db";
-import { Dec } from "@/domain/finance";
 import { compare, d, mk, ZERO, type Check } from "./checks";
 import { bridgeChecks } from "./bridge";
 export type { Check, CheckStatus } from "./checks";

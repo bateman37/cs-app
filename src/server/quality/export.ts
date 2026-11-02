@@ -37,20 +37,14 @@ function indicatorCells(r: QualityRow): CsvValue[] {
 
 export async function qualityCsv(actorId: string, query: QualityQuery, table: QualityTable, opts: { now?: Date } = {}): Promise<QualityCsv> {
   if (table === "health") {
-    const all: Awaited<ReturnType<typeof getHealthMatrix>>["rows"] = [];
-    let page = 1;
-    for (;;) {
-      const m = await getHealthMatrix(actorId, { scope: query.scope, year: query.year, q: query.base.q, page, pageSize: 100 });
-      all.push(...m.rows);
-      if (page >= m.pageCount) break;
-      page++;
-    }
-    const header = ["ambito", "anio", "id", "entidad", "grupo_padre", ...Array.from({ length: 12 }, (_, i) => [`mes${i + 1}_estado`, `mes${i + 1}_comentario`, `mes${i + 1}_fecha_feedback`, `mes${i + 1}_version`]).flat()];
-    const rows = all.map((r) => [QSCOPE_NAME[query.scope], String(query.year), r.id, r.name, r.parent, ...Array.from({ length: 12 }, (_, i) => {
+    // CSAPP-09 §3: matriz COMPLETA desde UNA lectura coherente (no páginas independientes) con sello de datos y fecha de lectura.
+    const m = await getHealthMatrix(actorId, { scope: query.scope, year: query.year, q: query.base.q, page: 1, pageSize: 100 }, { all: true });
+    const header = ["ambito", "anio", "sello_datos", "leido_el", "id", "entidad", "grupo_padre", ...Array.from({ length: 12 }, (_, i) => [`mes${i + 1}_estado`, `mes${i + 1}_comentario`, `mes${i + 1}_fecha_feedback`, `mes${i + 1}_version`]).flat()];
+    const rows = m.rows.map((r) => [QSCOPE_NAME[query.scope], String(query.year), m.stamp, m.readAt, r.id, r.name, r.parent, ...Array.from({ length: 12 }, (_, i) => {
       const c = r.cells[i + 1];
       return [c ? HEALTH_DB_LABEL[c.state] : "Sin feedback", c?.comment ?? "", c?.feedbackOn ?? "", c ? n(String(c.version)) : n(null)] as CsvValue[];
     }).flat()] as CsvValue[]);
-    return { filename: `calidad_health_${query.year}_${query.scope}.csv`, body: csvDocument(header, rows), rows: rows.length, stamp: "" };
+    return { filename: `calidad_health_${query.year}_${query.scope}.csv`, body: csvDocument(header, rows), rows: rows.length, stamp: m.stamp };
   }
   const v = await getQuality(actorId, query, { allRows: true, now: opts.now });
   const header = [...CONTEXT, "id", "entidad", "grupo_padre", "usuarios_corte", "usuarios_mes", ...INDICATOR_KEYS.flatMap((k) => [`${k}_valor`, `${k}_unidad`, `${k}_color`, `${k}_estado`, `${k}_peso_configurado_pct`, `${k}_peso_efectivo_pct`]), "global_color", "global_indice", "global_estado", "cobertura_asignacion_pct", "alertas_rojas_parciales", "motivo_global"];

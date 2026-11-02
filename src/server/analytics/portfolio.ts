@@ -37,23 +37,53 @@ export type GroupMeta = {
 
 const fold = (s: string) => s.normalize("NFD").replace(/[̀-ͯ]/g, "").toLowerCase();
 
-/** Maestros de TODOS los grupos con vigencia a la fecha de corte (una consulta por conjuntos). */
-export async function loadGroupMeta(tx: Tx, cut: string, ids?: string[]): Promise<GroupMeta[]> {
-  const onlyG = ids ? Prisma.sql`WHERE g.id = ANY(${ids})` : Prisma.empty;
-  const onlyT = ids ? Prisma.sql`AND (t."groupId" = ANY(${ids}) OR c."groupId" = ANY(${ids}))` : Prisma.empty;
-  const [groups, terms] = await Promise.all([
-    tx.$queryRaw<{ id: string; name: string; bc: string | null; active: boolean; clients: number; impls: number }[]>(Prisma.sql`
+type GroupRow = { id: string; name: string; bc: string | null; active: boolean; clients: number; impls: number };
+type TermRow = { attr: string; value: string; gid: string | null; cgid: string | null; cid: string | null };
+const groupRowsSql = (ids?: string[]): Prisma.Sql => Prisma.sql`
       SELECT g.id, g.name, g."bcDenomination" AS bc, g."isActive" AS active,
         (SELECT count(*) FROM "Client" c WHERE c."groupId" = g.id)::int AS clients,
         (SELECT count(*) FROM "Implementation" i JOIN "Client" c ON c.id = i."clientId" WHERE c."groupId" = g.id)::int AS impls
-      FROM "ClientGroup" g ${onlyG} ORDER BY g.name, g.id`),
-    tx.$queryRaw<{ attr: string; value: string; gid: string | null; cgid: string | null; cid: string | null }[]>(Prisma.sql`
+      FROM "ClientGroup" g ${ids ? Prisma.sql`WHERE g.id = ANY(${ids})` : Prisma.empty} ORDER BY g.name, g.id`;
+
+/**
+ * Maestros de TODOS los grupos con vigencia a la fecha de corte (una consulta por conjuntos). Las dos lecturas son SECUENCIALES sobre el cliente de la
+ * transacción: un `Promise.all` sobre `tx` emite una segunda consulta mientras la primera sigue en curso (advertencia de `pg`, CSAPP-10).
+ */
+export async function loadGroupMeta(tx: Tx, cut: string, ids?: string[]): Promise<GroupMeta[]> {
+  const onlyT = ids ? Prisma.sql`AND (t."groupId" = ANY(${ids}) OR c."groupId" = ANY(${ids}))` : Prisma.empty;
+  const groups = await tx.$queryRaw<GroupRow[]>(groupRowsSql(ids));
+  const terms = await tx.$queryRaw<TermRow[]>(Prisma.sql`
       SELECT t.attribute::text AS attr, t.value, t."groupId" AS gid, c."groupId" AS cgid, c.id AS cid
       FROM "ServiceTerm" t
       LEFT JOIN "Implementation" i ON i.id = t."implementationId"
       LEFT JOIN "Client" c ON c.id = COALESCE(t."clientId", i."clientId")
-      WHERE (t."validFrom" IS NULL OR t."validFrom" <= ${cut}::date) AND (t."validTo" IS NULL OR ${cut}::date < t."validTo") ${onlyT}`),
-  ]);
+      WHERE (t."validFrom" IS NULL OR t."validFrom" <= ${cut}::date) AND (t."validTo" IS NULL OR ${cut}::date < t."validTo") ${onlyT}`);
+  return groupMetaFrom(groups, terms);
+}
+
+/**
+ * Maestros de todos los grupos a VARIAS fechas de corte con dos consultas (grupos y vigencias de los atributos de todos los cortes), no dos por corte.
+ * Cada corte se construye con la misma función pura que `loadGroupMeta`.
+ */
+export async function loadGroupMetaForCuts(tx: Tx, cuts: string[]): Promise<Map<string, GroupMeta[]>> {
+  const out = new Map<string, GroupMeta[]>();
+  const distinct = [...new Set(cuts)];
+  if (distinct.length === 0) return out;
+  const groups = await tx.$queryRaw<GroupRow[]>(groupRowsSql());
+  const terms = await tx.$queryRaw<(TermRow & { cut: string })[]>(Prisma.sql`
+      SELECT to_char(p.cut, 'YYYY-MM-DD') AS cut, t.attribute::text AS attr, t.value, t."groupId" AS gid, c."groupId" AS cgid, c.id AS cid
+      FROM unnest(${distinct}::date[]) AS p(cut)
+      JOIN "ServiceTerm" t ON (t."validFrom" IS NULL OR t."validFrom" <= p.cut) AND (t."validTo" IS NULL OR p.cut < t."validTo")
+      LEFT JOIN "Implementation" i ON i.id = t."implementationId"
+      LEFT JOIN "Client" c ON c.id = COALESCE(t."clientId", i."clientId")`);
+  const byCut = new Map<string, TermRow[]>(distinct.map((c) => [c, []]));
+  for (const t of terms) byCut.get(t.cut)?.push(t);
+  for (const c of distinct) out.set(c, groupMetaFrom(groups, byCut.get(c) as TermRow[]));
+  return out;
+}
+
+/** Construcción pura de los maestros de cada grupo a partir de sus filas y de los atributos vigentes (compartida por todos los cargadores). */
+function groupMetaFrom(groups: GroupRow[], terms: TermRow[]): GroupMeta[] {
   type Acc = { own: Set<string>; child: Set<string>; kids: Set<string> };
   const acc = new Map<string, Acc>();
   const cell = (gid: string, attr: string): Acc => {

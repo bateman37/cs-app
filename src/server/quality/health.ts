@@ -136,3 +136,13 @@ export async function loadHealthForMonth(tx: Prisma.TransactionClient, scope: "g
   const rows = await tx.healthFeedback.findMany({ where: { year, month, ...(scope === "group" ? { groupId: { in: ids } } : { clientId: { in: ids } }) } });
   return new Map(rows.map((r) => [(r.groupId ?? r.clientId) as string, { state: r.state as HealthDbState, feedbackOn: iso(r.feedbackOn), recordedAt: r.createdAt.toISOString(), version: r.version, comment: r.comment }]));
 }
+
+/** Client Health de un conjunto de entidades en varios meses de un año con UNA lectura: Map mes → (entidad → celda). Misma celda y mismas reglas que `loadHealthForMonth`, sin arrastre entre meses. */
+export async function loadHealthForMonths(tx: Prisma.TransactionClient, scope: "group" | "client", ids: string[], year: number, months: number[]) {
+  type Cell = { state: HealthDbState; feedbackOn: string | null; recordedAt: string; version: number; comment: string | null };
+  const out = new Map<number, Map<string, Cell>>(months.map((m) => [m, new Map<string, Cell>()]));
+  if (ids.length === 0 || months.length === 0) return out;
+  const rows = await tx.healthFeedback.findMany({ where: { year, month: { in: months }, ...(scope === "group" ? { groupId: { in: ids } } : { clientId: { in: ids } }) } });
+  for (const r of rows) out.get(r.month)?.set((r.groupId ?? r.clientId) as string, { state: r.state as HealthDbState, feedbackOn: iso(r.feedbackOn), recordedAt: r.createdAt.toISOString(), version: r.version, comment: r.comment });
+  return out;
+}

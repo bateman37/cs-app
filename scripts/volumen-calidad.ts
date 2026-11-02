@@ -1,11 +1,20 @@
 import "dotenv/config";
 import { performance } from "node:perf_hooks";
+import { loadavg } from "node:os";
 
 /**
  * Medida de volumen de Calidad (CSAPP-08 §11). Solo base `_test` aprobada por el guard central (TEST_DATABASE_URL explícita; se comprueba
  * `current_database()` antes de migrar o vaciar). Fixture SINTÉTICA aislada: ≈1500 grupos y clientes, 250 000 tiempos, ≈114 000 tickets con revisiones,
  * seis fotografías mensuales (la última con todos los estados), estados antiguos, PAP, bugs vinculados, Client Health y cobertura declarada.
  * Registra tiempo, sentencias, tamaño de respuesta y memoria. Uso: npm run benchmark:calidad [grupos] [tiempos] [tickets]
+ *
+ * CSAPP-10 (evolución), variables opcionales:
+ *  - CSAPP_SKIP_SEED=1   no migra, vacía ni siembra: mide sobre la base ya sembrada con la misma fixture (medidas repetidas sobre los mismos datos).
+ *  - CSAPP_REPS=n        repeticiones por operación (por defecto 3).
+ *  - CSAPP_ONLY=evol     solo las evoluciones mensuales (cartera, ficha y detalles no se miden); CSAPP_ONLY=core: todo lo de Calidad salvo conciliación, exportaciones y planes de 09.
+ *  - CSAPP_EVOLUTION_REFERENCE=1  mide también la ruta de referencia de 09 (por mes con computeQuality), tal cual y con JIT desactivado.
+ *  - CSAPP_PROFILE=1     duración y texto de las sentencias más costosas de cada evolución.
+ *  - CSAPP_EVOLUTION_DUMP=ruta  escribe la salida íntegra de las evoluciones (config. activa; grupo y cliente) en un JSON, para compararlas entre versiones.
  */
 (async () => {
   const { activateTestTarget, assertConnectedTo, guardedTruncateAll } = await import("../src/lib/test-guard");
@@ -19,14 +28,18 @@ import { performance } from "node:perf_hooks";
   const { provisionAccount } = await import("../src/server/accounts");
   const { execFileSync } = await import("node:child_process");
   await assertConnectedTo(prisma, approved.target.name);
-  execFileSync(process.execPath, ["node_modules/prisma/build/index.js", "migrate", "deploy"], { env: { ...process.env, SHADOW_DATABASE_URL: "" }, stdio: "pipe" });
-  await guardedTruncateAll(prisma, approved);
-  await provisionAccount({ email: "vol@test.local", name: "Vol", password: "clave-de-prueba-123", role: "ADMIN" });
+  const skipSeed = process.env.CSAPP_SKIP_SEED === "1";
+  if (!skipSeed) {
+    execFileSync(process.execPath, ["node_modules/prisma/build/index.js", "migrate", "deploy"], { env: { ...process.env, SHADOW_DATABASE_URL: "" }, stdio: "pipe" });
+    await guardedTruncateAll(prisma, approved);
+    await provisionAccount({ email: "vol@test.local", name: "Vol", password: "clave-de-prueba-123", role: "ADMIN" });
+  }
   const admin = await prisma.user.findFirstOrThrow();
   const { Prisma } = await import("../src/generated/prisma/client");
   const NOW = new Date("2026-11-02T09:00:00Z");
   const today = "2026-11-02";
   const t0 = performance.now();
+  if (!skipSeed) {
   const { seedVolumen } = await import("../tests/generators/analitica-volumen");
   await seedVolumen(admin.id, today, groups, times);
   const sql = (s: ReturnType<typeof Prisma.sql>) => prisma.$executeRaw(s);
@@ -103,6 +116,7 @@ import { performance } from "node:perf_hooks";
   await activateDraft(admin.id, "QUALITY", { expectedRevisionNo: 1, expectedDraftVersion: qd.version, reason: "volumen" });
   console.log(`Siembra: ${groups} grupos y clientes, ${times} tiempos, ${tickets} tickets, ${photos.length} fotografías, ${groups * 4} PAP, 3000 vínculos a bugs, ${groups * 10} celdas de Health en ${((performance.now() - t0) / 1000).toFixed(1)} s`);
   await prisma.$executeRawUnsafe("ANALYZE");
+  }
   const counts = await prisma.$queryRaw<{ t: string; n: bigint }[]>(Prisma.sql`SELECT 'tickets' AS t, count(*) AS n FROM "ZdTicket" UNION ALL SELECT 'observaciones', count(*) FROM "ZdTicketObservation" UNION ALL SELECT 'tiempos', count(*) FROM "ZdTimeEntry"`);
   console.log(counts.map((c) => `${c.t}: ${c.n}`).join(" · "));
   const { parseQualityQuery } = await import("../src/domain/quality-query");
@@ -114,38 +128,84 @@ import { performance } from "node:perf_hooks";
   const g = globalThis as unknown as { csappQueryCount?: number };
   const Q = (p: Record<string, string> = {}) => parseQualityQuery({ fecha: "2026-10-31", modo: "FULL_MONTH", ...p }, NOW).query;
   const rows: string[] = [];
+  // CSAPP_PROFILE=1: recoge duración y texto de cada sentencia de la última repetición para localizar el coste (no afecta a las medidas: solo se lee el evento).
+  const stmts: { ms: number; q: string }[] = [];
+  let collecting = false;
+  if (process.env.CSAPP_PROFILE === "1") (prisma as unknown as { $on: (e: "query", cb: (ev: { duration: number | bigint; query: string }) => void) => void }).$on("query", (ev) => { if (collecting) stmts.push({ ms: Number(ev.duration), q: ev.query }); });
+  const profileReport = (title: string) => {
+    if (process.env.CSAPP_PROFILE !== "1") return;
+    const by = new Map<string, { n: number; ms: number }>();
+    for (const s of stmts) { const k = s.q.replace(/\s+/g, " ").slice(0, 110); const a = by.get(k) ?? { n: 0, ms: 0 }; a.n++; a.ms += s.ms; by.set(k, a); }
+    const total = stmts.reduce((x, y) => x + y.ms, 0);
+    console.log(`PERFIL ${title}: ${stmts.length} sentencias, ${total.toFixed(0)} ms en SQL`);
+    for (const [k, v] of [...by.entries()].sort((a, b) => b[1].ms - a[1].ms).slice(0, 14)) console.log(`   ${v.ms.toFixed(0).padStart(6)} ms  x${String(v.n).padStart(3)}  ${k}`);
+    stmts.length = 0;
+  };
   // Tres medidas por operación (la primera es «fría»: caché de PostgreSQL y de módulos por calentar); se informa mediana y rango. `reps = 1` en operaciones con efectos.
-  const run = async <T>(name: string, fn: () => Promise<T>, size?: (r: T) => number, reps = 3) => {
+  const run = async <T>(name: string, fn: () => Promise<T>, size?: (r: T) => number, repsOverride?: number) => {
+    const reps = repsOverride ?? Number(process.env.CSAPP_REPS ?? 3);
     const times: number[] = [];
     let r!: T;
     let queries = 0;
     const m0 = process.memoryUsage().rss;
     for (let i = 0; i < reps; i++) {
       g.csappQueryCount = 0;
+      collecting = i === reps - 1 && name.startsWith("Evolución");
+      stmts.length = 0;
       const s = performance.now();
       r = await fn();
       times.push((performance.now() - s) / 1000);
       queries = g.csappQueryCount ?? 0;
+      collecting = false;
     }
+    if (name.startsWith("Evolución")) profileReport(name);
     const sorted = [...times].sort((a, b) => a - b);
     const med = sorted[Math.floor(sorted.length / 2)];
-    const line = `| ${name} | ${med.toFixed(2)} (${sorted[0].toFixed(2)}–${sorted[sorted.length - 1].toFixed(2)}; 1.ª ${times[0].toFixed(2)}) | ${queries} | ${size ? (size(r) / 1024).toFixed(0) : "—"} | ${((process.memoryUsage().rss - m0) / 1048576).toFixed(0)} / ${(process.memoryUsage().rss / 1048576).toFixed(0)} |`;
+    const line = `| ${name} | ${med.toFixed(2)} (${sorted[0].toFixed(2)}–${sorted[sorted.length - 1].toFixed(2)}; 1.ª ${times[0].toFixed(2)}) | ${queries} | ${size ? (size(r) / 1024).toFixed(0) : "—"} | ${((process.memoryUsage().rss - m0) / 1048576).toFixed(0)} / ${(process.memoryUsage().rss / 1048576).toFixed(0)} / ${(process.resourceUsage().maxRSS / 1024).toFixed(0)} | ${loadavg()[0].toFixed(2)} |`;
     rows.push(line);
     console.log(line);
     return r;
   };
   const json = (r: unknown) => JSON.stringify(r, (_k, v) => (typeof v === "bigint" ? v.toString() : v)).length;
-  await run("Cartera Grupo Cliente (1 página de 50, referencias por percentiles)", () => getQuality(admin.id, Q(), { now: NOW }), json);
-  await run("Cartera Cliente (1500 clientes)", () => getQuality(admin.id, Q({ ambito: "client" }), { now: NOW }), json);
-  await run("Filtro por color y orden por global (misma cohorte)", () => getQuality(admin.id, Q({ color: "yellow", orden: "global", dir: "desc" }), { now: NOW }), json);
-  await run("Ficha de una entidad (cartera + selección)", () => getQuality(admin.id, Q({ sel: "vg7" }), { now: NOW }), json);
-  await run("Evolución mensual de una entidad", () => readSnapshot(admin.id, (tx) => evolutionIn(tx, Q({ sel: "vg7" }), "vg7", defaultQualityConfig(), today)), json);
-  await run("Backlog histórico (cartera, fotografía exacta, 1.ª página)", () => getBacklog(admin.id, Q(), 1, 50, NOW), json);
-  await run("Backlog de un corte con solo fotografía anterior", () => getBacklog(admin.id, Q({ fecha: "2026-09-15", modo: "CUTOFF" }), 1, 50, NOW), json);
-  await run("Diagnóstico por origen (cartera)", () => getDiagnosis(admin.id, Q(), NOW), json);
-  await run("Detalle de una familia (1.ª página)", () => diagnosisTickets(admin.id, Q(), "ESTANDAR", 1, 50, NOW), json);
-  await run("Matriz de Client Health (1.ª página)", () => getHealthMatrix(admin.id, { scope: "group", year: 2026, q: "", page: 1, pageSize: 50 }), json);
-  await run("CSV completo de la cartera", () => qualityCsv(admin.id, Q(), "cartera", { now: NOW }), (r) => r.body.length);
+  const { defaultQualityConfig: defaultQualityConfigRun } = await import("../src/domain/quality-config");
+  const only = process.env.CSAPP_ONLY === "evol";
+  const core = process.env.CSAPP_ONLY === "core"; // cartera, ficha y detalles de Calidad (sin conciliación, exportaciones ni planes de 09)
+  if (!only) {
+    await run("Cartera Grupo Cliente (1 página de 50, referencias por percentiles)", () => getQuality(admin.id, Q(), { now: NOW }), json);
+    await run("Cartera Cliente (1500 clientes)", () => getQuality(admin.id, Q({ ambito: "client" }), { now: NOW }), json);
+    await run("Filtro por color y orden por global (misma cohorte)", () => getQuality(admin.id, Q({ color: "yellow", orden: "global", dir: "desc" }), { now: NOW }), json);
+    await run("Ficha de una entidad (cartera + selección)", () => getQuality(admin.id, Q({ sel: "vg7" }), { now: NOW }), json);
+    await run("Evolución mensual de una entidad (config. por defecto, sin percentiles; medida de 09)", () => readSnapshot(admin.id, (tx) => evolutionIn(tx, Q({ sel: "vg7" }), "vg7", defaultQualityConfigRun(), today)), json);
+  }
+  // CSAPP-10: evolución con la configuración ACTIVA (percentiles de cartera en N3/PAP, backlog, Health, global), por Grupo y por Cliente.
+  const { getActive } = await import("../src/server/pulse/config");
+  const activeCfg = (await readSnapshot(admin.id, (tx) => getActive(tx, "QUALITY"))).payload;
+  const evoG = await run("Evolución mensual · Grupo (config. activa con percentiles)", () => readSnapshot(admin.id, (tx) => evolutionIn(tx, Q({ sel: "vg7" }), "vg7", activeCfg, today)), json);
+  const evoC = await run("Evolución mensual · Cliente (config. activa con percentiles)", () => readSnapshot(admin.id, (tx) => evolutionIn(tx, Q({ ambito: "client", sel: "vc7" }), "vc7", activeCfg, today)), json);
+  if (process.env.CSAPP_EVOLUTION_REFERENCE === "1") {
+    // Ruta de referencia de CSAPP-09 (un computeQuality completo por mes), SOLO para atribuir la mejora: tal cual y con JIT desactivado en la transacción.
+    const { evolutionReferenceIn } = await import("../src/server/quality/detail");
+    await run("Evolución mensual · Grupo · referencia 09 (por mes con computeQuality)", () => readSnapshot(admin.id, (tx) => evolutionReferenceIn(tx, Q({ sel: "vg7" }), "vg7", activeCfg, today)), json);
+    await run("Evolución mensual · Grupo · referencia 09 con JIT desactivado", () => readSnapshot(admin.id, async (tx) => { await tx.$executeRaw`SET LOCAL jit = off`; return evolutionReferenceIn(tx, Q({ sel: "vg7" }), "vg7", activeCfg, today); }), json);
+  }
+  if (process.env.CSAPP_EVOLUTION_DUMP) {
+    const { writeFileSync } = await import("node:fs");
+    writeFileSync(process.env.CSAPP_EVOLUTION_DUMP, JSON.stringify({ grupo: evoG, cliente: evoC }, (_k, v) => (typeof v === "bigint" ? v.toString() : v), 1));
+    console.log(`Evolución volcada en ${process.env.CSAPP_EVOLUTION_DUMP}`);
+  }
+  if (!only) {
+    await run("Backlog histórico (cartera, fotografía exacta, 1.ª página)", () => getBacklog(admin.id, Q(), 1, 50, NOW), json);
+    await run("Backlog de un corte con solo fotografía anterior", () => getBacklog(admin.id, Q({ fecha: "2026-09-15", modo: "CUTOFF" }), 1, 50, NOW), json);
+    await run("Diagnóstico por origen (cartera)", () => getDiagnosis(admin.id, Q(), NOW), json);
+    await run("Detalle de una familia (1.ª página)", () => diagnosisTickets(admin.id, Q(), "ESTANDAR", 1, 50, NOW), json);
+    await run("Matriz de Client Health (1.ª página)", () => getHealthMatrix(admin.id, { scope: "group", year: 2026, q: "", page: 1, pageSize: 50 }), json);
+    await run("CSV completo de la cartera", () => qualityCsv(admin.id, Q(), "cartera", { now: NOW }), (r) => r.body.length);
+  }
+  if (only || core) {
+    console.log(`\n| Medida | s: mediana (rango; 1.ª fría) | sentencias | KB | RSS Δ / total / pico MB | carga 1 min |\n| --- | --- | --- | --- | --- | --- |\n${rows.join("\n")}`);
+    await prisma.$disconnect();
+    return;
+  }
   // CSAPP-09: conciliación y exportación completa (solo en esta rama; no existen en 08).
   try {
     const { runReconciliation } = await import("../src/server/reconciliation/service");
@@ -181,6 +241,6 @@ import { performance } from "node:perf_hooks";
   } catch (e) {
     console.log(`(sello/EXPLAIN no disponibles: ${e instanceof Error ? e.message.split("\n")[0] : "error"})`);
   }
-  console.log(`\n| Medida | s: mediana (rango; 1.ª fría) | sentencias | KB | RSS Δ / total MB |\n| --- | --- | --- | --- | --- |\n${rows.join("\n")}`);
+  console.log(`\n| Medida | s: mediana (rango; 1.ª fría) | sentencias | KB | RSS Δ / total / pico MB | carga 1 min |\n| --- | --- | --- | --- | --- | --- |\n${rows.join("\n")}`);
   await prisma.$disconnect();
 })();

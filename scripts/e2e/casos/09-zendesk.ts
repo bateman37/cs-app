@@ -120,7 +120,7 @@ export async function zendesk(ctx: Ctx): Promise<void> {
       ticket({ ticket_id: "1", organization_id: "9001", tags: '["team_n3_pmo","team_it"]', status: "solved", causa: "incidente_estándar_plataforma" }),
       ticket({ ticket_id: "2", organization_id: "9001", status: "solved", tags: '["team_n2"]' }),
     ]);
-    const tb = await upload("Zendesk · tickets", file("tickets-b.xlsx"), "2026-02-10");
+    await upload("Zendesk · tickets", file("tickets-b.xlsx"), "2026-02-10");
     ctx.check("Zendesk tickets: la segunda extracción distingue 1 revisado y 1 sin cambios", (await waitStatus(page, "Listo para revisar")) && /Revisados 1/.test(await sumT("Revisados")) && /Sin cambios \(solo observación\) 1/.test(await sumT("Sin cambios")));
     await page.getByRole("button", { name: "Confirmar y activar" }).click();
     await waitStatus(page, "Completado");

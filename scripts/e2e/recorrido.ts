@@ -1,3 +1,4 @@
+import "./entorno-test";
 import { runAll } from "./nucleo";
 import { cuentas } from "./casos/01-cuentas";
 import { acceso } from "./casos/02-acceso";

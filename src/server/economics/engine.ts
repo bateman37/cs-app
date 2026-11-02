@@ -52,7 +52,10 @@ export type PeriodKey = (typeof PERIOD_KEYS)[number];
 export type EconomicScope =
   | { type: "groups"; ids: string[] | "ALL" }
   | { type: "client"; id: string }
-  | { type: "implementation"; id: string };
+  | { type: "implementation"; id: string }
+  /** Conjuntos de Clientes / implantaciones (Pulse Rent): cada uno con sus usuarios propios y sin ingreso propio. */
+  | { type: "clients"; ids: string[] }
+  | { type: "implementations"; ids: string[] };
 
 export type EconomicInput = {
   scope: EconomicScope;
@@ -526,6 +529,14 @@ async function loadEntities(tx: Tx, scope: EconomicScope): Promise<Ent[]> {
     });
     return rows.map((g) => ({ id: g.id, type: "group" as const, name: g.name, groupId: g.id, groupName: g.name }));
   }
+  if (scope.type === "clients") {
+    const rows = await tx.client.findMany({ where: { id: { in: scope.ids } }, include: { group: { select: { id: true, name: true } } }, orderBy: [{ name: "asc" }, { id: "asc" }] });
+    return rows.map((c) => ({ id: c.id, type: "client" as const, name: c.name, groupId: c.group?.id ?? null, groupName: c.group?.name ?? null }));
+  }
+  if (scope.type === "implementations") {
+    const rows = await tx.implementation.findMany({ where: { id: { in: scope.ids } }, include: { client: { include: { group: { select: { id: true, name: true } } } } }, orderBy: [{ name: "asc" }, { id: "asc" }] });
+    return rows.map((i) => ({ id: i.id, type: "implementation" as const, name: `${i.client.name} › ${i.name}`, groupId: i.client.group?.id ?? null, groupName: i.client.group?.name ?? null }));
+  }
   if (scope.type === "client") {
     const c = await tx.client.findUnique({ where: { id: scope.id }, include: { group: { select: { id: true, name: true } } } });
     if (!c) throw new DomainError("Cliente no encontrado.");
@@ -589,7 +600,7 @@ async function loadHours(
 ): Promise<HoursIndex> {
   const out: HoursIndex = new Map();
   if (ents.length === 0) return out;
-  const colName = scope.type === "groups" ? "groupId" : scope.type === "client" ? "clientId" : "implementationId";
+  const colName = scope.type === "groups" ? "groupId" : scope.type === "client" || scope.type === "clients" ? "clientId" : "implementationId";
   const colRaw = Prisma.raw(`a."${colName}"`);
   const ids = ents.map((e) => e.id);
   const minFrom = periodRows.reduce((m, p) => (p.from < m ? p.from : m), periodRows[0].from);

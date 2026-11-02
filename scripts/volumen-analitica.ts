@@ -3,9 +3,9 @@ import { performance } from "node:perf_hooks";
 
 /** Medida de volumen de Comparativa y Análisis Cliente (CSAPP-06 §10). Solo base `_test`. Uso: npm run benchmark:analitica [grupos] [tiempos] */
 (async () => {
-  const url = process.env.TEST_DATABASE_URL;
-  if (!url || !/cs_app(_[a-z0-9]+)*_test\b/.test(url.split("?")[0])) throw new Error("Falta TEST_DATABASE_URL de una base _test.");
-  process.env.DATABASE_URL = url;
+  const { activateTestTarget, assertConnectedTo, guardedTruncateAll } = await import("../src/lib/test-guard");
+  const approved = activateTestTarget(); // guard central: destino explícito `_test`, fijado antes de importar singletons
+  const url = approved.url;
   process.env.CSAPP_COUNT_QUERIES = "1";
   process.env.BETTER_AUTH_SECRET ||= "x".repeat(40);
   const groups = Number(process.argv[2] ?? 1500);
@@ -13,9 +13,9 @@ import { performance } from "node:perf_hooks";
   const { prisma } = await import("../src/lib/db");
   const { provisionAccount } = await import("../src/server/accounts");
   const { execFileSync } = await import("node:child_process");
+  await assertConnectedTo(prisma, approved.target.name); // antes de migrar o vaciar, en la conexión efectiva
   execFileSync(process.execPath, ["node_modules/prisma/build/index.js", "migrate", "deploy"], { env: { ...process.env, SHADOW_DATABASE_URL: "" }, stdio: "pipe" });
-  const tables = await prisma.$queryRaw<{ tablename: string }[]>`SELECT tablename FROM pg_tables WHERE schemaname = 'public' AND tablename <> '_prisma_migrations'`;
-  await prisma.$executeRawUnsafe(`TRUNCATE ${tables.map((t) => `"${t.tablename}"`).join(", ")} RESTART IDENTITY CASCADE`);
+  await guardedTruncateAll(prisma, approved);
   await provisionAccount({ email: "vol@test.local", name: "Vol", password: "clave-de-prueba-123", role: "ADMIN" });
   const admin = await prisma.user.findFirstOrThrow();
   const { todayMadrid } = await import("../src/domain/vigencia");

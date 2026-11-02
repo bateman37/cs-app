@@ -4,6 +4,7 @@ import type { BrowserContext, Page } from "playwright";
 import type { Ctx } from "../nucleo";
 import { login } from "./util";
 import { todayMadrid } from "../../../src/domain/vigencia";
+import { guardedTruncate, resolveTestTarget } from "../../../src/lib/test-guard";
 
 /**
  * Comparativa y Análisis Cliente (CSAPP-06) por el navegador sobre el `next start` compilado: filtros, orden numérico con nulos al final,
@@ -19,7 +20,7 @@ async function cookie(context: BrowserContext, base: string) {
 export async function analitica(ctx: Ctx): Promise<void> {
   const today = todayMadrid();
   const admin = await ctx.prisma.user.findUniqueOrThrow({ where: { email: ctx.accounts.adminEmail } });
-  await ctx.prisma.$executeRawUnsafe(`TRUNCATE "FinanceRow", "FinanceBatch", "FinanceScope", "ZdTimeEntry", "WrikeTimeEntry", "ZdTicketObservation", "ZdTicketRevision", "ZdTicket", "UserMatrixMonth", "UserMatrix", "ServiceTerm", "ServiceAssignment", "ExternalIdentity", "Milestone", "Implementation", "Client", "ClientGroup", "PapCause", "PapRevision", "PapItem", "UploadBatch", "Product", "PersonTerm", "PersonAlias", "StaffCatalogItem", "Person" RESTART IDENTITY CASCADE`).catch(() => undefined);
+  await guardedTruncate(ctx.prisma, resolveTestTarget(), ["FinanceRow", "FinanceBatch", "FinanceScope", "ZdTimeEntry", "WrikeTimeEntry", "ZdTicketObservation", "ZdTicketRevision", "ZdTicket", "UserMatrixMonth", "UserMatrix", "ServiceTerm", "ServiceAssignment", "ExternalIdentity", "Milestone", "Implementation", "Client", "ClientGroup", "PapCause", "PapRevision", "PapItem", "UploadBatch", "Product", "PersonTerm", "PersonAlias", "StaffCatalogItem", "Person"]);
   // Importación diferida: el módulo del generador abre `prisma`, que debe apuntar a la base de test ya fijada por el recorrido.
   const { seedAnalitica } = await import("../../../tests/generators/analitica");
   const w = await seedAnalitica(admin.id, today);

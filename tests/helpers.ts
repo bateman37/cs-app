@@ -1,11 +1,10 @@
 import { prisma } from "@/lib/db";
 import { provisionAccount } from "@/server/accounts";
+import { guardedTruncateAll, resolveTestTarget } from "@/lib/test-guard";
 
+/** Vacía la base de pruebas aprobada; la conexión efectiva se comprueba (current_database()) antes de cualquier TRUNCATE. */
 export async function resetDatabase() {
-  const tables = await prisma.$queryRaw<{ tablename: string }[]>`
-    SELECT tablename FROM pg_tables WHERE schemaname = 'public' AND tablename <> '_prisma_migrations'`;
-  const list = tables.map((t) => `"${t.tablename}"`).join(", ");
-  await prisma.$executeRawUnsafe(`TRUNCATE ${list} RESTART IDENTITY CASCADE`);
+  await guardedTruncateAll(prisma, resolveTestTarget());
 }
 
 export async function makeUsers() {

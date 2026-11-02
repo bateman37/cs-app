@@ -70,6 +70,15 @@ Propietario único de las variables de CS App (CSAPP-10). [`.env.example`](../..
 | `CSAPP_ZENDESK_HOSTS` | — | Hosts reconocidos en URLs de tickets de Zendesk (coma). |
 | `CSAPP_DEVOPS_PRODUCTS` | ninguno | Producto de una URL de DevOps: `VFS=ProyectoA,ProyectoB;VSW=ProyectoC`. |
 
+## Copias y restauración (CSAPP-10)
+
+| Variable | Efecto |
+| --- | --- |
+| `CSAPP_BACKUP_DIR` | Directorio de destino de las copias (fuera de los almacenes copiados; restringido: contiene datos privados). |
+| `CSAPP_PG_BIN` | Carpeta de las herramientas cliente de PostgreSQL 16 (útil en Windows si no están en el `PATH`). |
+| `CSAPP_PG_DUMP` · `CSAPP_PG_RESTORE` · `CSAPP_PSQL` | Ruta explícita de cada ejecutable (tienen prioridad sobre `CSAPP_PG_BIN`). |
+| `CSAPP_RESTORE_DATABASE_URL` | Base destino de una restauración (alternativa a `--db-url`; nunca la operativa). Contiene credenciales: solo en la sesión. |
+
 ## Solo desarrollo y pruebas — **no definirlas en producción**
 
 | Variable | Efecto |
@@ -77,4 +86,5 @@ Propietario único de las variables de CS App (CSAPP-10). [`.env.example`](../..
 | `TEST_DATABASE_URL` | Base aislada `cs_app…_test` de las pruebas (guard central). Inerte en producción; no debe heredarse (el supervisor la vacía en los procesos hijo y `ops verificar` avisa). |
 | `SHADOW_DATABASE_URL` | Solo `prisma migrate dev`. Mismo tratamiento. |
 | `CSAPP_ENABLE_SYNTHETIC_PROFILES` · `CSAPP_APPROVED_TEST_DB` · `CSAPP_COUNT_QUERIES` | Opciones de prueba: **en una instalación operativa impiden el arranque** (error explícito); nunca se ignoran en silencio. |
+| `CSAPP_PROFILE` · `CSAPP_REPS` · `CSAPP_SKIP_SEED` · `CSAPP_ONLY` · `CSAPP_EVOLUTION_DUMP` · `CSAPP_EVOLUTION_REFERENCE` | Parámetros de los benchmarks (`npm run benchmark:*`) y de la paridad de la evolución; no son configuración de la aplicación. |
 | `E2E_PORT` · `E2E_CHROMIUM` · `E2E_SOLO` · `E2E_CAPTURAS` · `E2E_MEASURES_FILE` · `ENSAYO_PORT` · `TICKETS` · `TIMES` · `WRIKE` | Parámetros de los recorridos y ensayos (`npm run e2e*`, `ensayo:*`). |

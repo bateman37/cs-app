@@ -86,7 +86,7 @@ async function TicketsPanel({ userId, batch, base, det, dp, keep }: Props) {
     ["Revisados", link("revised", s.revised), "Mismo ticket_id con contenido distinto: crea una revisión con sus diferencias."],
     ["Sin cambios (solo observación)", link("unchanged", s.unchanged), "Su contenido coincide con una revisión ya registrada: solo se añade la observación, sin otro ticket ni otra actividad."],
     ["Observaciones " + (done ? "registradas" : "a registrar"), f(s.observations), "Una por ticket distinto: presencia y estado del ticket en esta extracción. Un cambio de estado no es un ticket nuevo."],
-    ["Observación anterior a la vigente", link("older", s.olderThanCurrent), "Se conserva como histórico y no sustituye el estado vigente de otro lote más reciente."],
+    ["Observación anterior a la vigente", link("older", s.olderThanCurrent), "Fecha de observación anterior a la vigente. Por la política de última carga, este lote pasa a ser el vigente al activarse (las fechas originales se conservan)."],
     ["Sin organización informada", link("org_none", s.orgNone), "El ticket se conserva; no hay Cliente que resolver."],
     ["Organización sin Cliente equivalente", link("org_no_client", s.orgNoClient), "Añada la equivalencia en Maestros y use Reprocesar. No se crean clientes por el nombre."],
     ["Cliente sin Grupo BC", link("client_no_group", s.clientNoGroup), "El Cliente sigue identificado; solo su agrupación económica queda pendiente."],
@@ -108,8 +108,8 @@ async function TicketsPanel({ userId, batch, base, det, dp, keep }: Props) {
         )}
         {s.olderThanCurrent > 0 ? (
           <p className="notice notice-info" role="note">
-            {f(s.olderThanCurrent)} {s.olderThanCurrent === 1 ? "ticket tiene" : "tickets tienen"} una observación vigente más reciente de otro lote: esta extracción se conserva como histórico y no la sobrescribe.
-            La vigencia se resuelve por fecha de observación, después por recepción del lote y por último por orden de activación (nunca por posición de fila).
+            {f(s.olderThanCurrent)} {s.olderThanCurrent === 1 ? "ticket tiene" : "tickets tienen"} una observación vigente con fecha posterior a la de este archivo. Por la política de última carga, al activarse este lote su contenido pasa a ser el vigente; las fechas originales se conservan como datos.
+            La vigencia se resuelve por la secuencia de recepción del lote (nunca por fecha del dato, posición de fila ni reloj del navegador).
           </p>
         ) : null}
         {s.sameDayObservations > 0 ? (

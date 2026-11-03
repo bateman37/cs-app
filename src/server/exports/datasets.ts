@@ -166,7 +166,7 @@ const PAP_CAUSAS: FileDef = {
   order: ["lista", "pap_id", "orden"],
   additive: false,
   reconciliation: "NO aditivo: un PAP con varias causas aparece en varias filas; el recuento de PAP sale del archivo «pap», no de este. Las pertenencias (estándar, proyecto, origen cliente) pueden solaparse.",
-  columns: [t("lista", "lista de origen"), t("pap_id", "ID del PAP"), n("orden", "n", "orden de la causa en el PAP"), t("categoria", "CORRECTIVE | EVOLUTIVE | …"), t("origen", "STANDARD | CUSTOMIZATION | CONFIG_DATA | PROCESSES | INFRASTRUCTURE | CLIENT_ORIGIN | vacío"), t("causa_normalizada", "causa normalizada")],
+  columns: [t("lista", "lista de origen"), t("pap_id", "ID del PAP"), n("orden", "n", "orden de la causa en el PAP"), t("categoria", "CORRECTIVE | EVOLUTIVE | MAINTENANCE | CLIENT_REQUEST | OTHER"), t("origen", "STANDARD | CUSTOMIZATION | CONFIG_DATA | PROCESSES | INFRASTRUCTURE | CLIENT_ORIGIN | vacío"), t("causa_normalizada", "causa normalizada")],
   sql: (p) => Prisma.sql`
     SELECT x."listKey" AS lista, x."papId" AS pap_id, c.ord::text AS orden, c.category AS categoria, c.origin AS origen, c.normalized AS causa_normalizada
     FROM (${papSetSql(p.scope, p.ids ?? [])}) x

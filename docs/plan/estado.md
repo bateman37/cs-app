@@ -163,6 +163,20 @@ Documentación: [exportaciones](../arquitectura/exportaciones-csapp09.md), [conc
 
 Documentación vigente: [instalación y operación](../operacion/instalacion-operacion.md), [variables](../operacion/variables-entorno.md), [copia y restauración](../operacion/copia-restauracion.md), [actualización y despliegue](../operacion/actualizacion-despliegue-it.md), [guía de Dennis](guia-dennis.md), [arquitectura](../arquitectura/operacion-csapp10.md).
 
+## Resultado de CSAPP-HOTFIX-01 (cargas sencillas, última carga y precargas; fuera de las diez entregas)
+
+| Dato | Valor |
+| --- | --- |
+| Rama / base | `feature/CSAPP-HOTFIX-01-cargas-sencillas-precarga`, desde la cabeza de CSAPP-10 (`dc6f4c4`); PR única apilada, sin fusionar ni desplegar; sin force. HOTFIX-01-v1 no estaba en el repositorio: marcada como sustituida |
+| Migraciones | `20261106090000_hotfix01_ultima_carga`, `20261107090000_hotfix01_precarga_maestros`, `20261108090000_hotfix01_historico_usuarios` |
+| Implementado | Formularios solo archivo (+ año libre en finanzas); estado final de botones y sondeo; lo último cargado manda (secuencia de recepción); instantánea activa de tiempos por fuente; PAP con identidad única y «Petición cliente»; vista amplia de bugs; histórico económico 2022–2025 con usuarios 2025 y ventana de edición año actual y anterior; precarga de maestros (Clientes, Personal, PMO) |
+| Probado | Linux: suite rápida 743, recorrido de navegador 359/359, migraciones con datos, ensayo con los dos libros reales en bases aisladas. Ver [validación](../validacion/hotfix-01.md) |
+| No probado | Windows/PowerShell; la base local de Dennis; volúmenes y ensayos de operación de CSAPP-10 con este código |
+| Precarga real | **Pendiente de Dennis**: los dos libros solo se ensayaron en bases aisladas; él los carga y confirma en su instalación |
+| Pendiente de Dennis | Ejecutar la [guía de actualización](guia-powershell-hotfix01.md), cargar sus dos archivos, resolver las revisiones (alias ambiguos, soportes discrepantes, 4 denominadores de usuarios) y validar las propuestas de [precarga de maestros](../importaciones/precarga-maestros.md) |
+
+Documentación: [arquitectura](../arquitectura/hotfix01-ultima-carga.md), [proceso común IMP 08–12](../importaciones/proceso-comun.md), [PAP](../importaciones/pap.md), [histórico económico](../importaciones/historico-economico.md), [precarga de maestros](../importaciones/precarga-maestros.md).
+
 ## Estado por trabajo
 
 Niveles: diseñado, documentado, implementado, probado, aceptado. Un criterio de aceptación escrito no es una prueba ejecutada.
@@ -180,6 +194,7 @@ Niveles: diseñado, documentado, implementado, probado, aceptado. Un criterio de
 | CSAPP-08 | Sí | Sí | Sí (PR apilada sin fusionar) | Sí en Linux con datos sintéticos; Windows sin probar | No |
 | CSAPP-09 | Sí | Sí | Sí (PR apilada sin fusionar) | Sí en Linux con datos sintéticos; Windows y conciliación real sin ejecutar | No |
 | CSAPP-10 | Sí | Sí | Sí (PR apilada sin fusionar) | Sí en Linux con datos sintéticos; Windows, proxy y datos reales sin ejecutar | No |
+| CSAPP-HOTFIX-01 | Sí | Sí | Sí (PR apilada sin fusionar) | Sí en Linux con datos sintéticos y ensayo con los libros reales en bases aisladas; Windows y datos de Dennis sin probar | No |
 | Cargas reales | — | Política en [precarga y pruebas](precarga-y-pruebas.md) | No | No | No; las probará Dennis |
 
 Las diez entregas están implementadas. Siguen pendientes, y **no** están cerradas por este trabajo: la aceptación funcional con los archivos reales de Dennis, la prueba en Windows, las decisiones listadas en [pendientes](../decisiones/pendientes.md) y el despliegue en un destino autorizado por IT. No existe CSAPP-11.

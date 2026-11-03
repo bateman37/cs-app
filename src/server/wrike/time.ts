@@ -136,6 +136,7 @@ export const wrike: ImportProfile = {
   formats: ["csv"],
   delimiter: ",",
   policy: "INCORPORATE",
+  note: "Carga el export completo: sustituirá los tiempos activos de esta fuente; las cargas anteriores se conservan",
   metadataFields: [],
   metadataSchema: z.object({}).strict(),
   blocksConfirmOnErrors: true,

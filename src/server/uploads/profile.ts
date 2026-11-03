@@ -13,7 +13,7 @@ export type Issue = { severity: "error" | "warning"; code: string; message: stri
 export type MetadataField = {
   name: string;
   label: string;
-  type: "text" | "select" | "date" | "checkbox";
+  type: "text" | "select" | "date" | "checkbox" | "number";
   required: boolean;
   options?: { value: string; label: string }[];
 };
@@ -68,6 +68,8 @@ export interface ImportProfile {
   /** Política de activación de su ámbito. */
   policy: "INCORPORATE" | "REPLACE_SCOPE";
   metadataFields: MetadataField[];
+  /** Mensaje breve que se muestra junto al formulario de la fuente (p. ej. la política de sustitución). */
+  note?: string;
   metadataSchema: z.ZodType<Record<string, unknown>>;
   /** Obligatorio en REPLACE_SCOPE (año/categoría, ámbito...). */
   scopeKey?(metadata: Record<string, unknown>): string | null;

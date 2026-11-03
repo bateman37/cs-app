@@ -18,7 +18,7 @@ Columnas: ID estable · acción y resultado esperado · evidencia a adjuntar · 
 | ID | Acción y resultado esperado | Evidencia | Ejecutor | Fecha | Estado |
 | --- | --- | --- | --- | --- | --- |
 | MAE-01 | Grupo Cliente/Cliente con equivalencias; personal histórico con vigencias; organizaciones internas fuera de clientes | Capturas | | | pendiente |
-| USR-01 | Matriz: 2025 fijo, 2026 mensual, **65 hasta mayo y 68 desde junio → 665 usuarios mes enero–octubre y stock 68**; un nulo distinto de cero; el total del grupo no suma usuarios compartidos | Captura de la matriz y de la ficha | | | pendiente |
+| USR-01 | Matriz: año actual y anterior editables (2025 base, 2026 mensual), **65 hasta mayo y 68 desde junio → 665 usuarios mes enero–octubre y stock 68**; un nulo distinto de cero; el total del grupo no suma usuarios compartidos | Captura de la matriz y de la ficha | | | pendiente |
 
 ## C. Cargas y recuperación
 

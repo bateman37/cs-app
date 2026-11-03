@@ -57,9 +57,9 @@ export default async function RevisarPage({ params, searchParams }: { params: Pr
     if (accion === "cambio") {
       view = { kind: "cambio", pv: await previewMatrixChange(user.id, { ...scope, year, op: first(sp.op), month: first(sp.mes), value: first(sp.valor) }) };
     } else if (accion === "inicializar") {
-      view = { kind: "inicializar", pv: await previewInitializeHistoric(user.id, { ...scope, value: first(sp.valor), source: first(sp.procedencia) }) };
+      view = { kind: "inicializar", pv: await previewInitializeHistoric(user.id, { ...scope, year, value: first(sp.valor), source: first(sp.procedencia) }) };
     } else if (accion === "copiar") {
-      view = { kind: "copiar", pv: await previewCopyFromPreviousYear(user.id, { ...scope, year }) };
+      view = { kind: "copiar", pv: await previewCopyFromPreviousYear(user.id, { ...scope, year, mode: first(sp.modo) || "SAME_MONTH" }) };
     } else {
       notFound();
     }
@@ -105,16 +105,16 @@ export default async function RevisarPage({ params, searchParams }: { params: Pr
     const pv = view.pv;
     body = (
       <>
-        <h1>Inicializar histórico 2025: {pv.scopeName}</h1>
+        <h1>Valor inicial de {year}: {pv.scopeName}</h1>
         {pv.status === "conflict" ? (
           <p className="notice notice-error" role="alert">{pv.message}</p>
         ) : pv.status === "unchanged" ? (
-          <p className="notice notice-info">El histórico ya está inicializado con ese mismo valor: no hay nada que cambiar.</p>
+          <p className="notice notice-info">El año ya tiene ese mismo valor inicial: no hay nada que cambiar.</p>
         ) : (
           <>
-            <p>Se crearán los doce meses de 2025 con el mismo valor y quedarán bloqueados. Esta carga inicial no se puede repetir con otro valor.</p>
+            <p>Se crearán los doce meses de {year} con el mismo valor (carga inicial). Después se pueden ajustar mes a mes.</p>
             <PlanTable plan={pv.plan} />
-            <ActionForm action={initializeHistoricAction} hidden={{ ...scope, value: first(sp.valor), source: first(sp.procedencia) }}>
+            <ActionForm action={initializeHistoricAction} hidden={{ ...scope, year, value: first(sp.valor), source: first(sp.procedencia) }}>
               <div className="form-actions"><SubmitButton>Confirmar inicialización</SubmitButton></div>
             </ActionForm>
           </>
@@ -125,11 +125,11 @@ export default async function RevisarPage({ params, searchParams }: { params: Pr
     const pv = view.pv;
     body = (
       <>
-        <h1>Copiar base de {year - 1}: {pv.scopeName}</h1>
-        {pv.message ? <p className="notice notice-info" role="note">{pv.message}</p> : <p>Se copia cada mes del año anterior solo donde {year} está sin informar. No se pisa ningún valor ni ajuste existente.</p>}
+        <h1>{first(sp.modo) === "DECEMBER" ? `Copiar diciembre de ${year - 1}` : `Copiar base de ${year - 1}`}: {pv.scopeName}</h1>
+        {pv.message ? <p className="notice notice-info" role="note">{pv.message}</p> : <p>{first(sp.modo) === "DECEMBER" ? `Se copia diciembre de ${year - 1} a los meses sin informar de ${year}.` : `Se copia cada mes del año anterior solo donde ${year} está sin informar.`} No se pisa ningún valor ni ajuste existente.</p>}
         <PlanTable plan={pv.plan} />
         {pv.canApply ? (
-          <ActionForm action={copyPreviousYearAction} hidden={{ ...scope, year, expectedVersion: pv.version }}>
+          <ActionForm action={copyPreviousYearAction} hidden={{ ...scope, year, mode: first(sp.modo) || "SAME_MONTH", expectedVersion: pv.version }}>
             <div className="form-actions"><SubmitButton>Confirmar copia</SubmitButton></div>
           </ActionForm>
         ) : null}

@@ -3,7 +3,6 @@ import { prisma } from "@/lib/db";
 import { getSettings, listSettingsRevisions, updateSettings } from "@/server/economics/settings";
 import { createServiceAssignment, listServiceAssignments, previewServiceAssignmentImpact, setServiceAssignmentActive, updateServiceAssignment } from "@/server/economics/service-assignments";
 import { runEconomics } from "@/server/economics/engine";
-import { importHistoricFinance } from "@/server/finance/history";
 import { decideFinance, reviewFinanceImpact, revokeFinanceDecision } from "@/server/finance/review";
 import { confirmUpload, receiveUpload, revertUpload } from "@/server/uploads/batches";
 import { createIdentity } from "@/server/identities";
@@ -12,7 +11,7 @@ import { DomainError, StaleVersionError } from "@/server/errors";
 import { Readable } from "node:stream";
 import { freshEnvironment, removeUploadDir, useUploadDir, drain } from "./cargas-helpers";
 import { addGroup, addTicket, addZd, fakeBatch, seedFinance } from "./economia-helpers";
-import { prepareFin, importFin, activeRows, scopeOf } from "./finanzas-helpers";
+import { prepareFin, importFin, scopeOf } from "./finanzas-helpers";
 import { financeXlsx } from "./generators/finance";
 
 let dir: string;
@@ -98,69 +97,8 @@ describe("asignación de servicio", () => {
   });
 });
 
-describe("vía histórica anterior a 2025", () => {
-  const header = ["Grupo cliente", "Facturación anual ", "Año ", "Soporte", "Facturación mes", "Admin Delegada", "Servidor", "Usuarios"];
-  const c = (v: string) => ({ v, k: v === "" ? "empty" : "text" });
-  const row = (n: number, g: string, amount: string, year: string, soporte: string, admin: string) => ({ sourceRow: n, cells: [g, amount, year, soporte, "999", admin, "Cloud", "50"].map(c) });
-  const rows = [
-    row(2, "Acme SA", "1200", "2023", "Gold", ""),
-    row(3, "Acme SA", "300", "2023", "", "sí"),
-    row(4, "Beta SL", "800.5", "2024", "Silver", ""),
-    row(5, "Beta SL", "800.5", "2024", "Silver", ""), // idéntica: cuenta una vez
-    row(6, "Gamma", "100", "2025", "Gold", ""), // 2025 en adelante: se rechaza
-    row(7, "Delta", "50", "2022", "", ""), // sin categoría explícita
-    row(8, "Eps", "60", "2022", "Gold", "x"), // ambigua
-    row(9, "Zeta", "10", "2022", "Gold", ""),
-    row(10, "Zeta", "11", "2022", "Gold", ""), // contradicción
-  ];
-  it("simulación por defecto: no escribe; informa ámbitos, rechazos y columnas no usadas", async () => {
-    const r = await importHistoricFinance(admin.id, { header, rows });
-    expect(r.applied).toBe(false);
-    expect(await prisma.financeScope.count()).toBe(0);
-    expect(await prisma.uploadBatch.count()).toBe(0);
-    expect(r.scopes.map((s) => `${s.year} ${s.category} ${s.outcome} ${s.rows} ${s.total}`)).toEqual([
-      "2022 SOPORTE BLOQUEADO_POR_CONFLICTO 0 0", "2023 ADMIN_DELEGADA IMPORTABLE 1 300", "2023 SOPORTE IMPORTABLE 1 1200", "2024 SOPORTE IMPORTABLE 1 800.5",
-    ]);
-    expect(r.plan.skipped.map((s) => s.code).sort()).toEqual(["AÑO_NO_HISTORICO", "CATEGORIA_AMBIGUA", "CATEGORIA_NO_EXPLICITA"]);
-    expect(r.plan.ignoredColumns).toEqual(["Facturación mes", "Servidor", "Usuarios"]);
-  });
-  it("aplicar es idempotente, protege los ámbitos ya activos, no inventa OTROS ni toca usuarios, y deja la procedencia en Cargas", async () => {
-    const g = await addGroup("Acme");
-    await prisma.externalIdentity.create({ data: { system: "BC", kind: "GROUP_KEY", rawValue: "Acme SA", searchValue: "acme sa", groupId: g.id } });
-    const users0 = await prisma.userMatrix.count();
-    const r1 = await importHistoricFinance(admin.id, { header, rows, apply: true });
-    expect(r1.scopes.filter((s) => s.outcome === "IMPORTADO")).toHaveLength(3);
-    expect(await prisma.financeScope.count({ where: { category: "OTROS" } })).toBe(0);
-    expect(await prisma.userMatrix.count()).toBe(users0);
-    const rowsS = await activeRows("SOPORTE", 2023);
-    expect(rowsS).toHaveLength(1);
-    expect(rowsS[0]).toMatchObject({ groupId: g.id, difference: null });
-    const batch = await prisma.uploadBatch.findFirstOrThrow({ where: { scopeKey: "2023", profileId: "facturacion-soporte" } });
-    expect(batch).toMatchObject({ status: "COMPLETED" });
-    expect((await prisma.financeBatch.findUniqueOrThrow({ where: { batchId: batch.id } })).origin).toBe("HISTORICAL");
-    const r2 = await importHistoricFinance(admin.id, { header, rows, apply: true });
-    expect(r2.scopes.filter((s) => s.outcome === "IMPORTADO")).toHaveLength(0);
-    expect(r2.scopes.filter((s) => s.outcome === "OMITIDO_YA_ACTIVO")).toHaveLength(3);
-    expect(await prisma.uploadBatch.count({ where: { profileId: { startsWith: "facturacion-" } } })).toBe(3);
-    // un ámbito ya cargado por la vía normal también queda protegido; la sustitución posterior usa la revisión financiera normal
-    await importFin(admin.id, "SOPORTE", 2022, [{ grupo: "Real", vta: 5 }], { total: { vta: 5 } });
-    const r3 = await importHistoricFinance(admin.id, { header, rows: [row(2, "Otra", "9", "2022", "Gold", "")], apply: true });
-    expect(r3.scopes[0].outcome).toBe("OMITIDO_YA_ACTIVO");
-    expect((await activeRows("SOPORTE", 2022)).map((x) => x.label)).toEqual(["Real"]);
-  });
-  it("rechaza cabeceras ausentes y no admite 2025 en adelante; el histórico no cubre Total, así que el cero de un grupo ausente no queda acreditado", async () => {
-    await expect(importHistoricFinance(admin.id, { header: ["Grupo cliente", "Año"], rows: [] })).rejects.toBeInstanceOf(DomainError);
-    const g = await addGroup("Otro");
-    await importHistoricFinance(admin.id, { header, rows, apply: true });
-    const r = await runEconomics(admin.id, { scope: { type: "groups", ids: [g.id] }, service: "SOPORTE", date: "2023-03-31", mode: "FULL_MONTH", now: NOW });
-    expect(r.entities[0].periods.month.revenue.status).toBe("NO_SOURCE");
-    expect(r.reference.finance.find((f) => f.year === 2023 && f.category === "SOPORTE")?.coverage).toBe("NO_CONFIRMADA");
-  });
-  it("solo un administrador puede ejecutarla", async () => {
-    await expect(importHistoricFinance(reader.id, { header, rows, apply: true })).rejects.toBeInstanceOf(AccessError);
-    expect(await prisma.financeScope.count()).toBe(0);
-  });
-});
+// La vía asistida anterior a 2025 (importHistoricFinance, que rechazaba 2025 en adelante) la sustituye la entrada «Histórico económico y usuarios»
+// de HOTFIX-01 §6: sus pruebas están en tests/historico-economico.test.ts.
 
 describe("seguridad: sin sesión o con perfil Consulta nada muta", () => {
   it("cargas financieras, decisiones, revisión, reversión, equivalencias, parámetros y asignaciones", async () => {
@@ -182,7 +120,7 @@ describe("seguridad: sin sesión o con perfil Consulta nada muta", () => {
         () => reviewFinanceImpact(who, b.id),
         () => confirmUpload(who, b.id),
         () => revertUpload(who, done.id),
-        () => receiveUpload(who, { profileId: "facturacion-soporte", originalName: "f.xlsx", metadata: { anio: 2026, conjuntoCompleto: "si" }, declared: {}, contentLength: file.length, body: Readable.from([file]) }),
+        () => receiveUpload(who, { profileId: "facturacion-soporte", originalName: "f.xlsx", metadata: { anio: 2026 }, declared: {}, contentLength: file.length, body: Readable.from([file]) }),
         () => createIdentity(who, { system: "WRIKE", kind: "PROJECT_NAME", rawValue: "P", targetType: "group", targetId: g.id }),
         () => updateSettings(who, { targetEurosPerDay: "1", dayHours: "8", reconciliationTolerance: "0", expectedRevisionNo: 1 }),
         () => createServiceAssignment(who, { matchKind: "ENTORNO", matchValue: "x", service: "OTROS" }),

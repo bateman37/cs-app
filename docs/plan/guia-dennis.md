@@ -14,7 +14,7 @@ Para quien ya tiene la aplicación instalada ([instalación y operación](../ope
 | --- | --- | --- |
 | 1 | **Grupos Cliente y Clientes** (dos niveles), con sus equivalencias BC/Zendesk/Wrike/PAP | Las organizaciones internas (incluida VINCLE BUGS y las de pruebas) no son clientes externos. Sin equivalencia, una fila se resume y se excluye del cálculo afectado: no se asigna a VINCLE. |
 | 2 | **Personal** (persona única, alias por sistema, nivel/equipo/PMO y rol con vigencias) | El personal histórico se conserva con sus vigencias. |
-| 3 | **Matriz de usuarios** mensual por Grupo, Cliente e implantación | 2025 fijo; 2026 mensual. Con 65 hasta mayo y 68 desde junio: **665 usuarios mes** de enero a octubre y **stock 68**. Un nulo es distinto de cero; el grupo conserva su total propio sin sumar usuarios compartidos. |
+| 3 | **Matriz de usuarios** mensual por Grupo, Cliente e implantación | Se editan el año actual y el anterior; 2025 base (doce meses iguales) y 2026 mensual. Con 65 hasta mayo y 68 desde junio: **665 usuarios mes** de enero a octubre y **stock 68**. Un nulo es distinto de cero; el grupo conserva su total propio sin sumar usuarios compartidos. |
 | 4 | **Servicio económico**, soporte/servidor/complejidad/producto, hitos | Con vigencias; no se inventa reparto de ingreso agrupado entre Clientes. |
 
 ## 2. Cargas (Administración › Cargas) — orden flexible

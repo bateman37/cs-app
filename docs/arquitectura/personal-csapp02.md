@@ -2,7 +2,7 @@
 
 Resultado de la parte PERSONAL de [CSAPP-02-v1](../../prompts/CSAPP-02-v1.md). Reglas de producto: [Maestros](../producto/maestros.md), MST 05 y MST 06. Esquema físico: `Person`, `PersonAlias`, `PersonTerm` y `StaffCatalogItem` en `prisma/schema.prisma`; restricciones en la migración `20261029220244_personal_usuarios_cargas`.
 
-Estado: **implementado y probado con PostgreSQL real en Linux** (ver pruebas abajo); **no aceptado** por Dennis. Sin precarga: no hay fuente privada y las tablas quedan vacías (salvo los roles PMO iniciales ANA y DEV del catálogo, sembrados por la migración).
+Estado: **implementado y probado con PostgreSQL real en Linux** (ver pruebas abajo); **no aceptado** por Dennis. En CSAPP-02 no hubo precarga: las tablas quedaban vacías (salvo los roles PMO iniciales ANA y DEV del catálogo, sembrados por la migración). Desde CSAPP-HOTFIX-01 las hojas PERSONAL y PERSONAL PMO se cargan con el perfil «Precarga de maestros» (revisión de variantes y enlaces en la ficha de la carga, sin crear cuentas): ver [Precarga de maestros](../importaciones/precarga-maestros.md).
 
 ## Modelo
 

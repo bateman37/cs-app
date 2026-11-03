@@ -25,14 +25,14 @@ export async function personalUsuarios(ctx: Ctx): Promise<void> {
   const group = await ctx.prisma.clientGroup.create({ data: { name: "Grupo Usuarios E2E" } });
   const client = await ctx.prisma.client.create({ data: { name: "Cliente Usuarios E2E", groupId: group.id } });
   const base = `${ctx.base}/administracion/usuarios`;
-  await page.goto(`${base}/cliente/${client.id}?anio=2025`);
+  await page.goto(`${base}/cliente/${client.id}?anio=${year - 1}`);
   await page.getByLabel("Usuarios contratados").fill("65");
-  await page.getByRole("button", { name: "Ver vista previa" }).click();
+  await page.getByRole("button", { name: "Ver vista previa" }).last().click(); // el formulario de valor inicial es el último de la ficha
   await page.getByRole("button", { name: "Confirmar inicialización" }).click();
   await page.waitForURL(/\/administracion\/usuarios\/cliente\/[^/]+(?!\/revisar)\?/, { timeout: 10000 }).catch(() => undefined);
   await page.waitForTimeout(1000);
-  const m25 = await ctx.prisma.userMatrix.findFirst({ where: { clientId: client.id, year: 2025 }, include: { months: true } });
-  ctx.check("Inicializar 2025 crea doce valores iguales y bloqueados", m25?.months.length === 12 && m25.months.every((x) => x.value === 65 && x.isLocked));
+  const m25 = await ctx.prisma.userMatrix.findFirst({ where: { clientId: client.id, year: year - 1 }, include: { months: true } });
+  ctx.check("Inicializar el año anterior (editable) crea doce valores iguales (carga inicial, sin bloqueo por fila: la ventana de años decide)", m25?.months.length === 12 && m25.months.every((x) => x.value === 65 && !x.isLocked));
   ctx.check("El histórico de grupo no se copia al Cliente (el grupo sigue sin matriz)", (await ctx.prisma.userMatrix.count({ where: { groupId: group.id } })) === 0);
 
   await page.goto(`${base}/cliente/${client.id}?anio=${year}`);
@@ -50,9 +50,9 @@ export async function personalUsuarios(ctx: Ctx): Promise<void> {
   const v = (cur?.months ?? []).map((x) => x.value).join(",");
   ctx.check("65 hasta mayo y 68 desde junio conserva los meses anteriores", v === "65,65,65,65,65,68,68,68,68,68,68,68", v);
 
-  // Año histórico: sin formularios de edición y rechazo directo.
-  await page.goto(`${base}/cliente/${client.id}?anio=2025`);
-  ctx.check("Un año anterior es solo consulta (sin formulario de edición)", (await page.getByRole("heading", { name: "Editar un mes" }).count()) === 0);
+  // Fuera de la ventana (año actual y anterior): sin formularios de edición.
+  await page.goto(`${base}/cliente/${client.id}?anio=${year - 2}`);
+  ctx.check("Un año fuera de la ventana (actual y anterior) es solo consulta (sin formulario de edición)", (await page.getByRole("heading", { name: "Editar un mes" }).count()) === 0);
   await context.close();
 
   // --- Consulta: lectura sin formularios

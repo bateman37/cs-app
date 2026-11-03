@@ -36,7 +36,7 @@ export async function runChecks(tx: Tx, p: ReconParams): Promise<{ checks: Check
   // ---------------- Nivel 1: fuente y lote
   const srcMin = async (table: string) => (await q<{ n: bigint; m: string | null }>(tx, Prisma.sql`SELECT count(*) AS n, COALESCE(sum(minutes), 0)::text AS m FROM ${Prisma.raw(`"${table}"`)} WHERE "workDate" BETWEEN ${from}::date AND ${to}::date`))[0];
   const actMin = async (source: string) => (await q<{ n: bigint; m: string | null; u: bigint }>(tx, Prisma.sql`SELECT count(*) AS n, COALESCE(sum(minutes), 0)::text AS m, count(DISTINCT "entryId") AS u FROM "TimeActivity" t WHERE source = ${source} AND "workDate" BETWEEN ${from}::date AND ${to}::date`))[0];
-  for (const [src, table, id] of [["ZENDESK", "ZdTimeEntry", "REC-N1-01"], ["WRIKE", "WrikeTimeEntry", "REC-N1-02"]] as const) {
+  for (const [src, table, id] of [["ZENDESK", "ActiveZdTimeEntry", "REC-N1-01"], ["WRIKE", "ActiveWrikeTimeEntry", "REC-N1-02"]] as const) {
     const s = await srcMin(table);
     const a = await actMin(src);
     let c = mk({ id, level: 1, title: `Horas ${src}: minutos conservados en la fuente = minutos de la proyección común de dedicación`, unit: "min", sources: [table, "TimeActivity"], notes: [`Filas fuente ${s.n}; filas proyectadas ${a.n}; identidades (source, entryId) distintas ${a.u}.`, "La conversión a horas es final (minutos ÷ 60); Wrike ya trae horas decimales convertidas a minutos en la carga: no se divide dos veces."] });

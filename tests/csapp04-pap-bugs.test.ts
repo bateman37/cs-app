@@ -16,25 +16,27 @@ beforeAll(() => { dir = useUploadDir(); });
 afterAll(() => removeUploadDir(dir));
 beforeEach(async () => { ({ admin, reader } = await freshEnvironment()); });
 
-const LISTA = { lista: "pap-principal" };
+const LISTA = {};
 const papImport = async (rows: Parameters<typeof papBuffer>[0], meta: object = LISTA, declared?: object) => importFile(admin.id, PAP, await papBuffer(rows), { metadata: meta, declared });
 const papPrepare = async (rows: Parameters<typeof papBuffer>[0], meta: object = LISTA, declared?: object) => prepare(admin.id, PAP, await papBuffer(rows), { metadata: meta, declared });
 const bugImport = (product: "VFS" | "VSW", rows: Record<string, string>[], opts: { declared?: object; meta?: object } = {}) =>
   importFile(admin.id, product === "VFS" ? BUGS_VFS : BUGS_VSW, bugsCsv(product, rows), { metadata: opts.meta ?? BUG_META, declared: opts.declared });
 
 describe("PAP: identidad estable y revisiones", () => {
-  it("«ID 42: PAP texto» y «42: texto cambiado» del mismo ámbito son el mismo PAP; otra lista con 42 es otra identidad", async () => {
+  it("«ID 42: PAP texto» y «42: texto cambiado» son el mismo PAP; el ID identifica la entidad y la última carga manda (HOTFIX-01 §5)", async () => {
     await papImport([papRow({ Title: "ID 42: PAP texto" })]);
     const b2 = await papImport([papRow({ Title: "42: texto cambiado" })]);
     expect(b2.rowsReviewed).toBe(1);
     expect(await count("PapItem")).toBe(1);
     expect(await count("PapRevision")).toBe(2);
     expect(await count("PapObservation")).toBe(2);
-    await papImport([papRow({ Title: "ID 42: PAP texto" })], { lista: "otra-lista" });
-    expect(await count("PapItem")).toBe(2);
-    const it = await prisma.papItem.findFirstOrThrow({ where: { listKey: "pap-principal" }, include: { revisions: { orderBy: { revisionNo: "asc" } } } });
+    // Volver a subir el contenido anterior (por cualquier archivo) vuelve a ser la última carga: un solo PAP, la revisión antigua reutilizada.
+    await papImport([papRow({ Title: "ID 42: PAP texto" })]);
+    expect(await count("PapItem")).toBe(1);
+    const it = await prisma.papItem.findFirstOrThrow({ where: { listKey: "pap" }, include: { revisions: { orderBy: { revisionNo: "asc" } } } });
     expect(it.revisions.map((r) => r.title)).toEqual(["ID 42: PAP texto", "42: texto cambiado"]);
     expect(it.revisions[1].changedFields).toEqual(["title"]);
+    expect(it.revisions.find((r) => r.id === it.currentRevisionId)?.title).toBe("ID 42: PAP texto");
   });
 
   it("cambiar la fecha de producción crea revisión conservando las anteriores; la misma fila repetida solo añade una observación", async () => {
@@ -64,26 +66,29 @@ describe("PAP: identidad estable y revisiones", () => {
     expect((await prisma.papRevision.findFirstOrThrow()).productionDate?.toISOString().slice(0, 10)).toBe("2025-02-10");
   });
 
-  it("falta la lista de origen: se rechaza; el mismo ID dos veces con contenido distinto en un archivo es conflicto sin elegir por posición", async () => {
-    await expect(papPrepare([papRow()], {})).rejects.toThrow(/lista de origen/);
+  it("no se pide lista de origen; el mismo ID dos veces con contenido distinto en un archivo es conflicto sin elegir por posición", async () => {
+    const ok = await papPrepare([papRow()], {});
+    expect(ok.rowsError).toBe(0);
     const b = await papPrepare([papRow({ Title: "5: a" }), papRow({ Title: "5: b" })]);
     expect(b.rowsError).toBe(2);
   });
 
-  it("un export declarado anterior no pisa el contenido reciente y REDERIVE conserva la fecha original", async () => {
+  it("la carga posterior manda aunque traiga una extracción declarada antigua; REDERIVE conserva la fecha original", async () => {
     await papImport([papRow({ Title: "9: nuevo título" })], LISTA, { extraccion: "2026-03-01" });
     await papImport([papRow({ Title: "9: viejo título" })], LISTA, { extraccion: "2026-01-01" });
     const it = await prisma.papItem.findFirstOrThrow({ include: { revisions: true } });
     const cur = it.revisions.find((r) => r.id === it.currentRevisionId);
-    expect(cur?.title).toBe("9: nuevo título");
-    const obsBefore = await prisma.papObservation.findMany({ orderBy: { id: "asc" } });
+    expect(cur?.title).toBe("9: viejo título");
+    const obs = await prisma.papObservation.findMany({ orderBy: { id: "asc" } });
+    expect(obs.map((o) => o.observedOn.toISOString().slice(0, 10))).toEqual(["2026-03-01", "2026-01-01"]);
     const last = await batch((await prisma.uploadBatch.findFirstOrThrow({ orderBy: { createdAt: "desc" } })).id);
     await reprocessUpload(admin.id, last.id);
     await drain();
-    expect(await prisma.papObservation.findMany({ orderBy: { id: "asc" } })).toEqual(obsBefore);
+    expect(await prisma.papObservation.findMany({ orderBy: { id: "asc" } })).toEqual(obs);
+    expect((await prisma.papItem.findFirstOrThrow()).currentRevisionId).toBe(it.currentRevisionId);
   });
 
-  it("revertir el lote nuevo no restaura una revisión por encima de otra posterior vigente", async () => {
+  it("revertir un lote antiguo no pisa la versión posterior; revertir el posterior restituye la anterior", async () => {
     const a = await papImport([papRow({ Title: "9: v1" })], LISTA, { extraccion: "2026-01-01" });
     const b = await papImport([papRow({ Title: "9: v2" })], LISTA, { extraccion: "2026-02-01" });
     await revertUpload(admin.id, a.id);
@@ -94,6 +99,23 @@ describe("PAP: identidad estable y revisiones", () => {
     await revertUpload(admin.id, b.id);
     await drain();
     expect(await count("PapItem")).toBe(0);
+  });
+
+  it("PAP corregido por ID: causas y vínculos activos son los de la última carga (sin sumar los anteriores) y revertir restituye la versión completa anterior", async () => {
+    const a = await papImport([papRow({ Title: "3450: x", "Causa raíz": "Correctivo (Estándar)", "Tickets asociados": "111111" })]);
+    const b = await papImport([papRow({ Title: "3450: x", "Causa raíz": "Evolutivo", "Tickets asociados": "222222" })]);
+    expect(await count("PapItem")).toBe(1);
+    const cur = async () => {
+      const it = await prisma.papItem.findFirstOrThrow({ where: { papId: "3450" } });
+      const causes = await prisma.papCause.findMany({ where: { revisionId: it.currentRevisionId! } });
+      const refs = await prisma.papReference.findMany({ where: { revisionId: it.currentRevisionId! } });
+      return { causes: causes.map((c) => c.category), refs: refs.map((r) => r.refId) };
+    };
+    expect(await cur()).toEqual({ causes: ["EVOLUTIVE"], refs: ["222222"] });
+    await revertUpload(admin.id, b.id);
+    await drain();
+    expect(await cur()).toEqual({ causes: ["CORRECTIVE"], refs: ["111111"] });
+    expect(a.status).toBe("COMPLETED");
   });
 });
 
@@ -118,6 +140,17 @@ describe("PAP: causas, campos y relaciones", () => {
     expect(again.rowsDuplicate).toBe(1);
     expect(await count("PapRevision", `"itemId" IN (SELECT id FROM "PapItem" WHERE "papId" = '1')`)).toBe(1);
     expect(await count("PapCause", `"revisionId" IN (SELECT r.id FROM "PapRevision" r JOIN "PapItem" i ON i.id = r."itemId" WHERE i."papId" = '1')`)).toBe(2);
+  });
+
+  it("Petición cliente es categoría conocida (no «sin clasificar»); con una causa correctiva el PAP sigue siendo un único correctivo con desglose no aditivo", async () => {
+    const b = await papPrepare([
+      papRow({ Title: "1: solo petición", "Causa raíz": "Petición cliente" }),
+      papRow({ Title: "2: mixto", "Causa raíz": "peticion Cliente;#Correctivo (Estándar)" }),
+    ]);
+    const s = await papSummary(admin.id, b.id);
+    expect(s).toMatchObject({ distinctPap: 2, corrective: 1, nonCorrective: 1, unknownCause: 0 });
+    expect(s?.memberships.find((m) => m.category === "CLIENT_REQUEST")?.pap).toBe(2);
+    expect(s?.memberships.find((m) => m.category === "OTHER")).toBeUndefined();
   });
 
   it("un nuevo «Correctivo (…)» futuro sigue siendo correctivo; una etiqueta desconocida queda sin clasificar", async () => {
@@ -235,13 +268,13 @@ describe("bugs VFS y VSW", () => {
     expect(w.observations).toHaveLength(3);
   });
 
-  it("una fotografía más estrecha o la ausencia no cierra ni borra; se rotulan como no observados con su última observación", async () => {
+  it("un export con menos elementos o la ausencia no cierra ni borra; se rotulan como no observados con su última observación", async () => {
     await bugImport("VFS", [vfsBug({ ID: "1" }), vfsBug({ ID: "2" }), vfsBug({ ID: "3", State: "PR" })], { declared: { extraccion: "2026-01-10" } });
-    const narrow = await bugImport("VFS", [vfsBug({ ID: "1", State: "In Progress" })], { declared: { extraccion: "2026-02-10" }, meta: { vista: "ABIERTOS" } });
+    const narrow = await bugImport("VFS", [vfsBug({ ID: "1", State: "In Progress" })], { declared: { extraccion: "2026-02-10" } });
     expect(await count("WorkItem")).toBe(3);
     const s = await bugsSummary(admin.id, narrow.id);
     expect(s?.notObservedInThisView).toEqual({ items: 2, lastObservedFrom: "2026-01-10", lastObservedTo: "2026-01-10" });
-    expect(s).toMatchObject({ view: "ABIERTOS", freshnessKnown: true, observedOn: "2026-02-10" });
+    expect(s).toMatchObject({ view: "AMPLIA", freshnessKnown: true, observedOn: "2026-02-10" });
     const two = await prisma.workItem.findFirstOrThrow({ where: { workItemId: "2" }, include: { revisions: true } });
     expect(two.revisions[0].state).toBe("New");
   });

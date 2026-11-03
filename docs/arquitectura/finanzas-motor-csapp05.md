@@ -59,9 +59,9 @@ Sobre `TimeActivity` (una actividad es `(source, entryId)`, contada una vez). Se
 
 Sin N+1: ámbito (una consulta), financiero (dos), horas (**una pasada** por `TimeActivity` con un `JOIN` de periodos —los cinco periodos y los meses de la serie—), usuarios (una por tipo de ámbito), metadatos (una). El número de sentencias no depende de grupos ni meses (`finanzas-volumen.test.ts` lo cuenta).
 
-## 9. Histórico anterior a 2025
+## 9. Histórico económico 2022–2025
 
-`importHistoricFinance` y `scripts/importar-historico-financiero.ts`: simulación por defecto, `--aplicar` explícito, rechazo de 2025 en adelante, ámbitos ya activos omitidos, idempotente y con procedencia (lote `COMPLETED`, origen `HISTORICAL`). La categoría se toma de columnas explícitas (`Admin Delegada` marcada → ADMIN_DELEGADA; `Soporte` con valor → SOPORTE); ambas o ninguna no se importan. No crea OTROS, Diferencia ni usuarios ni toca alojamiento/plan. No se ejecuta en migración, arranque ni instalación. **Precarga no realizada: falta fuente** (sin libro privado en el entorno).
+La vía asistida `importHistoricFinance` y su script quedaron **sustituidas** (HOTFIX-01 §6) por el perfil `historico-economico` de Cargas, que reutiliza este motor: un lote «libro» con el XLSX original y lotes hijos `COMPLETED` por año+categoría (origen `HISTORICAL`, cobertura no confirmada) con puntero de `FinanceScope` atómico, idempotentes por huella de contenido. Admite 2025, clasifica la categoría por D/F coherentes, no suma la referencia mensual y se aplica o revierte como unidad. Ver [historico-economico.md](../importaciones/historico-economico.md). Nunca se ejecuta en migración, arranque ni instalación.
 
 ## 10. Reglas propuestas, pendientes o heredadas (estado explícito)
 

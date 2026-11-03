@@ -10,6 +10,8 @@ import {
   HEADERS,
   checkFooter,
   groupSearchKey,
+  FINANCE_YEAR_MAX,
+  FINANCE_YEAR_MIN,
   isValidFinanceYear,
   parseAmountCell,
   type FinanceCategory,
@@ -188,23 +190,17 @@ async function rederive(tx: Tx, ctx: ActivationContext) {
 
 // ---------------------------------------------------------------- Perfiles
 
-const yearList = () => {
-  const now = new Date().getUTCFullYear();
-  const out: { value: string; label: string }[] = [];
-  for (let y = now + 1; y >= 2018; y--) out.push({ value: String(y), label: String(y) });
-  return out;
-};
+/** Año escrito a mano: exactamente cuatro dígitos (se rechazan vacíos, decimales y texto; nunca se trunca). */
+const yearField = z.preprocess(
+  (v) => (typeof v === "number" ? String(v) : typeof v === "string" ? v.trim() : v),
+  z
+    .string({ error: "Indique el año del conjunto." })
+    .regex(/^\d{4}$/, "Indique el año con cuatro dígitos (por ejemplo 2026).")
+    .transform(Number)
+    .refine((y) => isValidFinanceYear(y), `Año fuera del rango admitido (${FINANCE_YEAR_MIN}–${FINANCE_YEAR_MAX}).`),
+);
 
-const metadataSchema = z
-  .object({
-    anio: z.coerce
-      .number({ error: "Indique el año del conjunto." })
-      .int("Indique el año como un número entero.")
-      .refine((y) => isValidFinanceYear(y), "Año no válido."),
-    conjuntoCompleto: z.literal("si", { error: "Confirme que el archivo es el conjunto anual completo de esta categoría." }),
-    hoja: z.string().trim().max(120).optional(),
-  })
-  .strict();
+const metadataSchema = z.object({ anio: yearField, hoja: z.string().trim().max(120).optional() }).strict();
 
 function makeProfile(category: FinanceCategory): ImportProfile {
   const label = `Facturación · ${CATEGORY_LABEL[category].toLowerCase()}`;
@@ -219,9 +215,7 @@ function makeProfile(category: FinanceCategory): ImportProfile {
     policy: "REPLACE_SCOPE",
     get metadataFields() {
       return [
-        { name: "anio", label: "Año del conjunto", type: "select" as const, required: true, options: yearList() },
-        { name: "conjuntoCompleto", label: "Declaro que el archivo contiene el conjunto anual completo de esta categoría", type: "checkbox" as const, required: true },
-        { name: "hoja", label: "Hoja del libro (solo si hay varias compatibles)", type: "text" as const, required: false },
+        { name: "anio", label: "Año", type: "number" as const, required: true },
       ];
     },
     metadataSchema: metadataSchema as unknown as z.ZodType<Record<string, unknown>>,

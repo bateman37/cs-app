@@ -67,7 +67,7 @@ export async function makeWorld(): Promise<World> {
     const storageId = randomUUID();
     const buf = Buffer.from(content);
     await writeFile(path.join(uploads, "files", storageId), buf).catch(async () => { await mkdir(path.join(uploads, "files"), { recursive: true }); await writeFile(path.join(uploads, "files", storageId), buf); });
-    const b = await prisma.uploadBatch.create({ data: { profileId: "zendesk-tiempo", profileVersion: 1, status, originalName: "export ñ.xlsx", storageId, fileFormat: "xlsx", sizeBytes: BigInt(buf.length), checksum: sha(buf), createdById: admin.id } });
+    const b = await prisma.uploadBatch.create({ data: { profileId: "zendesk-tiempo", profileVersion: 1, status, originalName: "export ñ.xlsx", storageId, fileFormat: "xlsx", sizeBytes: BigInt(buf.length), checksum: sha(buf), createdById: admin.id, legacyBase: true } });
     return { b, storageId, sha: sha(buf), bytes: buf.length };
   };
   const done = await mkUpload("COMPLETED", "contenido original completado\n".repeat(50));

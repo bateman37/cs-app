@@ -78,6 +78,7 @@ export function Pap({ c }: { c: Ctx }) {
     ["Correctivo de proyecto / personalización / configuración / procesos / infraestructura", (k) => p.periods[k]?.project ?? 0],
     ["Origen cliente (Sistemas del Cliente, Uso Indebido)", (k) => p.periods[k]?.clientOrigin ?? 0],
     ["Evolutivos (sin evidencia de facturación en la fuente)", (k) => p.periods[k]?.evolutive ?? 0],
+    ["Petición cliente (categoría propia; no implica facturación ni origen cliente)", (k) => p.periods[k]?.clientRequest ?? 0],
     ["Sin clasificar", (k) => p.periods[k]?.unclassified ?? 0],
     ["Resultado distinto de OK (se conserva)", (k) => p.periods[k]?.nonOk ?? 0],
   ];

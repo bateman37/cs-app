@@ -37,11 +37,16 @@ export const CAUSE_CLASS_LABEL: Record<string, string> = {
 /** Etiqueta de perfil a partir de las dimensiones resueltas A LA FECHA DEL TRABAJO. PMO desconocido nunca llega aquí (elegibilidad pendiente). */
 export function profileLabel(d: { pmo: boolean | null; team: string | null; level: string | null; role: string | null }): string {
   if (d.pmo === true) return d.role ? `PMO ${d.role.trim().toUpperCase()}` : "PMO (rol sin identificar)";
-  const t = d.team?.trim() ?? "";
+  const rawTeam = d.team?.trim() ?? "";
+  const t = TEAM_DISPLAY[rawTeam.toLowerCase()] ?? rawTeam;
   const l = d.level?.trim() ?? "";
   if (!t && !l) return UNIDENTIFIED;
+  // El equipo real «CS N2» ya lleva su nivel: no se repite («CS N2 N2»).
+  if (t && l && t.toLowerCase().endsWith(` ${l.toLowerCase()}`)) return t;
   return `${t} ${l}`.trim();
 }
+/** Correspondencias semánticas EXPLÍCITAS entre la etiqueta del equipo en los maestros y el perfil analítico (HOTFIX-01 §9): PLAT es «Plataforma». Cualquier otra etiqueta se conserva tal cual. */
+export const TEAM_DISPLAY: Record<string, string> = { plat: "Plataforma" };
 const profileRank = (label: string): number => {
   const i = PROFILE_ORDER.findIndex((p) => p.toLowerCase() === label.toLowerCase());
   return i >= 0 ? i : label === UNIDENTIFIED ? 1000 : 500;
@@ -155,6 +160,7 @@ export type PapPeriod = {
   evolutive: number;
   unclassified: number;
   nonOk: number;
+  clientRequest: number;
   memberships: { category: string; pap: number }[];
   /** Falso si algún PAP pertenece a varias categorías: las filas de pertenencia NO suman el total. */
   additive: boolean;
@@ -174,6 +180,7 @@ export async function loadPap(tx: Tx, ref: EntityRef, periods: PeriodRange[]): P
       count(*) FILTER (WHERE x.state = 'UNKNOWN' OR NOT EXISTS (SELECT 1 FROM "PapCause" c WHERE c."revisionId" = x.rev_id)) AS unclassified,
       count(*) FILTER (WHERE x.result IS NOT NULL AND lower(x.result) NOT IN ('ok', 'correcto', 'éxito', 'exito')) AS non_ok,
       count(*) FILTER (WHERE ${hasCause("MAINTENANCE")}) AS maintenance,
+      count(*) FILTER (WHERE ${hasCause("CLIENT_REQUEST")}) AS client_request,
       count(*) FILTER (WHERE ${hasCause("OTHER")}) AS other_cause,
       count(*) FILTER (WHERE (SELECT count(DISTINCT c.category) FROM "PapCause" c WHERE c."revisionId" = x.rev_id) > 1) AS multi
     FROM x JOIN periods p ON x."productionDate" BETWEEN p.pfrom AND p.pto
@@ -184,11 +191,12 @@ export async function loadPap(tx: Tx, ref: EntityRef, periods: PeriodRange[]): P
     const r = rows.find((x) => x.key === p.key);
     periodsOut[p.key] = {
       total: n(r?.total), corrective: n(r?.corrective), standard: n(r?.standard), project: n(r?.project), clientOrigin: n(r?.client_origin), evolutive: n(r?.evolutive),
-      unclassified: n(r?.unclassified), nonOk: n(r?.non_ok),
+      unclassified: n(r?.unclassified), nonOk: n(r?.non_ok), clientRequest: n(r?.client_request),
       memberships: [
         { category: "Correctivo", pap: n(r?.corrective) },
         { category: "Evolutivo", pap: n(r?.evolutive) },
         { category: "Mantenimiento", pap: n(r?.maintenance) },
+        { category: "Petición cliente", pap: n(r?.client_request) },
         { category: "Otra causa", pap: n(r?.other_cause) },
       ],
       additive: n(r?.multi) === 0,

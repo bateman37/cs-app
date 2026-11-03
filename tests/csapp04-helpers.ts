@@ -27,7 +27,7 @@ export async function importFile(actorId: string, profileId: string, file: Buffe
 }
 
 export const importWrike = (a: string, f: Buffer, o: Opts = {}) => importFile(a, WRIKE, f, o);
-export const BUG_META = { vista: "AMPLIA" };
+export const BUG_META = {};
 
 export type WrikeE = {
   id: string; taskName: string; workDate: string; minutes: string; revision: number; ticketId: string | null; ticketState: string; method: string;

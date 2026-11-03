@@ -150,6 +150,8 @@ export async function receiveUpload(actorId: string, input: ReceiveInput): Promi
       },
     });
     if (res.count === 0) throw new DomainError("El lote ya no está recibiendo archivo (caducó o se canceló).");
+    // Secuencia de recepción aceptada (HOTFIX-01 §4): orden determinista en servidor; no depende de la posición de filas ni del reloj del navegador.
+    await tx.$executeRaw(Prisma.sql`UPDATE "UploadBatch" SET "receptionSeq" = nextval('"UploadBatch_receptionSeq_seq"') WHERE id = ${batch.id}`);
     await enqueueJob(tx, batch.id, "PREPARE", actor.id);
     await recordAudit(tx, actor, {
       action: "UPLOAD",
@@ -200,7 +202,7 @@ export async function listSources(actorId: string) {
   const profiles = await getProfiles();
   return {
     available: profiles.map((p) => ({
-      id: p.id, label: p.label, description: p.description, formats: p.formats, metadataFields: p.metadataFields,
+      id: p.id, label: p.label, description: p.description, formats: p.formats, metadataFields: p.metadataFields, note: p.note ?? null,
     })),
     pending: await getPendingSources(),
   };
@@ -240,6 +242,7 @@ export async function getUpload(actorId: string, id: string) {
     confirmBlockedReason: confirmBlockReason(profile, batch.rowsError) ?? gate,
   });
   if (pendingRevert) actions.revert = { allowed: false, reason: "La reversión ya está en cola." };
+  if (isHistoricChild(batch.metadata)) actions.revert = { allowed: false, reason: "Este conjunto lo escribió un libro de histórico económico: se revierte desde el lote del libro (unidad de confirmación)." };
   if (pendingRederive) actions.reprocess = { allowed: false, reason: "El recálculo ya está en cola." };
   return { batch: { ...batch, sizeBytes: num(batch.sizeBytes) }, profile: profile ? { id: profile.id, label: profile.label, policy: profile.policy } : null, actions, pendingRevert, pendingRederive, sameChecksum };
 }
@@ -371,10 +374,16 @@ export async function reprocessUpload(actorId: string, id: string) {
   });
 }
 
+/** Lote hijo por año+categoría de un libro de histórico económico (HOTFIX-01 §6): su unidad de reversión es el libro. */
+function isHistoricChild(metadata: unknown): boolean {
+  return (metadata as { origen?: string } | null)?.origen === "HISTORICO_ECONOMICO";
+}
+
 export async function revertUpload(actorId: string, id: string) {
   return adminTransaction(actorId, async (tx, actor) => {
-    const b = await tx.uploadBatch.findUnique({ where: { id }, select: { status: true, profileId: true, supersededByBatchId: true } });
+    const b = await tx.uploadBatch.findUnique({ where: { id }, select: { status: true, profileId: true, supersededByBatchId: true, metadata: true } });
     if (!b) throw new DomainError("Carga no encontrada.");
+    if (isHistoricChild(b.metadata)) throw new DomainError("Este conjunto lo escribió un libro de histórico económico: revierta el lote del libro.");
     const profile = await getProfile(b.profileId);
     const act = availableActions(b.status as UploadStatusName, {
       supportsRevert: profile ? Boolean(profile.revert) : false,

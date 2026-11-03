@@ -21,6 +21,8 @@ const hash = (s: string) => createHash("sha1").update(s).digest("hex").slice(0, 
 
 /** Lista de origen: identificador estable y validado del ámbito de los IDs de PAP (nunca inventado por archivo, año o posición). */
 export const papListKey = (lista: string) => lista.trim().toLowerCase();
+/** Namespace técnico único (HOTFIX-01 §5): el ID del PAP identifica la entidad; ya no se pide lista de origen. */
+export const PAP_NAMESPACE = "pap";
 
 function matchHeaders(row: string[]): HeaderMatch {
   const m = mapHeaders(row, PAP_HEADERS);
@@ -139,8 +141,8 @@ async function recomputeCurrent(tx: Tx, ids: Prisma.Sql) {
     UPDATE "PapItem" t SET "currentObservationId" = c.oid, "currentRevisionId" = c.rid, "updatedAt" = now()
     FROM (
       SELECT DISTINCT ON (o."itemId") o."itemId", o.id AS oid, o."revisionId" AS rid
-      FROM "PapObservation" o WHERE o."itemId" IN (${ids})
-      ORDER BY o."itemId", o."observedOn" DESC, o."receivedAt" DESC, o.id DESC) c
+      FROM "PapObservation" o JOIN "UploadBatch" b ON b.id = o."batchId" WHERE o."itemId" IN (${ids})
+      ORDER BY o."itemId", b."receptionSeq" DESC NULLS LAST, o."receivedAt" DESC, o.id DESC) c
     WHERE t.id = c."itemId" AND (t."currentObservationId" IS DISTINCT FROM c.oid OR t."currentRevisionId" IS DISTINCT FROM c.rid)`);
 }
 
@@ -253,22 +255,14 @@ export const pap: ImportProfile = {
   id: PAP_PROFILE,
   label: "PAP",
   description:
-    "XLSX CARGA PAP (29 columnas A–AC; la consulta IQY no se ejecuta). La identidad es la lista de origen + el ID del inicio del título («ID 42:» o «42:»). " +
+    "XLSX CARGA PAP (29 columnas A–AC; la consulta IQY no se ejecuta). La identidad es el ID del inicio del título («ID 42:» o «42:»); la última carga sustituye el contenido activo. " +
     "Una revisión no crea otra intervención; todas las causas se conservan y un PAP con varias cuenta una sola vez. El periodo es la fecha de puesta en producción.",
   version: 1,
   formats: ["xlsx"],
   policy: "INCORPORATE",
-  metadataFields: [
-    { name: "lista", label: "Lista de origen de los PAP (ámbito estable de los IDs, p. ej. «pap-principal»)", type: "text", required: true },
-    { name: "hoja", label: "Hoja del libro (solo si hay varias hojas compatibles)", type: "text", required: false },
-  ],
-  metadataSchema: z
-    .object({
-      lista: z.string({ error: "Indique la lista de origen." }).trim().min(2, "Indique la lista de origen.").max(60).regex(/^[\p{L}\p{N}][\p{L}\p{N} _.-]*$/u, "La lista de origen solo admite letras, números, espacios, «_», «.» y «-»."),
-      hoja: z.string().trim().max(120).optional(),
-    })
-    .strict(),
-  scopeKey: (m) => papListKey(String(m.lista)),
+  metadataFields: [],
+  metadataSchema: z.object({ hoja: z.string().trim().max(120).optional() }).strict(),
+  scopeKey: () => PAP_NAMESPACE,
   selectsSheet: true,
   blocksConfirmOnErrors: true,
   entityConflictPolicy: "conflict_all",

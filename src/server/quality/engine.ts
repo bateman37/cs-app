@@ -42,26 +42,33 @@ export async function loadEntities(tx: Tx, scope: Scope, groups: GroupMeta[]): P
 
 // ---------------------------------------------------------------- Usuarios (propios de cada ámbito)
 
-export type UserLookup = (id: string, y: number, m: number) => number | null;
+export type UserLookup = ((id: string, y: number, m: number) => number | null) & { estimated?: (id: string, y: number, m: number) => boolean };
 export async function loadUsers(tx: Tx, scope: Scope, ids: string[], years: number[]): Promise<UserLookup> {
   const col = scope === "group" ? '"groupId"' : '"clientId"';
   const map = new Map<string, number>();
+  const est = new Set<string>();
   if (ids.length > 0) {
-    const rows = await tx.$queryRaw<{ id: string; year: number; month: number; value: number }[]>(Prisma.sql`
-      SELECT m.${Prisma.raw(col)} AS id, m.year, mm.month, mm.value FROM "UserMatrix" m JOIN "UserMatrixMonth" mm ON mm."matrixId" = m.id
+    const rows = await tx.$queryRaw<{ id: string; year: number; month: number; value: number; estimated: boolean }[]>(Prisma.sql`
+      SELECT m.${Prisma.raw(col)} AS id, m.year, mm.month, mm.value, (mm.kind::text = 'ESTIMATED') AS estimated FROM "UserMatrix" m JOIN "UserMatrixMonth" mm ON mm."matrixId" = m.id
       WHERE m.year = ANY(${years}) AND m.${Prisma.raw(col)} = ANY(${ids})`);
-    for (const r of rows) map.set(`${r.id}|${r.year}|${r.month}`, r.value);
+    for (const r of rows) {
+      map.set(`${r.id}|${r.year}|${r.month}`, r.value);
+      if (r.estimated) est.add(`${r.id}|${r.year}|${r.month}`);
+    }
   }
-  return (id, y, m) => map.get(`${id}|${y}|${m}`) ?? null;
+  const lookup = ((id: string, y: number, m: number) => map.get(`${id}|${y}|${m}`) ?? null) as UserLookup;
+  lookup.estimated = (id, y, m) => est.has(`${id}|${y}|${m}`);
+  return lookup;
 }
 
-type Users = { stock: number | null; userMonths: Dec | null; reason: string | null };
+type Users = { stock: number | null; userMonths: Dec | null; reason: string | null; estimated?: boolean };
 /** Usuarios mes del periodo mensual (peso días incluidos / días reales) y stock del mes del corte. Usuarios cero o desconocidos impiden tasas con motivos distintos. */
 function usersOf(lookup: UserLookup, id: string, p: QualityPeriod): Users {
   const v = lookup(id, p.year, p.month);
   if (v === null) return { stock: null, userMonths: null, reason: "Usuarios del mes sin informar en la matriz: no se calculan tasas (los conteos se conservan)." };
   if (v === 0) return { stock: 0, userMonths: ZERO, reason: "Usuarios del mes = 0 (cero confirmado): no hay denominador para tasas (los conteos se conservan)." };
-  return { stock: v, userMonths: Dec.int(v).ratio(p.days, p.daysInMonth), reason: null };
+  const estimated = lookup.estimated?.(id, p.year, p.month) ?? false;
+  return { stock: v, userMonths: Dec.int(v).ratio(p.days, p.daysInMonth), reason: null, estimated };
 }
 
 // ---------------------------------------------------------------- Resultado
@@ -243,7 +250,7 @@ export function evaluateMonth(f: MonthFacts, q: QualityQuery, cfg: QualityConfig
       formula, numerator, denominator, unit, period: `${from} – ${to}`, sources, notes, breakdown, coverage: covs.map((c) => ({ source: c.source, state: c.state, reason: c.reason })),
     });
     const per100 = (n: number) => (n === 0 && u.userMonths === null ? null : flowRate(n, u.userMonths));
-    const usersNote = u.reason ? [u.reason] : [];
+    const usersNote = u.reason ? [u.reason] : u.estimated ? ["Denominador de usuarios estimado a partir de 2025 (no es un dato observado ese mes); no es evidencia de calidad histórica medida."] : [];
 
     // Dedicación
     const eligible = hr.filter((r) => r.bucketClass === "ELIGIBLE");

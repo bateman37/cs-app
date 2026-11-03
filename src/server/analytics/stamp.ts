@@ -11,8 +11,8 @@ type Tx = Prisma.TransactionClient;
 export type DataStamp = { stamp: string; domains: Record<string, string> };
 
 const DOMAINS: { key: string; sql: Prisma.Sql }[] = [
-  { key: "zendesk_tiempos", sql: Prisma.sql`SELECT count(*)::text || ':' || COALESCE(sum("drvVersion"), 0)::text || ':' || COALESCE(sum(revision), 0)::text || ':' || COALESCE(max("updatedAt")::text, '') FROM "ZdTimeEntry"` },
-  { key: "wrike_tiempos", sql: Prisma.sql`SELECT count(*)::text || ':' || COALESCE(sum("drvVersion"), 0)::text || ':' || COALESCE(sum(revision), 0)::text || ':' || COALESCE(max("updatedAt")::text, '') FROM "WrikeTimeEntry"` },
+  { key: "zendesk_tiempos", sql: Prisma.sql`SELECT count(*)::text || ':' || COALESCE(sum("drvVersion"), 0)::text || ':' || COALESCE(sum(revision), 0)::text || ':' || COALESCE(max("updatedAt")::text, '') FROM "ActiveZdTimeEntry"` },
+  { key: "wrike_tiempos", sql: Prisma.sql`SELECT count(*)::text || ':' || COALESCE(sum("drvVersion"), 0)::text || ':' || COALESCE(sum(revision), 0)::text || ':' || COALESCE(max("updatedAt")::text, '') FROM "ActiveWrikeTimeEntry"` },
   { key: "tickets", sql: Prisma.sql`SELECT count(*)::text || ':' || COALESCE(max(id), 0)::text FROM "ZdTicketRevision"` },
   // Observaciones: una observación nueva SIN cambio de contenido (misma revisión) cambia la frescura y el stock observado, y debe invalidar el resultado anterior.
   { key: "tickets_observaciones", sql: Prisma.sql`SELECT count(*)::text || ':' || COALESCE(max(id), 0)::text || ':' || COALESCE(max("observedOn")::text, '') FROM "ZdTicketObservation"` },

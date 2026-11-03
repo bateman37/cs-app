@@ -11,7 +11,7 @@ export type Controls = Manifest["controls"]["tables"];
 /** Agrupación documental de las tablas principales (informe de copia y de restauración). */
 export const CONTROL_GROUPS: Record<string, string[]> = {
   usuarios: ["User", "Account", "Session", "Verification"],
-  "clientes-grupos": ["ClientGroup", "Client", "Implementation", "ExternalIdentity", "ServiceTerm", "Milestone", "UserMatrix", "UserMatrixMonth"],
+  "clientes-grupos": ["ClientGroup", "Client", "Implementation", "ExternalIdentity", "ServiceTerm", "Milestone", "UserMatrix", "UserMatrixMonth", "HistoricGroupOrigin", "HistoricUserBase", "HistoricUserResolution"],
   personal: ["Person", "PersonAlias", "PersonTerm", "StaffCatalogItem"],
   lotes: ["UploadBatch", "UploadJob", "UploadStagedRow", "UploadRecordSource", "FinanceBatch"],
   "tickets-revisiones-observaciones": ["ZdTicket", "ZdTicketRevision", "ZdTicketObservation", "PapItem", "PapRevision", "PapObservation", "WorkItem", "WorkItemRevision", "WorkItemObservation", "WorkItemLink", "WorkItemLinkEvidence"],

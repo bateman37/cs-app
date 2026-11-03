@@ -22,7 +22,6 @@ import { makeUsers, resetDatabase } from "./helpers";
 
 const NOW26 = { now: new Date("2026-10-15T10:00:00Z") };
 const NOW27 = { now: new Date("2027-03-10T10:00:00Z") };
-const NOW25 = { now: new Date("2025-06-10T10:00:00Z") };
 
 let admin: { id: string };
 let reader: { id: string };

@@ -49,9 +49,9 @@ async function counts() {
   return { matrices, months, audits };
 }
 
-/** 2025 = 65 histórico y 2026 copiado: la base de los ejemplos del contrato. */
+/** 2025 = 65 como valor inicial y 2026 copiado: la base de los ejemplos del contrato (ventana de edición 2025/2026 con el reloj de NOW26). */
 async function seed2026(scope: { type: "group" | "client" | "implementation"; id: string } = C(), value = 65) {
-  await initializeHistoric(admin.id, { ...t(scope), value, source: "Valor inicial indicado por el administrador" });
+  await initializeHistoric(admin.id, { ...t(scope), year: 2025, value, source: "Valor inicial indicado por el administrador" }, NOW26);
   const p = await previewCopyFromPreviousYear(admin.id, { ...t(scope), year: 2026 }, NOW26);
   await copyFromPreviousYear(admin.id, { ...t(scope), year: 2026, expectedVersion: p.version }, NOW26);
 }
@@ -125,32 +125,34 @@ describe("Cambio 65 a 68 y magnitudes", () => {
   });
 });
 
-describe("Histórico 2025", () => {
-  it("inicializar 2025 vacío crea doce valores iguales y bloqueados; repetir no duplica", async () => {
-    const r1 = await initializeHistoric(admin.id, { ...t(C()), value: 65, source: "Valor inicial" });
+describe("Valor inicial uniforme (ya no hay un 2025 fijo ni filas bloqueadas)", () => {
+  const init = (scope: { type: "group" | "client" | "implementation"; id: string }, value: number, source = "Valor inicial", year = 2025, now = NOW26) =>
+    initializeHistoric(admin.id, { ...t(scope), year, value, source }, now);
+
+  it("inicializar un año editable vacío crea doce valores iguales sin bloquear; repetir no duplica", async () => {
+    const r1 = await init(C(), 65);
     expect(r1.status).toBe("created");
     const m = await getMatrix(admin.id, C(), 2025, NOW26);
-    expect(m.months.every((x) => x.value === 65 && x.kind === "INITIAL" && x.isLocked && x.source === "Valor inicial")).toBe(true);
+    expect(m.months.every((x) => x.value === 65 && x.kind === "INITIAL" && !x.isLocked && x.source === "Valor inicial")).toBe(true);
     const c1 = await counts();
-    const r2 = await initializeHistoric(admin.id, { ...t(C()), value: 65, source: "Valor inicial" });
+    const r2 = await init(C(), 65);
     expect(r2.status).toBe("unchanged");
     expect(await counts()).toEqual(c1);
     expect(c1.months).toBe(12);
-    const initAudits = await prisma.auditEvent.count({ where: { action: "INITIALIZE" } });
-    expect(initAudits).toBe(1);
+    expect(await prisma.auditEvent.count({ where: { action: "INITIALIZE" } })).toBe(1);
   });
 
   it("con otro valor, o con datos incompatibles, se rechaza sin sobrescribir", async () => {
-    await initializeHistoric(admin.id, { ...t(C()), value: 65, source: "Valor inicial" });
+    await init(C(), 65);
     const c1 = await counts();
-    await expect(initializeHistoric(admin.id, { ...t(C()), value: 70, source: "Otro" })).rejects.toThrow(/No se sobrescribe/);
+    await expect(init(C(), 70, "Otro")).rejects.toThrow(/No se sobrescribe/);
     expect(await counts()).toEqual(c1);
     expect((await getMatrix(admin.id, C(), 2025, NOW26)).months.every((x) => x.value === 65)).toBe(true);
     // dato parcial incompatible en otro ámbito
     await seedPartial2025(G());
-    await expect(initializeHistoric(admin.id, { ...t(G()), value: 80, source: "Fuente" })).rejects.toBeInstanceOf(DomainError);
+    await expect(init(G(), 80, "Fuente")).rejects.toBeInstanceOf(DomainError);
     expect((await getMatrix(admin.id, G(), 2025, NOW26)).months.filter((x) => x.value !== null)).toHaveLength(1);
-    const pv = await previewInitializeHistoric(admin.id, { ...t(G()), value: 80, source: "Fuente" });
+    const pv = await previewInitializeHistoric(admin.id, { ...t(G()), year: 2025, value: 80, source: "Fuente" }, NOW26);
     expect(pv.status).toBe("conflict");
   });
 
@@ -159,21 +161,26 @@ describe("Histórico 2025", () => {
     await prisma.userMatrixMonth.create({ data: { matrixId: m.id, month: 3, value: 10, kind: "ADJUSTED", source: "x", updatedById: admin.id } });
   }
 
-  it("cambiar un histórico ya informado se rechaza también por petición directa", async () => {
-    await initializeHistoric(admin.id, { ...t(C()), value: 65, source: "Valor inicial" });
+  it("el valor inicial de 2025 se edita con la ventana 2025/2026 (antes: bloqueado) y deja de poder editarse cuando el calendario avanza", async () => {
+    await init(C(), 65);
     const v = (await getMatrix(admin.id, C(), 2025, NOW26)).version;
+    await confirmMatrixChange(admin.id, { ...t(C()), year: 2025, op: "SET_MONTH", month: 6, value: 99, expectedVersion: v }, NOW26);
+    const m = await getMatrix(admin.id, C(), 2025, NOW26);
+    expect(m.months[5]).toMatchObject({ value: 99, kind: "ADJUSTED", revision: 2 });
+    expect(m.months[4]).toMatchObject({ value: 65, kind: "INITIAL" }); // INITIAL conservado en el resto
     const before = await counts();
+    // En 2027 el año 2025 queda fuera de la ventana: rechazo por petición directa y por vista previa, sin rastro.
     for (const op of ["SET_MONTH", "APPLY_FROM"]) {
-      await expect(confirmMatrixChange(admin.id, { ...t(C()), year: 2025, op, month: 6, value: 99, expectedVersion: v }, NOW26)).rejects.toThrow(/histórico fijo/);
-      // incluso si el reloj estuviera en 2025, el mes bloqueado no se edita
-      await expect(confirmMatrixChange(admin.id, { ...t(C()), year: 2025, op, month: 6, value: 99, expectedVersion: v }, NOW25)).rejects.toThrow(/bloqueado/);
+      await expect(confirmMatrixChange(admin.id, { ...t(C()), year: 2025, op, month: 6, value: 1, expectedVersion: v + 1 }, NOW27)).rejects.toThrow(/fuera de la ventana/);
     }
-    await expect(previewMatrixChange(admin.id, { ...t(C()), year: 2025, op: "SET_MONTH", month: 6, value: 99 }, NOW26)).rejects.toBeInstanceOf(DomainError);
+    await expect(previewMatrixChange(admin.id, { ...t(C()), year: 2025, op: "SET_MONTH", month: 6, value: 1 }, NOW27)).rejects.toBeInstanceOf(DomainError);
+    // Ni siquiera la inicialización uniforme sirve de atajo fuera de la ventana.
+    await expect(init(G(), 5, "x", 2025, NOW27)).rejects.toThrow(/fuera de la ventana/);
     expect(await counts()).toEqual(before);
   });
 
   it("grupo y cliente se inicializan por separado: no se copia el dato del grupo al cliente", async () => {
-    await initializeHistoric(admin.id, { ...t(G()), value: 100, source: "Fuente privada (solo grupo)" });
+    await init(G(), 100, "Fuente privada (solo grupo)");
     expect((await getMatrix(admin.id, G(), 2025, NOW26)).months[0].value).toBe(100);
     for (const s of [C(), I()]) {
       const m = await getMatrix(admin.id, s, 2025, NOW26);
@@ -181,14 +188,32 @@ describe("Histórico 2025", () => {
     }
     expect(await prisma.userMatrix.count()).toBe(1);
   });
+
+  it("copiar diciembre anterior es una acción explícita: rellena solo los meses sin informar y conserva ajustes", async () => {
+    await init(C(), 65);
+    const v0 = (await getMatrix(admin.id, C(), 2025, NOW26)).version;
+    await confirmMatrixChange(admin.id, { ...t(C()), year: 2025, op: "SET_MONTH", month: 12, value: 70, expectedVersion: v0 }, NOW26);
+    await confirmMatrixChange(admin.id, { ...t(C()), year: 2026, op: "SET_MONTH", month: 2, value: 3, expectedVersion: 0 }, NOW26);
+    const pv = await previewCopyFromPreviousYear(admin.id, { ...t(C()), year: 2026, mode: "DECEMBER" }, NOW26);
+    expect(pv.plan.rows.filter((r) => r.status === "changed").map((r) => r.month)).toEqual([1, 3, 4, 5, 6, 7, 8, 9, 10, 11, 12]);
+    await copyFromPreviousYear(admin.id, { ...t(C()), year: 2026, mode: "DECEMBER", expectedVersion: pv.version }, NOW26);
+    const m = await getMatrix(admin.id, C(), 2026, NOW26);
+    expect(m.months.map((x) => x.value)).toEqual([70, 3, 70, 70, 70, 70, 70, 70, 70, 70, 70, 70]);
+    expect(m.months[0]).toMatchObject({ kind: "COPIED", source: "Copia de diciembre 2025" });
+    expect(m.months[1]).toMatchObject({ kind: "ADJUSTED", value: 3 });
+    // Sin diciembre de origen no hay nada que copiar (no se inventa).
+    await expect(copyFromPreviousYear(admin.id, { ...t(G()), year: 2026, mode: "DECEMBER", expectedVersion: 0 }, NOW26)).rejects.toThrow(/diciembre/);
+  });
 });
 
-describe("Año corriente calculado en servidor", () => {
-  it("con el reloj en 2027, 2026 deja de ser editable y 2027 pasa a serlo", async () => {
+describe("Ventana de edición calculada en servidor (año actual y anterior)", () => {
+  it("con el reloj en 2027, 2026 sigue editable (año anterior), 2025 deja de serlo y 2027 pasa a serlo", async () => {
     await seed2026();
     const v = (await getMatrix(admin.id, C(), 2026, NOW26)).version;
-    await expect(confirmMatrixChange(admin.id, { ...t(C()), year: 2026, op: "SET_MONTH", month: 3, value: 1, expectedVersion: v }, NOW27)).rejects.toThrow(/año anterior/);
-    expect((await getMatrix(admin.id, C(), 2026, NOW27)).editable).toBe(false);
+    expect((await getMatrix(admin.id, C(), 2026, NOW27)).editable).toBe(true);
+    expect((await getMatrix(admin.id, C(), 2025, NOW27)).editable).toBe(false);
+    await expect(confirmMatrixChange(admin.id, { ...t(C()), year: 2025, op: "SET_MONTH", month: 3, value: 1, expectedVersion: 1 }, NOW27)).rejects.toThrow(/fuera de la ventana/);
+    await confirmMatrixChange(admin.id, { ...t(C()), year: 2026, op: "SET_MONTH", month: 3, value: 1, expectedVersion: v }, NOW27);
     expect((await getMatrix(admin.id, C(), 2027, NOW27)).editable).toBe(true);
     await confirmMatrixChange(admin.id, { ...t(C()), year: 2027, op: "SET_MONTH", month: 1, value: 7, expectedVersion: 0 }, NOW27);
     expect((await getMatrix(admin.id, C(), 2027, NOW27)).months[0].value).toBe(7);
@@ -198,6 +223,13 @@ describe("Año corriente calculado en servidor", () => {
     const before = await counts();
     await expect(confirmMatrixChange(admin.id, { ...t(C()), year: 2027, op: "SET_MONTH", month: 1, value: 5, expectedVersion: 0 }, NOW26)).rejects.toThrow(/año futuro/);
     await expect(copyFromPreviousYear(admin.id, { ...t(C()), year: 2027, expectedVersion: 0 }, NOW26)).rejects.toThrow(/año futuro/);
+    expect(await counts()).toEqual(before);
+  });
+
+  it("año anterior a la ventana: ni edición ni copia", async () => {
+    const before = await counts();
+    await expect(confirmMatrixChange(admin.id, { ...t(C()), year: 2024, op: "SET_MONTH", month: 1, value: 5, expectedVersion: 0 }, NOW26)).rejects.toThrow(/fuera de la ventana/);
+    await expect(copyFromPreviousYear(admin.id, { ...t(C()), year: 2024, expectedVersion: 0 }, NOW26)).rejects.toThrow(/fuera de la ventana/);
     expect(await counts()).toEqual(before);
   });
 });
@@ -287,7 +319,7 @@ describe("Concurrencia y atomicidad", () => {
   });
 
   it("inicializaciones simultáneas del mismo histórico: doce valores y una sola auditoría", async () => {
-    const run = () => initializeHistoric(admin.id, { ...t(C()), value: 50, source: "Fuente" });
+    const run = () => initializeHistoric(admin.id, { ...t(C()), year: 2025, value: 50, source: "Fuente" }, NOW26);
     const res = await Promise.all([run(), run(), run()]);
     expect(res.filter((r) => r.status === "created")).toHaveLength(1);
     expect(await prisma.userMatrixMonth.count()).toBe(12);
@@ -318,8 +350,8 @@ describe("Permisos y ámbito", () => {
     const attempts: Array<() => Promise<unknown>> = [
       () => confirmMatrixChange(reader.id, { ...t(C()), year: 2026, op: "SET_MONTH", month: 3, value: 1, expectedVersion: v }, NOW26),
       () => previewMatrixChange(reader.id, { ...t(C()), year: 2026, op: "SET_MONTH", month: 3, value: 1 }, NOW26),
-      () => initializeHistoric(reader.id, { ...t(G()), value: 5, source: "x" }),
-      () => previewInitializeHistoric(reader.id, { ...t(G()), value: 5, source: "x" }),
+      () => initializeHistoric(reader.id, { ...t(G()), year: 2025, value: 5, source: "x" }, NOW26),
+      () => previewInitializeHistoric(reader.id, { ...t(G()), year: 2025, value: 5, source: "x" }, NOW26),
       () => copyFromPreviousYear(reader.id, { ...t(G()), year: 2026, expectedVersion: 0 }, NOW26),
       () => confirmMatrixChange("no-existe", { ...t(C()), year: 2026, op: "SET_MONTH", month: 3, value: 1, expectedVersion: v }, NOW26),
     ];
@@ -329,7 +361,7 @@ describe("Permisos y ámbito", () => {
 
   it("un administrador desactivado ya no puede escribir", async () => {
     await prisma.user.update({ where: { id: admin.id }, data: { isActive: false } });
-    await expect(initializeHistoric(admin.id, { ...t(C()), value: 5, source: "x" })).rejects.toBeInstanceOf(AccessError);
+    await expect(initializeHistoric(admin.id, { ...t(C()), year: 2025, value: 5, source: "x" }, NOW26)).rejects.toBeInstanceOf(AccessError);
     expect(await counts()).toEqual({ matrices: 0, months: 0, audits: expect.any(Number) });
   });
 

@@ -52,7 +52,11 @@ const profileRank = (label: string): number => {
   return i >= 0 ? i : label === UNIDENTIFIED ? 1000 : 500;
 };
 
-export type ProfileRow = { profile: string; minutes: string; hours: string; incident: string; other: string; unclassified: string };
+export type ProfileRow = {
+  profile: string; minutes: string; hours: string; incident: string; other: string; unclassified: string;
+  /** Minutos exactos por clase (las horas se derivan al presentar; permiten reagrupar perfiles sin acumular redondeos). */
+  incidentMinutes: string; otherMinutes: string; unclassifiedMinutes: string;
+};
 export type CauseRow = { cause: string; cls: string; minutes: string; hours: string };
 export type DedicationPeriod = {
   totalMinutes: string;
@@ -129,7 +133,7 @@ export async function loadDedication(tx: Tx, ref: EntityRef, periods: PeriodRang
       totalHours: hours(total),
       profiles: [...prof.entries()]
         .sort((a, b) => profileRank(a[0]) - profileRank(b[0]) || a[0].localeCompare(b[0], "es"))
-        .map(([profile, v]) => ({ profile, minutes: v.m.toString(), hours: hours(v.m), incident: hours(v.i), other: hours(v.o), unclassified: hours(v.u) })),
+        .map(([profile, v]) => ({ profile, minutes: v.m.toString(), hours: hours(v.m), incident: hours(v.i), other: hours(v.o), unclassified: hours(v.u), incidentMinutes: v.i.toString(), otherMinutes: v.o.toString(), unclassifiedMinutes: v.u.toString() })),
       causes: [...caus.entries()].map(([k, v]) => ({ cause: k.split("|")[0], cls: v.cls, minutes: v.m.toString(), hours: hours(v.m) })).sort((a, b) => (Dec.parse(b.minutes) as Dec).cmp(Dec.parse(a.minutes) as Dec) || a.cause.localeCompare(b.cause)),
       byClass: { incident: hours(cls.i), other: hours(cls.o), unclassified: hours(cls.u) },
       withoutImplementationHours: hours(noImpl),

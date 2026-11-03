@@ -1,25 +1,49 @@
 # Análisis Cliente e histórico detallado
 
-## Ficha individual
+## Ficha única panorámica (HOTFIX-02 §8, vigente)
 
-Seleccionar cliente y periodo. La cabecera muestra grupo, proyectos, soporte, alojamiento, complejidad, producto, usuarios y cobertura. Conservar el criterio de filtro al volver a Comparativa. Cada cifra abre su desglose y, desde este, los registros de origen con lote, fecha, persona, fuente y motivo de inclusión.
+La ficha es **una sola pantalla sin pestañas** (ruta `/analisis-cliente?ambito=group|client|implementation&id=…`). Sustituye a la ficha por secciones de CSAPP-06 y al bloque Calidad de la ficha; el acceso a los seis KPI es Calidad › Resumen de clientes.
 
-La ficha contiene los indicadores económicos del mes y año, desviaciones contra objetivo, horas dedicadas y objetivo de horas. Añadir acumulado comparable del año anterior sin eliminar la referencia al año completo.
+- **Cabecera breve:** nombre completo (con título accesible), tipo (Grupo Cliente / Cliente / Implantación), Grupo al que pertenece, Soporte, Servidor (los de su Grupo, rotulados «(Grupo)», si el objeto no tiene los suyos), usuarios al corte, mes y corte, «Provisional» en el mes en curso, barra de periodo (mes/año, «A fecha de hoy / Mes completo», «Último mes cerrado»), selector de objeto (Grupo, Clientes e implantaciones, desplegable sin JavaScript), exportar y «← Comparativa». Volver conserva el periodo y los filtros **actuales** (Soporte/Servidor) más orden y página; los parámetros antiguos (alojamiento, complejidad, producto, estado, `pestana`, `q`…) ni se leen ni se arrastran. El formulario de filtros de CSAPP-06 no existe.
+- **Resumen compacto** (tabla de dos filas, mes y CUM): rentabilidad (€/jornada), desviación contra objetivo, rentabilidad del mismo periodo del año anterior (mismo mes hasta el mismo día / CUM anterior comparable), horas reales, horas objetivo y desviación de horas, con «Ver cálculo» bajo demanda. Un Cliente o implantación muestra sus horas y «—» con motivo en lo económico, más dos filas «Grupo · … (contexto)».
+- **Cuadrícula de dos zonas** (primera pantalla a 1920×1080): a la izquierda cinco gráficos SVG propios (sin dependencias) con alternancia Gráfico/Tabla en el mismo cuadro; a la derecha los tres cuadros de dedicación simultáneos. El detalle ilimitado de registros es una ruta con «← Volver a la ficha» (`det=horas|ratio|ingreso|pap|tickets|bugs|exportar`).
+- **Sin** sellos de datos, método, revisión de configuración ni cobertura en la ficha: viven en «Ver cálculo» y en Administración › Diagnóstico de datos. Una cifra no disponible es «—» con el motivo al clic/foco; no hay avisos repetidos.
 
-## Gráficos y desgloses
+### Gráficos (zona izquierda)
 
-| Visual o tabla | Contenido |
+| Gráfico | Contenido |
 | --- | --- |
-| Rentabilidad mensual | Serie en euros por jornada y línea objetivo, con interrupciones cuando falta denominador |
-| Dedicación mensual | Horas por equipo y perfil y PAP en una serie o eje identificado, sin sumar horas con intervenciones |
-| Resumen anual | Ingreso, dedicación real y objetivo, ratio anual y comparación entre años |
-| Equipos y perfiles | CS N1, CS N2, PMO ANA, PMO DEV, IT N3 y Plataforma N4; mes, anterior, CUM y anterior comparable |
-| Motivos de dedicación | Incidentes Vincle, otro soporte y sin clasificación; desglose de las cuatro causas más infraestructura SaaS |
-| PAP | Evolutivos no facturables, correctivos por categorías, origen cliente y total único |
-| Escalados y bugs | Tickets únicos por destino, bugs confirmados y explicación del periodo utilizado |
-| Calidad | Los seis KPI, valor por usuario, referencia, semáforo, peso efectivo y resultado global |
+| Rentabilidad mensual (€/jornada) | Barras año elegido y año anterior comparable alineadas enero–diciembre, línea de objetivo, línea CUM del año (Σ ingresos / Σ horas) y mes parcial hueco. Tooltip y tabla: actual, mismo mes anterior, diferencia, variación %, CUM y desviación vs objetivo (Δ en puntos porcentuales) |
+| Horas mensuales (h) | Mismo formato |
+| PAP mensual | Serie con unidad propia (PAP únicos con puesta en producción), nunca sumada a horas |
+| Ingreso imputado anual y Rentabilidad anual | Un punto por año disponible (histórico completo): año completo frente a CUM comparable del mismo corte; el año del corte solo tiene CUM |
 
-En el libro hay cinco gráficos de Análisis Cliente y uno de PulseRent. La aplicación conserva sus preguntas de negocio y elimina sus rangos fijos hasta 2025. Los gráficos ampliarán los años disponibles automáticamente.
+Los hitos de arranque/migración ya informados se marcan en las curvas del año; no se inventan fechas.
+
+### Comparación interanual (reglas)
+
+Fuente única: `EntityResult.monthly / prevMonthly / history` del motor económico (`src/server/economics/engine.ts`) y funciones puras de `src/domain/ficha-series.ts`; el gráfico, el tooltip, la tabla equivalente y el CSV `tabla=interanual` leen las **mismas filas** (`FichaView.series`).
+
+- Variación = (actual − anterior) / abs(anterior) si el anterior ≠ 0. Anterior cero → estado `BASE_CERO` (sin variación relativa; sí diferencia). Dato ausente → `SIN_ANTERIOR` / `SIN_ACTUAL`. Nunca infinito ni 0 % inventado.
+- Porcentajes (desviación vs objetivo): diferencia en **puntos porcentuales**, sin variación relativa. Positivo = peor en las dos desviaciones.
+- Mes parcial: el año anterior llega al mismo día (limitado al fin de ese mes: 15/02/2026 → 15/02/2025; 29/02/2024 → 28/02/2023); en «mes completo», ambos meses enteros. Enero–mes anterior completos; **meses posteriores al corte vacíos (null), no ceros**.
+- CUM por mes = Σ ingresos / Σ horas × jornada (operador `eurosPerDay` del motor), nunca suma ni media de ratios mensuales; se interrumpe en el primer mes sin ingreso conocido o con perímetro incompleto. El CUM actual no se compara con el año anterior completo: se compara con el CUM anterior comparable.
+- Anuales: el motor entrega, para el foco, `history` (año completo y CUM comparable de cada año de `historyYears`) con las mismas fórmulas.
+- Limitación vigente: 28/02 de un año no bisiesto en modo «a fecha de corte» se compara con 28/02 del bisiesto anterior (contrato CSAPP-06 conservado; el mes anterior queda prorrateado 28/29).
+
+### Tres cuadros de dedicación (zona derecha)
+
+Horas del perímetro del servicio económico (Soporte), con persona/equipo/rol a la fecha del trabajo (`src/domain/ficha-dedicacion.ts`; los tres concilian entre sí y con la cifra de horas):
+
+1. **Por equipo y perfil:** CS N1, CS N2, PMO ANA, PMO DEV, IT, Plataforma (siempre las seis filas) y «Sin identificar» al final; mes, % mes, mes anterior, CUM, % CUM, CUM anterior comparable y año anterior completo (rotulado).
+2. **Por tipo de ticket y perfil:** Incidente/Problema Vincle, Otro soporte y Causa pendiente; cada tipo con su subtotal y sus perfiles con horas (% dentro del tipo). El total suma los tres tipos una vez; las filas de perfil son detalle. Un perfil sin horas en ningún periodo no se lista.
+3. **Por tipo de problema Vincle:** Integración/Procesos, Configuración, Personalización, Estándar e Infraestructura CLOUD (solo con horas en el CUM o el CUM anterior; infraestructura cuenta como Vincle únicamente con alojamiento CLOUD a la fecha del trabajo): horas CUM, % sobre horas dedicadas, % sobre horas objetivo (— sin ingreso propio) y CUM anterior comparable. Sistemas del Cliente y Uso Indebido siguen en «Otro soporte» y en el detalle de horas.
+
+Un porcentaje sin denominador es «—», no 0 %.
+
+### Cliente con ingreso solo a nivel Grupo
+
+Horas, dedicación y PAP propios; la serie económica y los anuales son del Grupo, identificados en el título («Grupo (contexto)») y en las filas del resumen; nunca se repite el ingreso como propio. Los PAP/Wrike solo atribuibles a Grupo aparecen en la ficha del Grupo, no en los Clientes (atribución `drvClientId`).
 
 ## Históricos y producto
 
@@ -31,22 +55,6 @@ El corte por VSW, VFS o ARQ precisa un campo de producto o una equivalencia de p
 
 Se abre como detalle o pestaña dentro de las cuatro vistas, sin crear otro módulo de negocio. Será una consulta sobre los datos normalizados y agregados, no una copia manual de la hoja ANÁLISIS DETALLADO. Admitir agrupación por cliente, año, mes, fuente, servicio, equipo, rol, causa, producto y proyecto. Los detalles se paginan y las descargas grandes se generan como tarea en segundo plano. Un gráfico no carga cientos de miles de registros en el navegador.
 
-## Evidencia de calidad
+## Implementación (CSAPP-06, histórica)
 
-La pestaña Calidad de la ficha permite leer el feedback del mes, ver tendencias y consultar qué tickets o PAP producen el resultado. Las anotaciones de arranque y migración aparecerán en las curvas. Las correlaciones de horas, escalados e incidencias son señales relacionadas; no representan automáticamente seis problemas distintos ni prueban causalidad.
-
-## Diagnóstico y afectación del producto
-
-La ficha usa Grupo Cliente y Cliente existentes y abre el diagnóstico de causas sin eliminar Sistemas del Cliente o Uso indebido. Mostrar problemas e incidentes por separado, lista de bugs vinculados y problemas por causa estándar como métricas distintas. Los vínculos parciales no representan todos los clientes afectados. La sección detallada sigue dentro de las cuatro vistas, sin crear otro módulo.
-
-## Implementación (CSAPP-06)
-
-Ruta `/analisis-cliente` (selector con búsqueda en servidor por Grupo / Cliente / implantación, paginada; ficha con `ambito`+`id`). Cinco secciones de carga diferida:
-
-1. **Resumen y evolución:** cinco tarjetas de periodo (horas, ingreso imputado, €/jornada, desviaciones, horas objetivo, desviación de horas, tarifa, usuarios) y cinco gráficos con tabla equivalente: rentabilidad mensual (objetivo, huecos reales, provisional hueco), horas CUM comparables, ingreso CUM comparable, dedicación mensual por perfil con **PAP en panel aparte**, y real frente a objetivo. El año anterior comparable usa datos propios (último mes cortado según el modo). Hitos con fecha y ámbito.
-2. **Dedicación:** perfiles CS N1, CS N2, PMO ANA/DEV, IT N3, Plataforma N4 y sin identificar (otras dimensiones se conservan), resueltos a la fecha del trabajo; clases de causa (incidente Vincle confirmado, otro soporte, sin clasificar) que reconcilian el total; causas exactas con Sistemas del Cliente y Uso Indebido.
-3. **PAP:** totales únicos por lista+ID, correctivos (estándar, proyecto, origen cliente), evolutivos (sin evidencia de facturación en la fuente: no se afirma «no facturable»), sin clasificar, resultado distinto de OK, sin fecha de producción; tabla de pertenencias **no aditiva** marcada.
-4. **Tickets y bugs vinculados:** creados por periodo (incident / problem / otros), escalados (N3 unión una vez; N4 no prueba un bug), estados observados con fecha, y bugs únicos con problemas e incidentes afectados como conteos aparte («bugs vinculados a tickets creados en el periodo»). Rechazados, pendientes e internos fuera del conteo confirmado.
-5. **Datos y cobertura:** referencia de cálculo, fuentes financieras, últimas cargas completadas, limitaciones.
-
-Grupo: todas las métricas del motor. Cliente/implantación: horas, usuarios y hechos **de su ámbito**; «ingreso agrupado en Grupo Cliente» con enlace; el panel «del grupo» no se suma. Cada cifra abre su detalle (ingreso, horas incluidas/excluidas/pendientes/sin clasificar/otro servicio, PAP, tickets, bugs, explicación de ratio con numerador, denominador, operandos, fórmula, referencia y estado). Límites: sin los seis indicadores de Calidad, Client Health, backlog ni semáforos (CSAPP-08); las implantaciones no identifican tickets.
+Los servicios de detalle (`src/server/analytics/detail.ts`, `operational.ts`), el selector con búsqueda en servidor y el CSV (`ficha.csv`: `series`, `interanual`, `dedicacion`, `pap`, `tickets`) se conservan; las pestañas, la cohorte de desviación contra cartera, el bloque Calidad, «Tickets y bugs» y «Datos y cobertura» de la ficha **se retiraron** en HOTFIX-02. Cada cifra de horas abre su detalle conciliado; un detalle con un sello distinto declara «nueva lectura».

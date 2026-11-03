@@ -75,6 +75,8 @@ export type EconomicInput = {
   unpaged?: boolean;
   /** Entidad para la que se preparan las series mensuales (año seleccionado y comparable anterior). Sin ella no se calculan series por entidad. */
   detailFor?: string;
+  /** Años anteriores (< año del corte) de los que `detailFor` devuelve el año completo y el CUM comparable (gráficos anuales de la ficha). */
+  historyYears?: number[];
 };
 
 export type Amount = { value: string | null; status: ResultStatus; reason: string | null; known: string; validated: boolean };
@@ -127,6 +129,8 @@ export type EntityResult = {
   monthly: PeriodSeries[];
   /** Serie mensual del año anterior COMPARABLE (mismos meses, último mes cortado según el modo); solo para `detailFor`. */
   prevMonthly: PeriodSeries[];
+  /** Año completo y CUM comparable (mismo corte del año) de cada año de `historyYears`, con las mismas fórmulas; solo para `detailFor`. */
+  history: { year: number; full: PeriodSeries; cum: PeriodSeries }[];
 };
 
 export type PortfolioPeriod = PortfolioPeriodResult;
@@ -224,7 +228,8 @@ async function compute(tx: Tx, input: EconomicInput, date: string, mode: CutMode
   const focus = input.detailFor ? ents.find((e) => e.id === input.detailFor) ?? null : null;
 
   // 2. Hechos financieros vigentes de los años implicados (una consulta por conjuntos).
-  const years = [cutY, cutY - 1];
+  const historyYears = [...new Set((input.historyYears ?? []).filter((y) => Number.isInteger(y) && y < cutY && y >= 2000))].sort((a, b) => a - b);
+  const years = [...new Set([cutY, cutY - 1, ...historyYears])];
   const finance = await loadFinance(tx, years, groupIds);
 
   // 3. Horas: una pasada por TimeActivity con un join de periodos (sin consulta por grupo/mes). Las series mensuales solo de la entidad en foco.
@@ -235,8 +240,13 @@ async function compute(tx: Tx, input: EconomicInput, date: string, mode: CutMode
     prevMonthlyPeriods.push({ key: `p${m}`, y: cutY - 1, m, from: ymdToIso({ y: cutY - 1, m, d: 1 }), to: m === cutP.m ? periods.prevCum.to : ymdToIso({ y: cutY - 1, m, d: lastDayOfMonth(cutY - 1, m) }) });
   }
   const periodRows = PERIOD_KEYS.map((k) => ({ key: k as string, from: periods[k].from, to: periods[k].to }));
+  // Años históricos: el año completo y el CUM comparable con el MISMO corte (mismas reglas de mes completo/febrero que buildPeriods).
+  const historyDefs = historyYears.map((y) => {
+    const eq = buildPeriods(ymdToIso({ y, m: cutP.m, d: Math.min(cutP.d, lastDayOfMonth(y, cutP.m)) }), mode, today);
+    return { year: y, full: { key: `hf${y}`, from: `${y}-01-01`, to: `${y}-12-31` }, cum: { key: `hc${y}`, from: eq.cum.from, to: eq.cum.to } };
+  });
   const hours = await loadHours(tx, input.scope, ents, periodRows, input.filters);
-  const monthlyHours = focus ? await loadHours(tx, input.scope, [focus], [...monthlyPeriods, ...prevMonthlyPeriods], input.filters) : (new Map() as HoursIndex);
+  const monthlyHours = focus ? await loadHours(tx, input.scope, [focus], [...monthlyPeriods, ...prevMonthlyPeriods, ...historyDefs.flatMap((h) => [h.full, h.cum])], input.filters) : (new Map() as HoursIndex);
   const unattributed = await loadUnattributed(tx, periods.cum);
 
   // 4. Usuarios: un único acceso a la matriz de todas las entidades y años.
@@ -432,6 +442,13 @@ async function compute(tx: Tx, input: EconomicInput, date: string, mode: CutMode
     const isFocus = focus?.id === e.id;
     const monthly = isFocus ? monthlyPeriods.map((mp) => build(e, mp.key, { from: mp.from, to: mp.to, label: `${mp.y}-${String(mp.m).padStart(2, "0")}`, provisional: mp.m === cutP.m && periods.cum.provisional }, "monthly", monthlyHours)) : [];
     const prevMonthly = isFocus ? prevMonthlyPeriods.map((mp) => build(e, mp.key, { from: mp.from, to: mp.to, label: `${mp.y}-${String(mp.m).padStart(2, "0")}`, provisional: false }, "monthly", monthlyHours)) : [];
+    const history = isFocus
+      ? historyDefs.map((h) => ({
+          year: h.year,
+          full: build(e, h.full.key, { from: h.full.from, to: h.full.to, label: `Año ${h.year} completo`, provisional: false }, "period", monthlyHours),
+          cum: build(e, h.cum.key, { from: h.cum.from, to: h.cum.to, label: `CUM ${h.year}`, provisional: false }, "period", monthlyHours),
+        }))
+      : [];
     return {
       id: e.id,
       type: e.type,
@@ -444,6 +461,7 @@ async function compute(tx: Tx, input: EconomicInput, date: string, mode: CutMode
       periods: per,
       monthly,
       prevMonthly,
+      history,
     };
   });
 

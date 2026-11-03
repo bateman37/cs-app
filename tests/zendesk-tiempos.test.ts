@@ -2,10 +2,10 @@ import { afterAll, beforeAll, beforeEach, describe, expect, it } from "vitest";
 import { prisma } from "@/lib/db";
 import { confirmUpload, reprocessUpload, revertUpload } from "@/server/uploads/batches";
 import { runOnce } from "@/server/uploads/worker";
-import { listBatchTimes, listCorrectionCandidates, timesSummary } from "@/server/zendesk/summary";
+import { listBatchTimes, timesSummary } from "@/server/zendesk/summary";
 import { batch, drain, freshEnvironment, removeUploadDir, useUploadDir } from "./cargas-helpers";
 import { excelSerial, ticket, ticketsBuffer, timeRow, timesBuffer, type TimeRow } from "./generators/zendesk";
-import { addClient, addGroup, addPerson, addPersonAlias, count, entries, importZd, prepareZd, sumHours, TICKETS, TIEMPO, decideCorrection } from "./zendesk-helpers";
+import { addClient, addGroup, addPerson, addPersonAlias, count, entries, importZd, prepareZd, sumHours, TICKETS, TIEMPO } from "./zendesk-helpers";
 
 let dir: string;
 let admin: { id: string };

@@ -58,7 +58,7 @@ export async function wrikePapBugs(ctx: Ctx): Promise<void> {
       await page.locator("summary", { hasText: source }).first().click();
       const form = page.locator("details[open]").first();
       await form.locator('input[type="file"]').setInputFiles(f);
-      if (opts.extraccion) await form.getByLabel("Fecha de extracción").fill(opts.extraccion);
+      void opts.extraccion; // HOTFIX-01: sin extracción declarada en el formulario.
       for (const [label, v] of Object.entries(opts.fields ?? {})) await form.getByLabel(new RegExp(label)).fill(v);
       for (const [label, v] of Object.entries(opts.selects ?? {})) await form.getByLabel(new RegExp(label)).selectOption(v);
       await form.getByRole("button", { name: "Subir y validar" }).click();
@@ -141,7 +141,7 @@ export async function wrikePapBugs(ctx: Ctx): Promise<void> {
       papRow({ Title: "43: cliente", "Causa raíz": "Correctivo (Origen cliente)", Proyecto: "Proyecto PAP", "Fecha puesta en producción": papDate("2025-03-01") }),
       papRow({ Title: "44: sin fecha", "Fecha puesta en producción": null, "Fecha de Solicitud": null, "Causa raíz": null }),
     ]));
-    const pa = await upload("PAP", file("pap.xlsx"), { fields: { "Lista de origen": "pap-e2e" } });
+    const pa = await upload("PAP", file("pap.xlsx"), {});
     ctx.check("PAP: el XLSX de 29 columnas se valida y llega a «Listo para revisar»", await waitStatus(page, "Listo para revisar"));
     ctx.check("PAP: 3 PAP distintos, 2 correctivos únicos aunque uno tenga varias causas y dos tickets, 1 sin clasificar", /PAP distintos \(cada uno cuenta una vez\) 3/.test(await rowText(page, "PAP distintos (cada")) && /Correctivos únicos[^0-9]*2/.test(await rowText(page, "Correctivos únicos")) && /Causa vacía o sin clasificar[^0-9]*1/.test(await rowText(page, "Causa vacía")), await rowText(page, "Correctivos únicos"));
     ctx.check("PAP: origen cliente conservado, pertenencias no aditivas, Resultado sin filtro OK y Duración sin sumar horas", /Origen cliente 1/.test(await rowText(page, "Origen cliente")) && /Rollback/.test(await body(page)) && /no se suma a las horas/.test(await body(page)));
@@ -150,7 +150,7 @@ export async function wrikePapBugs(ctx: Ctx): Promise<void> {
     await page.goto(`${B}/${pa}`);
     ctx.check("PAP: confirmar activa 3 PAP y las observaciones", (await confirm()) && (await n(ctx, 'SELECT count(*) n FROM "PapItem"')) === 3 && (await n(ctx, 'SELECT count(*) n FROM "PapObservation"')) === 3);
     await writeFile(file("pap2.xlsx"), await papBuffer([papRow({ Title: "42: texto cambiado", "Causa raíz": "Evolutivo;#Correctivo (Estándar)", "Tickets asociados": "#123456; 222222", "Nº de BUG": "1001; VFS 2002", Resultado: "Rollback" })]));
-    await upload("PAP", file("pap2.xlsx"), { fields: { "Lista de origen": "pap-e2e" } });
+    await upload("PAP", file("pap2.xlsx"), {});
     ctx.check("PAP: el mismo ID con título cambiado es una revisión, no otro PAP", (await waitStatus(page, "Listo para revisar")) && /Revisiones de un PAP existente[^0-9]*1/.test(await rowText(page, "Revisiones de un PAP existente")) && (await n(ctx, 'SELECT count(*) n FROM "PapItem"')) === 3);
 
     // ============================================================ Bugs VFS y VSW por separado
@@ -159,12 +159,12 @@ export async function wrikePapBugs(ctx: Ctx): Promise<void> {
       vswBug({ ID: "2002", State: "Done (Ready for Release)", "Zendesk Ticket ID": "222222", Clients: '<a href="https://vincle.zendesk.com/agent/tickets/123456">C</a> <a href="https://vincle.zendesk.com/agent/tickets/123456">C</a> <a href="#">@Ana</a>' }),
       vswBug({ ID: "2004", State: "Estado nuevo" }),
     ]));
-    await upload("Bugs VFS", file("vfs.csv"), { extraccion: "2026-03-01", selects: { "Vista del listado": "AMPLIA" } });
+    await upload("Bugs VFS", file("vfs.csv"), {});
     ctx.check("Bugs VFS: el CSV llega a «Listo para revisar» con la vista declarada", await waitStatus(page, "Listo para revisar"));
     ctx.check("Bugs VFS: 2 elementos, solo 1 Bug_; un Request llamado BUG no cuenta; PR no acredita producción", /Work Items distintos 2/.test(await rowText(page, "Work Items distintos")) && /Bug_ distintos[^0-9]*1/.test(await rowText(page, "Bug_ distintos")) && /pendiente de crear la pull request/.test(await body(page)));
     ctx.check("Bugs VFS: la ficha explica que la ausencia no cierra ni borra y rotula los no observados", /no cierra, borra ni resuelve/.test(await page.getByTestId("bug-no-observados").innerText()));
     await confirm();
-    const bw = await upload("Bugs VSW", file("vsw.csv"), { extraccion: "2026-03-02", selects: { "Vista del listado": "ABIERTOS" } });
+    const bw = await upload("Bugs VSW", file("vsw.csv"), {});
     ctx.check("Bugs VSW: se prepara por separado; el ID 2002 no se fusiona con el de VFS y el estado nuevo requiere revisión", (await waitStatus(page, "Listo para revisar")) && /Estados fuera del catálogo[^0-9]*1/.test(await rowText(page, "Estados fuera del catálogo")) && (await body(page)).includes("Ready for Release"));
     ctx.check("Bugs VSW: la URL repetida se deduplica (2 pares: ticket central 222222 y 123456), href=# no es ticket", /Pares Work Item–ticket distintos[^0-9]*2/.test(await rowText(page, "Pares Work Item–ticket")) && /Ticket central interno/.test(await body(page)));
     await page.goto(`${B}/${bw}`);

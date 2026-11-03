@@ -66,7 +66,7 @@ export async function zendesk(ctx: Ctx): Promise<void> {
       await page.locator("summary", { hasText: source }).first().click();
       const form = page.locator("details[open]").first();
       await form.locator('input[type="file"]').setInputFiles(f);
-      if (extraccion) await form.getByLabel("Fecha de extracción").fill(extraccion);
+      void extraccion; // HOTFIX-01: el formulario ya no pide extracción; la fecha de recepción es la observación operativa.
       if (hoja) await form.getByLabel(/Hoja del libro/).fill(hoja);
       await form.getByRole("button", { name: "Subir y validar" }).click();
       await page.waitForURL(/\/administracion\/cargas\/[^/]+$/, { timeout: 30000 });

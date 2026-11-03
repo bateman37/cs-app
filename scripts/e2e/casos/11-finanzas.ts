@@ -60,9 +60,8 @@ export async function finanzas(ctx: Ctx): Promise<void> {
       await page.locator("summary", { hasText: source }).first().click();
       const form = page.locator("details[open]").first();
       await form.locator('input[type="file"]').setInputFiles(f);
-      await form.getByLabel(/Año del conjunto/).selectOption(anio);
-      await form.getByLabel(/Declaro que el archivo contiene el conjunto anual completo/).check();
-      await form.getByLabel("Fecha de extracción").fill(extraccion);
+      await form.getByLabel("Año", { exact: true }).fill(anio);
+      void extraccion; // HOTFIX-01: sin casilla de conjunto completo ni extracción en el formulario.
       await form.getByRole("button", { name: "Subir y validar" }).click();
       await page.waitForURL(/\/administracion\/cargas\/[^/]+$/, { timeout: 30000 });
       return page.url().split("/").pop() as string;

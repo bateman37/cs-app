@@ -82,7 +82,7 @@ async function grandes(ctx: Ctx): Promise<void> {
       await page.locator("summary", { hasText: new RegExp(`^${source}$`) }).first().click();
       const form = page.locator("details[open]").first();
       await form.locator('input[type="file"]').setInputFiles(file);
-      if (declared) await form.getByLabel("Fecha de extracción").fill("2026-10-01").catch(() => undefined);
+      void declared;
       const t0 = Date.now();
       await form.getByRole("button", { name: "Subir y validar" }).click();
       await page.waitForURL(/\/administracion\/cargas\/[^/]+$/, { timeout: 20 * 60_000 });
@@ -130,7 +130,6 @@ async function grandes(ctx: Ctx): Promise<void> {
     await ctx2.page.locator("summary", { hasText: /^Zendesk · tiempos$/ }).first().click();
     const f2 = ctx2.page.locator("details[open]").first();
     await f2.locator('input[type="file"]').setInputFiles(path.join(dir, "tiempos.xlsx"));
-    await f2.getByLabel("Fecha de extracción").fill("2026-10-01").catch(() => undefined);
     await f2.getByRole("button", { name: "Subir y validar" }).click();
     let caught = "";
     const tc = Date.now();

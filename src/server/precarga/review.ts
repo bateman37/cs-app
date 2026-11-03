@@ -17,7 +17,6 @@ import { DomainError } from "../errors";
 import { recordAudit } from "../audit";
 import { adminTransaction } from "../tx";
 import type { Db } from "../uploads/profile";
-import { getProfile } from "../uploads/registry";
 import {
   aliasSpecs,
   ensureIdentity,
@@ -207,30 +206,8 @@ export async function getPrecargaReview(actorId: string, batchId: string): Promi
   return computeReview(prisma, batch);
 }
 
-/**
- * Hechos ya cargados que pueden depender de los maestros que acaba de resolver esta carga: lotes completados de fuentes con recálculo
- * (REDERIVE) anteriores al último cambio de maestros. El recálculo se pide, lote a lote, con «Reprocesar» en su propia ficha: no se reimportan
- * originales y las cifras antiguas no se dan por validadas.
- */
-export async function reprocessNeeded(actorId: string, batchId: string): Promise<{ id: string; originalName: string; profileId: string; finishedAt: Date | null }[]> {
-  await authorize(prisma, actorId, "ADMIN");
-  const batch = await prisma.uploadBatch.findUnique({ where: { id: batchId }, select: { status: true, finishedAt: true, summary: true } });
-  if (!batch || batch.status !== "COMPLETED" || !batch.finishedAt) return [];
-  const rep = ((batch.summary ?? {}) as { precarga?: { created?: Record<string, number> } }).precarga;
-  const decided = await prisma.masterLoadDecision.findMany({ where: { batchId }, select: { decidedAt: true }, orderBy: { decidedAt: "desc" }, take: 1 });
-  const changedAt = decided[0] && decided[0].decidedAt > batch.finishedAt ? decided[0].decidedAt : batch.finishedAt;
-  const changed = Object.values(rep?.created ?? {}).some((n) => n > 0) || decided.length > 0;
-  if (!changed) return [];
-  const rows = await prisma.uploadBatch.findMany({
-    where: { status: "COMPLETED", profileId: { not: PRECARGA_PROFILE_ID }, finishedAt: { lt: changedAt }, supersededByBatchId: null },
-    select: { id: true, originalName: true, profileId: true, finishedAt: true },
-    orderBy: { finishedAt: "desc" },
-    take: 100,
-  });
-  const out: typeof rows = [];
-  for (const r of rows) if ((await getProfile(r.profileId))?.rederive) out.push(r);
-  return out;
-}
+// La antigua lista «Reproceso necesario» (limitada a 100 lotes, uno a uno con «Reprocesar») se sustituyó en HOTFIX-02 por la actualización automática de
+// relaciones de TODO lo ya cargado: ver src/server/relations/refresh.ts (estado «Actualizando relaciones» en Administración).
 
 // ---------------------------------------------------------------- Decisiones
 

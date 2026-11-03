@@ -2,7 +2,7 @@
 
 Parte de [CSAPP-HOTFIX-01-v2](../../prompts/CSAPP-HOTFIX-01-v2.md), §8 (Clientes) y §9 (Personal y PMO). Reglas de producto: [Maestros](../producto/maestros.md), MST 03, 05 y 06. Motor común: [Importación y resumen de cargas](proceso-comun.md) y [contrato del motor](../arquitectura/motor-cargas-contrato.md).
 
-Estado: **implementado y probado con PostgreSQL real** (pruebas sintéticas y ensayo del libro real en una base aislada); **no aceptado** por Dennis ni aplicado en su instalación. El libro real nunca está en Git, en fixtures ni en logs nominativos.
+Estado: **implementado y probado con PostgreSQL real** (HOTFIX-01; ajustes de HOTFIX-02 al final) (pruebas sintéticas y ensayo del libro real en una base aislada); **no aceptado** por Dennis ni aplicado en su instalación. El libro real nunca está en Git, en fixtures ni en logs nominativos.
 
 ## Perfil
 
@@ -86,9 +86,17 @@ Las revisiones están en la **ficha de la carga** (sección «Precarga de maestr
 - **Idempotente**: repetir la misma decisión no cambia nada; otra distinta se rechaza (los cambios posteriores se hacen en el maestro). Una revisión que el maestro ya resuelve (por decisión o edición manual) figura «resuelta».
 - **Ligadas al checksum**: el mismo archivo subido otra vez muestra la decisión; otro archivo (otro checksum) vuelve a plantear la revisión. Las decisiones solo se toman con la carga completada.
 
-## Reproceso necesario
+## Actualización de relaciones (HOTFIX-02)
 
-Si la precarga creó o decidió algo en los maestros, la ficha lista los lotes completados de otras fuentes con recálculo (REDERIVE) anteriores a ese cambio y enlaza a cada uno: ahí el administrador usa el recorrido existente «Reprocesar» (sin releer el archivo ni cambiar fechas u observaciones). Las cifras de esos lotes no se dan por validadas hasta entonces. El aviso es conservador («pueden depender»): no mide el impacto exacto.
+Desde HOTFIX-02 confirmar la carga, editar una equivalencia o decidir una revisión **actualiza solo** todo lo ya cargado (tickets, tiempos Zendesk y Wrike, PAP, vínculos y finanzas) con el trabajador existente, sin límite de lotes y sin releer originales: ver [contrato de enlace automático](../arquitectura/hotfix02-enlace-automatico.md). Administración muestra «Actualizando relaciones» y la acción única «Actualizar relaciones de los datos cargados». La antigua lista «Reproceso necesario» (máximo 100 lotes con «Reprocesar» uno a uno) se retiró.
+
+## Cambios de HOTFIX-02 en el libro
+
+- **Una hoja basta.** El libro con solo CLIENTES se admite; PERSONAL y PERSONAL PMO son opcionales y no se sustituyen ni se vacían por no venir.
+- **ID Zendesk contradictorio** (mismo ID con nombres o Grupos distintos): ya **no** convierte las filas en error; no se crea ese Cliente ni se elige uno (aviso en la ficha) y los alias Wrike y PAP de esas filas se cargan.
+- **PAP con Grupo J distinto del F del Cliente:** se atribuye al Grupo J, sin implantación.
+- **Alias de varios Grupos:** se guardan como candidatos (`AliasCandidate`); solo los resuelve el propio registro (ticket y organización compatibles). Sin evidencia queda el conflicto concreto.
+- **Normalización:** NFC + espacios (también no separables) + caja, igual en escritura, búsqueda y SQL.
 
 ## Cifras del libro real (ensayo en base aislada, solo conteos)
 

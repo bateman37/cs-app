@@ -151,10 +151,16 @@ export type ValuePlan = { value: string | null; candidates: string[] };
 export type GroupPlan = { key: string; name: string; positions: number[] };
 export type ClientPlan = { zdId: string; name: string; groupKey: string | null; internal: boolean; support: ValuePlan; hosting: ValuePlan; positions: number[] };
 export type WrikePlan = { key: string; raw: string; groupKeys: string[]; positions: number[] };
-export type PapOutcome = "IMPLEMENTATION" | "GROUP" | "AMBIGUOUS" | "NO_GROUP" | "GROUP_MISMATCH";
+/**
+ * IMPLEMENTATION: un único Cliente con el mismo Grupo (J = F). GROUP: Grupo único sin implantación (varios Clientes del Grupo, o el Grupo J no coincide con el del Cliente de
+ * la fila —una fila alineada no autoriza a sustituir J por F— o el Cliente no se pudo crear). AMBIGUOUS: varios Grupos. NO_GROUP: la fila no indica Grupo.
+ */
+export type PapOutcome = "IMPLEMENTATION" | "GROUP" | "AMBIGUOUS" | "NO_GROUP";
 export type PapPlan = {
   key: string; raw: string; groupKeys: string[]; clientIds: string[]; outcome: PapOutcome; complexity: ValuePlan; positions: number[];
 };
+/** Un ID de organización Zendesk que el libro asigna a nombres o Grupos distintos: no se crea el Cliente ni se elige uno; el resto de la fila (Wrike y PAP) sí se carga. */
+export type ClientConflict = { zdId: string; names: string[]; groupKeys: string[]; positions: number[] };
 export type PersonPlan = {
   id: string; name: string; positions: number[];
   papAliases: string[]; zendeskAliases: string[]; wrikeAliases: string[];
@@ -167,6 +173,8 @@ export type ExcludedPlan = { position: number; sheet: string | null; sourceRow: 
 export type Plan = {
   groups: GroupPlan[];
   clients: ClientPlan[];
+  /** IDs Zendesk contradictorios entre filas (nombre o Grupo): sin Cliente creado; sus alias Wrike y PAP siguen su camino. */
+  clientConflicts: ClientConflict[];
   wrike: WrikePlan[];
   pap: PapPlan[];
   persons: PersonPlan[];
@@ -232,7 +240,7 @@ export function buildPlan(rows: PlanRow[]): Plan {
     return key;
   };
 
-  type ClientAcc = { zdId: string; name: string; groupKey: string | null; positions: number[]; support: (string | undefined)[]; hosting: (string | undefined)[]; hasAnyGroupCol: boolean };
+  type ClientAcc = { zdId: string; name: string; groupKey: string | null; positions: number[]; support: (string | undefined)[]; hosting: (string | undefined)[]; hasAnyGroupCol: boolean; variants: Set<string>; names: Set<string>; groupKeys: Set<string> };
   const clients = new Map<string, ClientAcc>();
   type WAcc = { key: string; raw: string; groupKeys: Set<string>; noGroup: boolean; positions: number[] };
   const wrike = new Map<string, WAcc>();
@@ -258,12 +266,17 @@ export function buildPlan(rows: PlanRow[]): Plan {
       const pGroup = addGroup(t.papGrupo, row.position);
       const c = clients.get(t.zdId);
       if (c) {
+        c.variants.add(`${norm(t.zdNombre)}|${gKey ?? ""}`);
+        c.names.add(cleanText(t.zdNombre));
+        if (gKey) c.groupKeys.add(gKey);
+        if (!c.groupKey && gKey) c.hasAnyGroupCol = true;
         c.positions.push(row.position);
         c.support.push(termValue("SUPPORT", t.soporteE), termValue("SUPPORT", t.soporteH));
         c.hosting.push(termValue("HOSTING", t.servidor));
       } else {
         clients.set(t.zdId, {
           zdId: t.zdId, name: t.zdNombre, groupKey: gKey, positions: [row.position], hasAnyGroupCol: !!(gKey || wGroup || pGroup),
+          variants: new Set([`${norm(t.zdNombre)}|${gKey ?? ""}`]), names: new Set([cleanText(t.zdNombre)]), groupKeys: new Set(gKey ? [gKey] : []),
           support: [termValue("SUPPORT", t.soporteE), termValue("SUPPORT", t.soporteH)],
           hosting: [termValue("HOSTING", t.servidor)],
         });
@@ -296,7 +309,10 @@ export function buildPlan(rows: PlanRow[]): Plan {
   }
 
   // Clientes: el Cliente es la organización Zendesk; su Grupo es la columna F (Grupo del bloque Zendesk).
-  const clientPlans: ClientPlan[] = [...clients.values()].map((c) => ({
+  const clientConflicts: ClientConflict[] = [...clients.values()]
+    .filter((c) => c.variants.size > 1)
+    .map((c) => ({ zdId: c.zdId, names: [...c.names].sort(), groupKeys: [...c.groupKeys].sort(), positions: c.positions }));
+  const clientPlans: ClientPlan[] = [...clients.values()].filter((c) => c.variants.size === 1).map((c) => ({
     zdId: c.zdId,
     name: c.name,
     groupKey: c.groupKey,
@@ -315,7 +331,7 @@ export function buildPlan(rows: PlanRow[]): Plan {
     if (groupKeys.length === 0) outcome = "NO_GROUP";
     else if (groupKeys.length > 1) outcome = "AMBIGUOUS";
     else if (clientIds.length > 1) outcome = "GROUP";
-    else outcome = clientGroup.get(clientIds[0]) === groupKeys[0] ? "IMPLEMENTATION" : "GROUP_MISMATCH";
+    else outcome = clientGroup.get(clientIds[0]) === groupKeys[0] ? "IMPLEMENTATION" : "GROUP";
     return { key: p.key, raw: p.raw, groupKeys, clientIds, outcome, complexity: valuePlan(p.k), positions: p.positions };
   });
 
@@ -394,6 +410,7 @@ export function buildPlan(rows: PlanRow[]): Plan {
   return {
     groups: [...groups.values()],
     clients: clientPlans,
+    clientConflicts,
     wrike: wrikePlans,
     pap: papPlans,
     persons,

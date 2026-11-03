@@ -447,7 +447,10 @@ export async function activatePrecarga(tx: Tx, ctx: ActivationContext): Promise<
   const plan = await loadPlan(tx, ctx.batchId);
   const env: Env = { tx, actor, batchId: ctx.batchId, report: newReport() };
 
-  // 1. Grupos (46 denominaciones BC en el libro real) con su equivalencia BC.
+  for (const k of plan.clientConflicts) {
+    note(env, "ID_ZENDESK_EN_CONFLICTO", `El ID de organización Zendesk ${k.zdId} aparece con nombres o Grupos distintos en el libro: no se crea el Cliente ni se elige uno (créelo en Clientes con su Grupo).`);
+  }
+  // 1. Grupos (denominaciones BC del libro) con su equivalencia BC.
   const groups = new Map<string, Ref>();
   for (const g of plan.groups) groups.set(g.key, await ensureGroup(env, g.name));
 

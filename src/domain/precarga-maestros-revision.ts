@@ -39,6 +39,14 @@ export function reviewCandidates(plan: Plan): ReviewCandidate[] {
       });
     }
   }
+  for (const k of plan.clientConflicts) {
+    out.push({
+      key: `INFO:ZENDESK_ID_CONFLICTO:${k.zdId}`, kind: "INFO", state: "pending", title: `ID de organización Zendesk ${k.zdId}`, decidable: false, positions: k.positions,
+      message:
+        `Aparece con nombres o Grupos distintos (${k.names.map((n) => `«${n}»`).join(", ")}; Grupos: ${names(k.groupKeys)}). No se crea el Cliente ni se elige el primero: los tickets de esa organización quedan sin asignar. ` +
+        "Los alias Wrike y PAP de esas filas sí se cargan. Para resolverlo, cree el Cliente con su Grupo en Administración › Clientes (se enlaza solo).",
+    });
+  }
   for (const w of plan.wrike) {
     if (w.groupKeys.length > 1) {
       out.push({
@@ -61,12 +69,10 @@ export function reviewCandidates(plan: Plan): ReviewCandidate[] {
     } else if (p.outcome === "GROUP") {
       out.push({
         key: `INFO:PAP_GRUPO:${p.key}`, kind: "INFO", state: "applied", title: `Nombre PAP «${p.raw}»`, decidable: false, positions: p.positions,
-        message: `Identifica ${p.clientIds.length} Clientes del Grupo ${names(p.groupKeys)}: se atribuye al Grupo (un único destino), sin crear implantaciones ficticias.`,
-      });
-    } else if (p.outcome === "GROUP_MISMATCH") {
-      out.push({
-        key: `INFO:PAP_GRUPO_DISTINTO:${p.key}`, kind: "INFO", state: "pending", title: `Nombre PAP «${p.raw}»`, decidable: false, positions: p.positions,
-        message: `Su Grupo (${names(p.groupKeys)}) no coincide con el del Cliente de la fila: no se crea la implantación.`,
+        message:
+          p.clientIds.length > 1
+            ? `Identifica ${p.clientIds.length} Clientes del Grupo ${names(p.groupKeys)}: se atribuye al Grupo (un único destino), sin crear implantaciones ficticias.`
+            : `Su Grupo (${names(p.groupKeys)}) no coincide con el del Cliente de la fila (o el Cliente no se pudo crear): se atribuye al Grupo y no se crea la implantación.`,
       });
     } else if (p.outcome === "NO_GROUP") {
       out.push({

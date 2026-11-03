@@ -6,6 +6,8 @@ import { STATUS_LABEL, UPLOAD_STATUSES, TERMINAL_STATUSES, type UploadStatusName
 import { first, formatDateTime, type SearchParams } from "@/lib/format";
 import { Pager } from "@/components/list";
 import { UploadForm } from "./upload-form";
+import { readRefreshStatus } from "@/server/relations/refresh";
+import { RelationsStatus } from "../relaciones-estado";
 
 export const metadata: Metadata = { title: "Cargas" };
 const BASE = "/administracion/cargas";
@@ -26,6 +28,7 @@ export default async function CargasPage({ searchParams }: { searchParams: Promi
   const profileId = first(sp.fuente) || undefined;
   const page = Number(first(sp.page)) || 1;
   const [sources, history] = await Promise.all([listSources(user.id), listUploads(user.id, { status, profileId, page })]);
+  const rel = await readRefreshStatus();
   const keep = { estado: status, fuente: profileId, page };
   const labels = new Map([...sources.available.map((s) => [s.id, s.label] as const), ...sources.pending.map((s) => [s.id, s.label] as const)]);
   return (
@@ -36,6 +39,22 @@ export default async function CargasPage({ searchParams }: { searchParams: Promi
         previsualización sin tocar los datos activos y, al confirmar, otra operación atómica los activa. No hay bandeja de pendientes:
         resúmenes y avisos están en la ficha de cada lote.
       </p>
+
+      <section className="card" aria-labelledby="sec-relaciones">
+        <h2 id="sec-relaciones">Relaciones de los datos cargados</h2>
+        <RelationsStatus
+          withAction
+          initial={{ state: rel.state, requested: rel.requestedGeneration, completed: rel.completedGeneration, progress: rel.progress, lastError: rel.lastError, attempts: rel.attempts, maxAttempts: rel.maxAttempts }}
+        />
+        {rel.lastReport ? (
+          <p className="muted">
+            Última actualización completa (generación {rel.completedGeneration}): Wrike {rel.lastReport.classification.wrike.exact.rows + rel.lastReport.classification.wrike.enriched.rows} filas exactas o enriquecidas,{" "}
+            {rel.lastReport.classification.wrike.groupOnly.rows} solo Grupo, {rel.lastReport.classification.wrike.ambiguous.rows} ambiguas, {rel.lastReport.classification.wrike.unmatched.rows} sin correspondencia; PAP{" "}
+            {rel.lastReport.classification.pap.exact + rel.lastReport.classification.pap.enriched} exactos o enriquecidos, {rel.lastReport.classification.pap.groupOnly} solo Grupo, {rel.lastReport.classification.pap.ambiguous} ambiguos,{" "}
+            {rel.lastReport.classification.pap.unmatched} sin correspondencia. Las cantidades de la fuente no cambian al enlazar.
+          </p>
+        ) : null}
+      </section>
 
       <section className="card" aria-labelledby="sec-fuentes">
         <h2 id="sec-fuentes">Fuentes</h2>

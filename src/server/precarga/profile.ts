@@ -141,12 +141,14 @@ function parseRow(cells: Cell[], context?: unknown): ParsedRow {
 // ---------------------------------------------------------------- Posproceso: contradicciones entre filas y avisos de revisión
 
 const ERR = (code: string, message: string) => JSON.stringify([{ severity: "error", code, message }]);
+const WARN = (code: string, message: string) => JSON.stringify([{ severity: "warning", code, message }]);
 
 async function postPrepare(tx: Tx, batchId: string): Promise<void> {
-  // 1. Un mismo ID Zendesk con nombre o Grupo distintos en filas distintas es una contradicción de la fuente: ninguna fila se activa.
+  // 1. Un mismo ID Zendesk con nombre o Grupo distintos en filas distintas es una contradicción del bloque Zendesk (C/D/F): el plan no crea ese Cliente ni elige uno
+  //    (HOTFIX-02 §3). La fila NO es un error: sus columnas Wrike (A/B) y PAP (I/J) son claves independientes y siguen su camino. Se avisa en cada fila.
   await tx.$executeRaw(Prisma.sql`
-    UPDATE "UploadStagedRow" r SET classification = 'ERROR', fingerprint = NULL, "entityKey" = NULL, "duplicateInFile" = false, disposition = NULL, derived = NULL,
-      issues = COALESCE(r.issues, '[]'::jsonb) || ${ERR("ZENDESK_ID_CONTRADICTORIO", "El mismo ID de organización Zendesk aparece con nombre o Grupo distintos en otras filas: no se activa ninguna de ellas.")}::jsonb
+    UPDATE "UploadStagedRow" r SET "hasWarning" = true,
+      issues = COALESCE(r.issues, '[]'::jsonb) || ${WARN("ZENDESK_ID_CONTRADICTORIO", "El mismo ID de organización Zendesk aparece con nombre o Grupo distintos en otras filas: no se crea ese Cliente ni se elige uno; los alias Wrike y PAP de la fila sí se cargan.")}::jsonb
     FROM (
       SELECT typed->>'zdId' AS zid FROM "UploadStagedRow"
       WHERE "batchId" = ${batchId} AND classification = 'VALID' AND typed->>'hoja' = 'CLIENTES'

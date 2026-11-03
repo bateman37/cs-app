@@ -1,7 +1,8 @@
 import Link from "next/link";
 import { prisma } from "@/lib/db";
 import { PRECARGA_PROFILE_ID, REVIEW_LABEL } from "@/domain/precarga-maestros";
-import { getPrecargaReview, reprocessNeeded, type ReviewItem } from "@/server/precarga/review";
+import { getPrecargaReview, type ReviewItem } from "@/server/precarga/review";
+import { readRefreshStatus } from "@/server/relations/refresh";
 import { formatDateTime } from "@/lib/format";
 import { MastersDecisionForm } from "./maestros-forms";
 
@@ -64,7 +65,7 @@ export async function MaestrosPanel({ userId, batch }: { userId: string; batch: 
   const completed = batch.status === "COMPLETED";
   const row = await prisma.uploadBatch.findUnique({ where: { id: batch.id }, select: { summary: true } });
   const report = ((row?.summary ?? {}) as { precarga?: Report }).precarga;
-  const stale = completed ? await reprocessNeeded(userId, batch.id) : [];
+  const rel = completed ? await readRefreshStatus() : null;
   const by = (k: ReviewItem["kind"]) => review.items.filter((i) => i.kind === k && i.kind !== "INFO");
   const groupsOfKinds: ReviewItem["kind"][] = ["SUPPORT", "HOSTING", "WRIKE_ALIAS", "PAP_ALIAS", "PERSON_VARIANT", "PMO_ROLE"];
   const info = review.items.filter((i) => i.kind === "INFO");
@@ -86,12 +87,17 @@ export async function MaestrosPanel({ userId, batch }: { userId: string; batch: 
         <dd>{review.counts.pending} pendientes · {review.counts.decided} decididas · {review.counts.resolved} resueltas en el maestro · {review.counts.applied} aplicadas por confirmar</dd>
       </dl>
 
-      {stale.length > 0 ? (
-        <div className="notice notice-info" role="status">
-          <strong>Reproceso necesario.</strong> Los maestros acaban de cambiar y estos hechos ya cargados pueden depender de ellos; sus cifras no se dan por validadas hasta recalcularlos. Abra cada carga y use «Reprocesar»
-          (recálculo sin releer el archivo original):
-          <ul>{stale.map((s) => <li key={s.id}><Link href={`/administracion/cargas/${s.id}`}>{s.originalName}</Link> <span className="muted">({s.profileId}, completada el {formatDateTime(s.finishedAt as Date)})</span></li>)}</ul>
-        </div>
+      {rel ? (
+        rel.state === "UP_TO_DATE" ? (
+          <p className="notice notice-ok" role="status">
+            <strong>Relaciones al día.</strong> Los datos ya cargados (tickets, tiempos, Wrike, PAP y finanzas) se actualizan solos cuando cambian los maestros; no hace falta reprocesar cada carga.
+          </p>
+        ) : (
+          <p className="notice notice-info" role="status">
+            <strong>{rel.state === "FAILED" ? "La actualización de relaciones ha fallado." : "Actualizando relaciones…"}</strong>{" "}
+            Los maestros de esta carga están guardados; el análisis de lo ya cargado se actualiza en segundo plano (estado y reintento en <Link href="/administracion/cargas">Cargas</Link>).
+          </p>
+        )
       ) : null}
 
       {report ? (

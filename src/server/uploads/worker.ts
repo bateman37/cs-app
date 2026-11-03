@@ -14,6 +14,7 @@ import {
   type ClaimedJob,
 } from "./queue";
 import { removePart } from "./storage";
+import { runRefreshOnce } from "@/server/relations/refresh";
 import { setActivity } from "@/server/ops/worker-instance";
 
 type Log = (message: string) => void;
@@ -61,7 +62,10 @@ export async function processJob(job: ClaimedJob, shouldStop: () => boolean, log
 /** Reclama y procesa un trabajo. Devuelve true si había alguno. */
 export async function runOnce(workerId: string, shouldStop: () => boolean = () => false, log?: Log): Promise<boolean> {
   const job = await claimNextJob(workerId);
-  if (!job) return false;
+  if (!job) {
+    // Sin cargas pendientes: la actualización automática de relaciones (HOTFIX-02) usa el mismo trabajador, con su propio lease y fencing.
+    return runRefreshOnce(workerId, shouldStop, log);
+  }
   await processJob(job, shouldStop, log);
   return true;
 }

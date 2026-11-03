@@ -1,4 +1,4 @@
-import { cleanText } from "./normalize";
+import { cleanText, nameKey } from "./normalize";
 
 /**
  * Precarga de maestros (CSAPP-HOTFIX-01 §8-9): reglas puras, sin acceso a base de datos ni a archivos.
@@ -19,7 +19,7 @@ export const PRECARGA_RULES = "precarga-maestros-v1";
 export type SheetKind = "CLIENTES" | "PERSONAL" | "PMO";
 export const SHEET_LABEL: Record<SheetKind, string> = { CLIENTES: "CLIENTES", PERSONAL: "PERSONAL", PMO: "PERSONAL PMO" };
 
-export const norm = (s: string): string => cleanText(s).toLowerCase();
+export const norm = (s: string): string => nameKey(s);
 /** Valor de COMPARACIÓN APROXIMADA (sin tildes ni signos): solo para PROPONER candidatos, nunca para confirmar identidades. */
 export const fold = (s: string): string =>
   cleanText(s)

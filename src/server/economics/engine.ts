@@ -167,17 +167,46 @@ const na = (unit: string, status: ResultStatus, reason: string, code: string): F
 
 // ---------------------------------------------------------------- SQL de servicio (compartido con el detalle)
 
-/** Servicio económico de una actividad: evidencias (administración delegada del ticket, valor exacto de Entorno y Tipología, proyecto Wrike asignado). */
-export const SERVICE_EVIDENCE_SQL = Prisma.sql`
+/**
+ * Versión de la regla de clasificación del servicio (HOTFIX-02 §5). Se versiona porque cambia lo que la ausencia de configuración manual significa.
+ *  - servicio-v1 (CSAPP-05): solo evidencias explícitas; sin ninguna, SIN_CLASIFICAR.
+ *  - servicio-v2 (HOTFIX-02): las explícitas se conservan intactas; solo SIN evidencia explícita se aplican los dos rellenos documentados.
+ */
+export const SERVICE_RULES_VERSION = "servicio-v2";
+
+/** Evidencias EXPLÍCITAS (nunca se sobrescriben): Administración Delegada del ticket, asignación manual por Entorno y Tipología y por proyecto Wrike. */
+export const SERVICE_EXPLICIT_SQL = Prisma.sql`
   SELECT 'ADMIN_DELEGADA'::text AS service, 'TICKET_ADMIN_DELEGADA'::text AS origin WHERE a."ticketAdminDelegada" IS TRUE
   UNION ALL
   SELECT sa.service, 'ENTORNO' FROM "ServiceAssignment" sa
-   WHERE sa."isActive" AND sa."matchKind" = 'ENTORNO' AND a."ticketEntorno" IS NOT NULL AND sa."searchValue" = lower(a."ticketEntorno")
+   WHERE sa."isActive" AND sa."matchKind" = 'ENTORNO' AND a."ticketEntorno" IS NOT NULL AND sa."searchValue" = csapp_norm_name(a."ticketEntorno")
      AND (sa."validFrom" IS NULL OR sa."validFrom" <= a."workDate") AND (sa."validTo" IS NULL OR a."workDate" < sa."validTo")
   UNION ALL
   SELECT sa.service, 'WRIKE_PROJECT' FROM "ServiceAssignment" sa
-   WHERE sa."isActive" AND sa."matchKind" = 'WRIKE_PROJECT' AND a.source = 'WRIKE' AND a."projectName" IS NOT NULL AND sa."searchValue" = lower(a."projectName")
+   WHERE sa."isActive" AND sa."matchKind" = 'WRIKE_PROJECT' AND a.source = 'WRIKE' AND a."projectName" IS NOT NULL AND sa."searchValue" = csapp_norm_name(a."projectName")
      AND (sa."validFrom" IS NULL OR sa."validFrom" <= a."workDate") AND (sa."validTo" IS NULL OR a."workDate" < sa."validTo")`;
+
+/**
+ * Rellenos documentados (solo si NO hay ninguna evidencia explícita, y por tanto nunca contradicen una asignación ni un conflicto real):
+ *  1. Ticket con Entorno y Tipología informado que no es Administración Delegada → SOPORTE ordinario (regla original del Excel; no exige catalogar cada entorno).
+ *  2. Wrike del perfil de mantenimiento/soporte N3 (único perfil Wrike vigente), con proyecto reconocido en Clientes (Cliente o Grupo atribuido) y persona
+ *     PMO elegible (desde el corte PMO), sin ticket de Administración Delegada → SOPORTE de mantenimiento. Su procedencia queda en `origin`.
+ * Sin evidencia ni relleno aplicable queda SIN_CLASIFICAR: lo desconocido no se convierte en soporte.
+ */
+export const SERVICE_FALLBACK_SQL = Prisma.sql`
+  SELECT 'SOPORTE'::text AS service, 'ENTORNO_ORDINARIO'::text AS origin
+   WHERE a."ticketEntorno" IS NOT NULL AND btrim(a."ticketEntorno") <> '' AND a."ticketAdminDelegada" IS NOT TRUE
+     AND NOT EXISTS (SELECT 1 FROM (${SERVICE_EXPLICIT_SQL}) x)
+  UNION ALL
+  SELECT 'SOPORTE'::text, 'WRIKE_MANTENIMIENTO_N3'
+   WHERE a.source = 'WRIKE' AND a."isEligible" IS TRUE AND a."ticketAdminDelegada" IS NOT TRUE AND a.bucket IN ('CLIENT', 'GROUP_ONLY')
+     AND NOT EXISTS (SELECT 1 FROM (${SERVICE_EXPLICIT_SQL}) x)`;
+
+/** Todas las evidencias (explícitas y rellenos) con su origen: base del servicio económico y de «Ver cálculo». */
+export const SERVICE_EVIDENCE_SQL = Prisma.sql`
+  ${SERVICE_EXPLICIT_SQL}
+  UNION ALL
+  ${SERVICE_FALLBACK_SQL}`;
 
 export const SERVICE_OF_SQL = Prisma.sql`(
   SELECT CASE count(DISTINCT ev.service) WHEN 0 THEN 'SIN_CLASIFICAR' WHEN 1 THEN min(ev.service) ELSE 'CONFLICTO' END
@@ -731,10 +760,10 @@ export async function bcFallbackImpact(db: Tx | typeof prisma): Promise<{ wrike:
   const r = await db.$queryRaw<{ w: bigint; p: bigint }[]>(Prisma.sql`
     SELECT
       (SELECT count(*) FROM "WrikeTimeEntry" e WHERE e."projectName" IS NOT NULL AND e."drvScopeMethod" IN ('PROJECT', 'PROJECT_TICKET') AND e."drvGroupId" IS NOT NULL
-         AND NOT EXISTS (SELECT 1 FROM "ExternalIdentity" w WHERE w.system = 'WRIKE' AND w.kind IN ('PROJECT_NAME', 'PROJECT_ID') AND w."isActive" AND w."searchValue" IN (lower(e."projectName"), e."projectName"))
-         AND EXISTS (SELECT 1 FROM "ExternalIdentity" b WHERE b.system = 'BC' AND b.kind = 'GROUP_KEY' AND b."isActive" AND b."searchValue" = lower(e."projectName"))) AS w,
+         AND NOT EXISTS (SELECT 1 FROM "ExternalIdentity" w WHERE w.system = 'WRIKE' AND w.kind IN ('PROJECT_NAME', 'PROJECT_ID') AND w."isActive" AND w."searchValue" IN (csapp_norm_name(e."projectName"), e."projectName"))
+         AND EXISTS (SELECT 1 FROM "ExternalIdentity" b WHERE b.system = 'BC' AND b.kind = 'GROUP_KEY' AND b."isActive" AND b."searchValue" = csapp_norm_name(e."projectName"))) AS w,
       (SELECT count(*) FROM "PapItem" t JOIN "PapRevision" v ON v.id = t."currentRevisionId" WHERE v.project IS NOT NULL AND t."drvScope" = 'GROUP_ONLY'
-         AND NOT EXISTS (SELECT 1 FROM "ExternalIdentity" w WHERE w.system = 'PAP' AND w.kind IN ('PROJECT_NAME', 'PROJECT_ID') AND w."isActive" AND w."searchValue" IN (lower(v.project), v.project))
-         AND EXISTS (SELECT 1 FROM "ExternalIdentity" b WHERE b.system = 'BC' AND b.kind = 'GROUP_KEY' AND b."isActive" AND b."searchValue" = lower(v.project))) AS p`);
+         AND NOT EXISTS (SELECT 1 FROM "ExternalIdentity" w WHERE w.system = 'PAP' AND w.kind IN ('PROJECT_NAME', 'PROJECT_ID') AND w."isActive" AND w."searchValue" IN (csapp_norm_name(v.project), v.project))
+         AND EXISTS (SELECT 1 FROM "ExternalIdentity" b WHERE b.system = 'BC' AND b.kind = 'GROUP_KEY' AND b."isActive" AND b."searchValue" = csapp_norm_name(v.project))) AS p`);
   return { wrike: Number(r[0].w), pap: Number(r[0].p) };
 }

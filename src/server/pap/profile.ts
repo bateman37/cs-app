@@ -152,20 +152,37 @@ async function recomputeCurrent(tx: Tx, ids: Prisma.Sql) {
  * Un grupo solo no autoriza reparto entre hijos; no se inventa cliente ni implantación.
  */
 export function papScopeSql(src: Prisma.Sql): Prisma.Sql {
+  // Un nombre PAP con VARIOS Grupos candidatos (libro de Clientes) no atribuye por sí solo: solo lo resuelven los tickets vinculados del propio PAP
+  // (organización → Cliente → Grupo) cuando identifican un único candidato; si no, queda AMBIGUOUS sin asignar. `src` puede aportar `rev_id`.
   return Prisma.sql`
     SELECT s.key,
-      CASE WHEN s.project IS NULL THEN 'NO_PROJECT' WHEN pj.id IS NULL THEN 'UNMAPPED'
-           WHEN pj."implementationId" IS NOT NULL THEN 'IMPLEMENTATION' WHEN pj."clientId" IS NOT NULL THEN 'CLIENT' ELSE 'GROUP_ONLY' END AS scope,
+      CASE WHEN s.project IS NULL THEN 'NO_PROJECT'
+           WHEN pj.id IS NOT NULL THEN CASE WHEN pj."implementationId" IS NOT NULL THEN 'IMPLEMENTATION' WHEN pj."clientId" IS NOT NULL THEN 'CLIENT' ELSE 'GROUP_ONLY' END
+           WHEN cd.groups IS NOT NULL THEN CASE WHEN tg.group_id IS NOT NULL THEN 'GROUP_ONLY' ELSE 'AMBIGUOUS' END
+           ELSE 'UNMAPPED' END AS scope,
       COALESCE(pj."clientId", im."clientId") AS client_id, pj."implementationId" AS impl_id,
-      COALESCE(pc."groupId", pj."groupId") AS group_id
+      COALESCE(pc."groupId", pj."groupId", tg.group_id) AS group_id,
+      CASE WHEN pj.id IS NOT NULL THEN 'IDENTITY' WHEN tg.group_id IS NOT NULL THEN 'TICKET_ALIAS' END AS via
     FROM (${src}) s
     LEFT JOIN LATERAL (
       SELECT e.id, e."clientId", e."implementationId", e."groupId" FROM "ExternalIdentity" e
       WHERE s.project IS NOT NULL AND e.system = 'PAP' AND e.kind IN ('PROJECT_NAME', 'PROJECT_ID') AND e."isActive"
-        AND e."searchValue" IN (lower(s.project), s.project)
+        AND e."searchValue" IN (csapp_norm_name(s.project), s.project)
         AND (CASE WHEN s.production_date IS NULL THEN e."validFrom" IS NULL AND e."validTo" IS NULL
                   ELSE (e."validFrom" IS NULL OR e."validFrom" <= s.production_date) AND (e."validTo" IS NULL OR s.production_date < e."validTo") END)
       LIMIT 1) pj ON true
+    LEFT JOIN LATERAL (
+      SELECT array_agg(c."groupId" ORDER BY c."groupId") AS groups FROM "AliasCandidate" c
+      WHERE pj.id IS NULL AND s.project IS NOT NULL AND c."isActive" AND c.system = 'PAP' AND c.kind = 'PROJECT_NAME' AND c."searchValue" = csapp_norm_name(s.project)) cd ON true
+    LEFT JOIN LATERAL (
+      SELECT CASE WHEN count(DISTINCT cl."groupId") = 1 THEN min(cl."groupId") END AS group_id
+      FROM "PapReference" r
+      JOIN "ZdTicket" zt ON zt."ticketId" = r."refId"
+      JOIN "ZdTicketRevision" rv ON rv.id = zt."currentRevisionId"
+      JOIN "ExternalIdentity" oe ON oe.system = 'ZENDESK' AND oe.kind = 'ORG_ID' AND oe."isActive" AND oe."searchValue" = rv."organizationId"
+        AND (oe."validFrom" IS NULL OR oe."validFrom" <= rv."createdOn") AND (oe."validTo" IS NULL OR rv."createdOn" < oe."validTo")
+      JOIN "Client" cl ON cl.id = oe."clientId" AND NOT cl."isInternal"
+      WHERE cd.groups IS NOT NULL AND s.rev_id IS NOT NULL AND r."revisionId" = s.rev_id AND r.kind LIKE 'TICKET%' AND cl."groupId" = ANY(cd.groups)) tg ON true
     LEFT JOIN "Implementation" im ON im.id = pj."implementationId"
     LEFT JOIN "Client" pc ON pc.id = COALESCE(pj."clientId", im."clientId")`;
 }
@@ -175,14 +192,14 @@ export async function rederivePapItems(tx: Tx, where: Prisma.Sql): Promise<numbe
   await tx.$executeRaw(Prisma.sql`DROP TABLE IF EXISTS "_pap_drv"`);
   await tx.$executeRaw(Prisma.sql`
     CREATE TEMP TABLE "_pap_drv" ON COMMIT DROP AS ${papScopeSql(Prisma.sql`
-      SELECT t.id AS key, rv.project AS project, rv."productionDate" AS production_date
+      SELECT t.id AS key, rv.project AS project, rv."productionDate" AS production_date, rv.id AS rev_id
       FROM "PapItem" t LEFT JOIN "PapRevision" rv ON rv.id = t."currentRevisionId" WHERE ${where}`)}`);
   await tx.$executeRaw(Prisma.sql`CREATE INDEX ON "_pap_drv" (key)`);
   return tx.$executeRaw(Prisma.sql`
-    UPDATE "PapItem" t SET "drvScope" = d.scope, "drvClientId" = d.client_id, "drvImplementationId" = d.impl_id, "drvGroupId" = d.group_id,
+    UPDATE "PapItem" t SET "drvScope" = d.scope, "drvClientId" = d.client_id, "drvImplementationId" = d.impl_id, "drvGroupId" = d.group_id, "drvVia" = d.via,
       "drvVersion" = t."drvVersion" + 1, "drvAt" = now(), "updatedAt" = now()
     FROM "_pap_drv" d
-    WHERE t.id = d.key AND (t."drvScope", t."drvClientId", t."drvImplementationId", t."drvGroupId") IS DISTINCT FROM (d.scope, d.client_id, d.impl_id, d.group_id)`);
+    WHERE t.id = d.key AND (t."drvScope", t."drvClientId", t."drvImplementationId", t."drvGroupId", t."drvVia") IS DISTINCT FROM (d.scope, d.client_id, d.impl_id, d.group_id, d.via)`);
 }
 
 async function activate(tx: Tx, ctx: ActivationContext) {

@@ -199,7 +199,7 @@ const PAP_FILTER_LABEL: Record<string, string> = {
   unparsed: "Con texto de referencia no interpretable",
   "bug-ambiguous": "Nº de BUG con producto sin determinar",
 };
-const SCOPE_LABEL: Record<string, string> = { CLIENT: "Cliente", IMPLEMENTATION: "Implantación", GROUP_ONLY: "Solo Grupo Cliente (sin reparto entre Clientes)", NO_PROJECT: "Sin proyecto", UNMAPPED: "Proyecto sin equivalencia" };
+const SCOPE_LABEL: Record<string, string> = { CLIENT: "Cliente", IMPLEMENTATION: "Implantación", GROUP_ONLY: "Solo Grupo Cliente (sin reparto entre Clientes)", NO_PROJECT: "Sin proyecto", UNMAPPED: "Proyecto sin equivalencia", AMBIGUOUS: "Nombre con varios Grupos candidatos (sin asignar)" };
 const CAUSE_LABEL: Record<string, string> = { CORRECTIVE: "Correctivo", EVOLUTIVE: "Evolutivo", MAINTENANCE: "Mantenimiento", CLIENT_REQUEST: "Petición cliente", OTHER: "Otras etiquetas (sin clasificar)" };
 const ORIGIN_LABEL: Record<string, string> = {
   STANDARD: "Estándar", CUSTOMIZATION: "Personalización", CONFIG_DATA: "Configuración/datos", PROCESSES: "Procesos", INFRASTRUCTURE: "Infraestructura", CLIENT_ORIGIN: "Origen cliente", OTHER_CORRECTIVE: "Otro correctivo",
@@ -274,7 +274,7 @@ async function PapPanel({ userId, batch, base, det, dp, keep }: PanelProps) {
             <caption className="skip">PAP por ámbito del proyecto</caption>
             <thead><tr><th>Ámbito</th><th>PAP</th></tr></thead>
             <tbody>
-              {s.scopes.map((x) => <tr key={x.scope}><td>{SCOPE_LABEL[x.scope] ?? x.scope}</td><td>{["UNMAPPED", "NO_PROJECT"].includes(x.scope) ? link("unmapped", x.pap) : x.scope === "GROUP_ONLY" ? link("group-only", x.pap) : f(x.pap)}</td></tr>)}
+              {s.scopes.map((x) => <tr key={x.scope}><td>{SCOPE_LABEL[x.scope] ?? x.scope}</td><td>{["UNMAPPED", "NO_PROJECT", "AMBIGUOUS"].includes(x.scope) ? link("unmapped", x.pap) : x.scope === "GROUP_ONLY" ? link("group-only", x.pap) : f(x.pap)}</td></tr>)}
             </tbody>
           </table>
         </div>

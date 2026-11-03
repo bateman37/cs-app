@@ -3,7 +3,7 @@
  * aritmética de periodos y fórmulas económicas. Las reglas están en docs/importaciones/facturacion.md (FAC 01-08) y
  * docs/calculos/catalogo.md (CAL 17-30). Nunca se usa `Number` para sumar, normalizar importes ni calcular ratios.
  */
-import { cleanText } from "./normalize";
+import { cleanText, nameKey } from "./normalize";
 import { daysInMonth } from "./usuarios";
 import { isIsoDate } from "./vigencia";
 
@@ -280,7 +280,7 @@ export function parseAmountCell(cell: { v: string; k: string; f?: boolean } | un
 
 /** Clave de búsqueda de una denominación de grupo (misma normalización que las equivalencias BC: espacios y mayúsculas). */
 export function groupSearchKey(raw: string): string {
-  return cleanText(raw).toLowerCase();
+  return nameKey(raw);
 }
 
 // ---------------------------------------------------------------- Periodos y prorrateo

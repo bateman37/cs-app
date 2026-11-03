@@ -80,7 +80,7 @@ describe("migración CSAPP-09 → CSAPP-10", () => {
     });
   }, 300000);
 
-  it("sobre una base limpia aplica las nueve migraciones y el esquema no tiene deriva", async () => {
+  it("sobre una base limpia aplica las migraciones (las nueve de 10 y las posteriores) y el esquema no tiene deriva", async () => {
     await withTempDb("cs_app_migra10b_test", async (db, env) => {
       execSync("npx prisma migrate deploy", { env, stdio: "pipe" });
       const applied = await db.query(`SELECT migration_name FROM _prisma_migrations ORDER BY migration_name`);

@@ -102,7 +102,7 @@ export type PeriodSeries = {
     excluded: string;
     pendingEligibility: string;
   };
-  users: { stock: { value: number | null; status: string }; userMonths: string | null; averageUsers: string | null; complete: boolean; missingMonths: { year: number; month: number }[] };
+  users: { stock: { value: number | null; status: string }; userMonths: string | null; averageUsers: string | null; complete: boolean; missingMonths: { year: number; month: number }[]; /** Meses del periodo cuyo valor es «Estimado a partir de 2025» (no observado). */ estimatedMonths: { year: number; month: number }[] };
   perDay: Formula;
   targetHours: Formula;
   deviationVsTarget: Formula;
@@ -310,13 +310,15 @@ async function compute(tx: Tx, input: EconomicInput, date: string, mode: CutMode
     // Usuarios: stock al corte (no se prorratea) y exposición del periodo (flujo) en usuarios mes exactos; un mes sin informar la deja incompleta.
     const lookup = usersLookup(e.id);
     const missingMonths: { year: number; month: number }[] = [];
+    const estimatedMonths: { year: number; month: number }[] = [];
     let userMonthsDec = ZERO;
     let weightDec = ZERO;
     for (const mo of months) {
       const v = lookup.at(mo.y, mo.m);
       weightDec = weightDec.add(Dec.int(1).ratio(mo.days, mo.daysInMonth));
       if (v === null) missingMonths.push({ year: mo.y, month: mo.m });
-      else userMonthsDec = userMonthsDec.add(Dec.int(v).ratio(mo.days, mo.daysInMonth));
+      else if (lookup.estimated(mo.y, mo.m)) estimatedMonths.push({ year: mo.y, month: mo.m });
+      if (v !== null) userMonthsDec = userMonthsDec.add(Dec.int(v).ratio(mo.days, mo.daysInMonth));
     }
     const complete = missingMonths.length === 0;
     const cutParts = parseYmd(p.to);
@@ -327,6 +329,7 @@ async function compute(tx: Tx, input: EconomicInput, date: string, mode: CutMode
       averageUsers: complete && !weightDec.isZero() ? userMonthsDec.div(weightDec).toString() : null,
       complete,
       missingMonths,
+      estimatedMonths,
     };
 
     // Plan del PERIODO valorado (no el actual): un cambio de plan posterior no habilita retrospectivamente otro método.
@@ -390,7 +393,7 @@ async function compute(tx: Tx, input: EconomicInput, date: string, mode: CutMode
     else {
       const t = tariffRun(Dec.parse(revenue.value) as Dec, Dec.parse(users.userMonths) as Dec);
       tariff = t
-        ? formula(t.value, t.numerator, t.denominator, "€/usuario·año", "AVAILABLE", fullYear ? null : "Equivalente anual del periodo parcial: 12 × R / usuarios mes expuestos (no es una tarifa contractual).", { expression: "12 × R / usuarios mes expuestos", operands: { ingresoPeriodo: revenue.value, usuariosMes: users.userMonths } })
+        ? formula(t.value, t.numerator, t.denominator, "€/usuario·año", "AVAILABLE", [fullYear ? null : "Equivalente anual del periodo parcial: 12 × R / usuarios mes expuestos (no es una tarifa contractual).", estimatedMonths.length > 0 ? `Denominador estimado a partir de 2025 en ${estimatedMonths.length} mes(es) del periodo: no es un dato observado ese año.` : null].filter(Boolean).join(" ") || null, { expression: "12 × R / usuarios mes expuestos", operands: { ingresoPeriodo: revenue.value, usuariosMes: users.userMonths } })
         : na("€/usuario·año", "NOT_COMPUTABLE", "Usuarios mes cero: no se divide.", "USERS_ZERO");
     }
     const v = validated;
@@ -642,22 +645,24 @@ async function loadUsers(tx: Tx, ents: Ent[], years: number[]) {
   const col = (e: Ent) => (e.type === "group" ? "groupId" : e.type === "client" ? "clientId" : "implementationId");
   const byType = { group: ents.filter((e) => e.type === "group"), client: ents.filter((e) => e.type === "client"), implementation: ents.filter((e) => e.type === "implementation") };
   const maps = new Map<string, Map<string, number>>(); // entityId → "y-m" → valor
+  const est = new Map<string, Set<string>>(); // entityId → "y-m" de valores «Estimado a partir de 2025"
   for (const t of ["group", "client", "implementation"] as const) {
     const list = byType[t];
     if (list.length === 0) continue;
     const c = col(list[0]);
-    const rows = await tx.$queryRaw<{ id: string; year: number; month: number; value: number }[]>(Prisma.sql`
-      SELECT m.${Prisma.raw(`"${c}"`)} AS id, m.year, mm.month, mm.value FROM "UserMatrix" m JOIN "UserMatrixMonth" mm ON mm."matrixId" = m.id
+    const rows = await tx.$queryRaw<{ id: string; year: number; month: number; value: number; estimated: boolean }[]>(Prisma.sql`
+      SELECT m.${Prisma.raw(`"${c}"`)} AS id, m.year, mm.month, mm.value, (mm.kind::text = 'ESTIMATED') AS estimated FROM "UserMatrix" m JOIN "UserMatrixMonth" mm ON mm."matrixId" = m.id
       WHERE m.year = ANY(${years}) AND m.${Prisma.raw(`"${c}"`)} = ANY(${list.map((e) => e.id)})`);
     for (const r of rows) {
       const mp = maps.get(r.id) ?? new Map<string, number>();
       mp.set(`${r.year}-${r.month}`, r.value);
       maps.set(r.id, mp);
+      if (r.estimated) est.set(r.id, (est.get(r.id) ?? new Set<string>()).add(`${r.year}-${r.month}`));
     }
   }
   return (entityId: string) => {
     const mp = maps.get(entityId);
-    return { at: (y: number, m: number): number | null => mp?.get(`${y}-${m}`) ?? null };
+    return { at: (y: number, m: number): number | null => mp?.get(`${y}-${m}`) ?? null, estimated: (y: number, m: number): boolean => est.get(entityId)?.has(`${y}-${m}`) ?? false };
   };
 }
 

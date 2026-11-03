@@ -3,14 +3,17 @@ import { prisma } from "@/lib/db";
 import type { Prisma } from "@/generated/prisma/client";
 import { matrixChangeSchema, matrixCopySchema, matrixInitSchema } from "@/domain/usuarios-schemas";
 import {
-  HISTORIC_YEAR,
+  ESTIMATED_SOURCE,
   MONTH_NAMES,
   MONTHS,
+  USERS_BASE_YEAR,
+  USERS_SEED_YEARS,
   computeExposure,
   currentYear,
   editability,
   emptyYear,
   planApplyFrom,
+  planCopyDecember,
   planCopyFromPrevious,
   planInitializeHistoric,
   planSetMonth,
@@ -18,6 +21,7 @@ import {
   type Exposure,
   type MonthState,
   type Plan,
+  type PlanRow,
   type ScopeRef,
   type YearState,
 } from "@/domain/usuarios";
@@ -135,7 +139,8 @@ function assertEditableYear(year: number, now?: Date) {
 
 function buildChangePlan(input: ReturnType<typeof parseChange>, state: YearState): Plan {
   if (state[input.month - 1]?.isLocked) {
-    throw new DomainError(`${MONTH_NAMES[input.month - 1]} está bloqueado (carga inicial histórica) y no se edita en la operación ordinaria.`, { month: "Mes bloqueado." });
+    // Marca heredada: la migración HOTFIX-01 las limpia y ya no se crean. La ventana de años es la que decide qué es editable.
+    throw new DomainError(`${MONTH_NAMES[input.month - 1]} está bloqueado y no se edita en la operación ordinaria.`, { month: "Mes bloqueado." });
   }
   return input.op === "SET_MONTH" ? planSetMonth(state, input.month, input.value) : planApplyFrom(state, input.month, input.value);
 }
@@ -210,31 +215,33 @@ export async function confirmMatrixChange(actorId: string, raw: unknown, opts: C
   });
 }
 
-// ----------------------------------------------------------------------- Inicialización 2025
+// ----------------------------------------------------------------------- Valor inicial uniforme
 
 export type HistoricPreview = { status: "new" | "unchanged" | "conflict"; plan: Plan; message?: string; scopeName: string };
 
-export async function previewInitializeHistoric(actorId: string, raw: unknown): Promise<HistoricPreview> {
+export async function previewInitializeHistoric(actorId: string, raw: unknown, opts: ClockOpts = {}): Promise<HistoricPreview> {
   const input = parseInput(matrixInitSchema, raw);
   await authorize(prisma, actorId, "ADMIN");
+  assertEditableYear(input.year, opts.now);
   const target = await resolveTarget(prisma, input.targetType, input.targetId, { requireActive: true });
-  const loaded = await loadYear(prisma, target.fk, HISTORIC_YEAR);
-  return { ...planInitializeHistoric(loaded.state, input.value), scopeName: target.name };
+  const loaded = await loadYear(prisma, target.fk, input.year);
+  return { ...planInitializeHistoric(loaded.state, input.value, input.year), scopeName: target.name };
 }
 
 /**
- * Inicializa el histórico fijo 2025 de un ámbito vacío con doce meses iguales y bloqueados.
- * Idempotente con el mismo valor; ante cualquier dato incompatible no sobrescribe nada.
- * No es una reapertura ni depende del reloj: es la excepción acotada de la carga inicial.
+ * Valor inicial uniforme de un año editable (año actual o anterior, Europe/Madrid, reloj del servidor) de un ámbito vacío: doce meses iguales
+ * (carga inicial). Idempotente con el mismo valor; ante cualquier dato incompatible no sobrescribe nada. Ya no existe una excepción fija de 2025
+ * ni un bloqueo por fila: la precarga del libro histórico es la única vía que escribe fuera de la ventana y solo rellena meses sin informar.
  */
-export async function initializeHistoric(actorId: string, raw: unknown) {
+export async function initializeHistoric(actorId: string, raw: unknown, opts: ClockOpts = {}) {
   const input = parseInput(matrixInitSchema, raw);
   return adminTransaction(actorId, async (tx, actor) => {
+    assertEditableYear(input.year, opts.now);
     const target = await resolveTarget(tx, input.targetType, input.targetId, { requireActive: true });
-    const h = await lockHeader(tx, target.fk, HISTORIC_YEAR);
-    const loaded = await loadYear(tx, target.fk, HISTORIC_YEAR);
-    const result = planInitializeHistoric(loaded.state, input.value);
-    if (result.status === "conflict") throw new DomainError(result.message as string, { value: "Discrepancia con el histórico existente." });
+    const h = await lockHeader(tx, target.fk, input.year);
+    const loaded = await loadYear(tx, target.fk, input.year);
+    const result = planInitializeHistoric(loaded.state, input.value, input.year);
+    if (result.status === "conflict") throw new DomainError(result.message as string, { value: "Discrepancia con los datos existentes." });
     if (result.status === "unchanged") return { status: "unchanged" as const, matrixId: h.id };
     if (!h.created) await tx.userMatrix.update({ where: { id: h.id }, data: { version: { increment: 1 } } });
     const applied = await applyPlan(tx, actor, h.id, result.plan, () => input.source, null);
@@ -244,7 +251,7 @@ export async function initializeHistoric(actorId: string, raw: unknown) {
       entityId: h.id,
       groupId: target.groupId,
       clientId: target.clientId,
-      summary: `Inicialización del histórico ${HISTORIC_YEAR} de ${target.name}: ${input.value} usuarios los doce meses (${input.source})`,
+      summary: `Valor inicial de ${input.year} de ${target.name}: ${input.value} usuarios los doce meses (${input.source})`,
       before: { months: [] },
       after: { months: applied.map((a) => ({ month: a.month, ...(a.after ?? {}) })) },
     });
@@ -256,7 +263,11 @@ export async function initializeHistoric(actorId: string, raw: unknown) {
 
 export type CopyPreview = { year: number; version: number; plan: Plan; canApply: boolean; message: string | null; scopeName: string };
 
-function copyMessage(previous: YearState, plan: Plan, previousYear: number): string | null {
+const planCopy = (mode: "SAME_MONTH" | "DECEMBER", cur: YearState, prev: YearState, previousYear: number) =>
+  mode === "DECEMBER" ? planCopyDecember(cur, prev, previousYear) : planCopyFromPrevious(cur, prev, previousYear);
+
+function copyMessage(previous: YearState, plan: Plan, previousYear: number, mode: "SAME_MONTH" | "DECEMBER" = "SAME_MONTH"): string | null {
+  if (mode === "DECEMBER" && !previous[11]) return `No hay dato de diciembre de ${previousYear} para este ámbito: no hay nada que copiar.`;
   if (!previous.some((s) => s !== null)) return `No hay datos de ${previousYear} para este ámbito: no hay nada que copiar. Configure el año manualmente.`;
   if (plan.changedCount === 0) return "Todos los meses con origen ya tienen valor: no se pisa nada y no hay nada que copiar.";
   return null;
@@ -268,8 +279,8 @@ export async function previewCopyFromPreviousYear(actorId: string, raw: unknown,
   assertEditableYear(input.year, opts.now);
   const target = await resolveTarget(prisma, input.targetType, input.targetId, { requireActive: true });
   const [cur, prev] = await Promise.all([loadYear(prisma, target.fk, input.year), loadYear(prisma, target.fk, input.year - 1)]);
-  const plan = planCopyFromPrevious(cur.state, prev.state, input.year - 1);
-  const message = copyMessage(prev.state, plan, input.year - 1);
+  const plan = planCopy(input.mode, cur.state, prev.state, input.year - 1);
+  const message = copyMessage(prev.state, plan, input.year - 1, input.mode);
   return { year: input.year, version: cur.version, plan, canApply: plan.changedCount > 0, message, scopeName: target.name };
 }
 
@@ -282,18 +293,18 @@ export async function copyFromPreviousYear(actorId: string, raw: unknown, opts: 
     const prev = await loadYear(tx, target.fk, input.year - 1);
     const h = await lockHeader(tx, target.fk, input.year);
     const cur = await loadYear(tx, target.fk, input.year);
-    const plan = planCopyFromPrevious(cur.state, prev.state, input.year - 1);
-    const message = copyMessage(prev.state, plan, input.year - 1);
+    const plan = planCopy(input.mode, cur.state, prev.state, input.year - 1);
+    const message = copyMessage(prev.state, plan, input.year - 1, input.mode);
     if (message) throw new DomainError(message);
     await checkAndBump(tx, h, input.expectedVersion);
-    const applied = await applyPlan(tx, actor, h.id, plan, () => "Base copiada", null);
+    const applied = await applyPlan(tx, actor, h.id, plan, () => (input.mode === "DECEMBER" ? `Copia de diciembre ${input.year - 1}` : "Base copiada"), null);
     await recordAudit(tx, actor, {
       action: "INITIALIZE",
       entityType: "UserMatrix",
       entityId: h.id,
       groupId: target.groupId,
       clientId: target.clientId,
-      summary: `${describe(target, input.year)}: base copiada de ${input.year - 1} (${applied.length} meses; ${plan.protectedMonths.length} ya informados se conservan)`,
+      summary: `${describe(target, input.year)}: ${input.mode === "DECEMBER" ? `base copiada de diciembre ${input.year - 1}` : `base copiada de ${input.year - 1}`} (${applied.length} meses; ${plan.protectedMonths.length} ya informados se conservan)`,
       before: { months: applied.map((a) => ({ month: a.month, value: null })) },
       after: { months: applied.map((a) => ({ month: a.month, ...(a.after ?? {}) })) },
     });
@@ -442,4 +453,59 @@ export async function userMonthsExposure(actorId: string, scope: ScopeRef, perio
   return computeExposure(lookup, period.from, period.to);
 }
 
-export { currentYear, HISTORIC_YEAR };
+
+// ----------------------------------------------------------------------- Base 2025 del libro histórico (HOTFIX-01 §7)
+
+export type SeededYear = { year: number; kind: "INITIAL" | "COPIED" | "ESTIMATED"; months: number[] };
+
+/**
+ * Inicializa la matriz de UN Grupo desde su base de usuarios 2025 resuelta: 2025 con el mismo número los doce meses (INITIAL), los años de
+ * `USERS_SEED_YEARS` (2026) desde esa base (COPIED) y los años históricos indicados, solo donde el Grupo existe (ESTIMATED, «Estimado a partir de 2025»).
+ * Solo rellena meses SIN INFORMAR: nunca pisa un valor ya presente (ajuste, propagado, copia o carga previa) y una recarga no revierte ajustes manuales.
+ * No se llama desde la edición ordinaria: es la inicialización autorizada de la precarga/resolución y no deja ninguna marca ni bypass abierto.
+ * Solo escribe la matriz del Grupo (nunca Clientes, implantaciones ni Personal).
+ */
+export async function seedGroupUsersFromBase(tx: Db, actor: Actor, groupId: string, value: number, opts: { baseSource: string; historicYears: number[] }): Promise<SeededYear[]> {
+  const fk: ScopeFk = { groupId };
+  const targets: { year: number; kind: SeededYear["kind"]; source: (m: number) => string }[] = [
+    { year: USERS_BASE_YEAR, kind: "INITIAL", source: () => opts.baseSource },
+    ...USERS_SEED_YEARS.map((year) => ({ year, kind: "COPIED" as const, source: (m: number) => `Copia de ${USERS_BASE_YEAR}-${String(m).padStart(2, "0")}` })),
+    ...[...new Set(opts.historicYears)].filter((y) => y < USERS_BASE_YEAR).sort().map((year) => ({ year, kind: "ESTIMATED" as const, source: () => ESTIMATED_SOURCE })),
+  ];
+  const group = await tx.clientGroup.findUnique({ where: { id: groupId }, select: { name: true } });
+  const done: SeededYear[] = [];
+  for (const t of targets) {
+    if (!(await loadYear(tx, fk, t.year)).state.some((m) => m === null)) continue;
+    const h = await lockHeader(tx, fk, t.year);
+    const loaded = await loadYear(tx, fk, t.year); // bajo bloqueo: lo que otra operación escribiera entretanto se respeta
+    const rows: PlanRow[] = MONTHS.map((m) => {
+      const before = loaded.state[m - 1];
+      if (before) return { month: m, before, after: before, status: "protected" };
+      return { month: m, before: null, after: { value, kind: t.kind, isLocked: false, source: t.source(m) }, status: "changed" };
+    });
+    const plan: Plan = { rows, changedCount: rows.filter((r) => r.status === "changed").length, protectedMonths: rows.filter((r) => r.status === "protected").map((r) => r.month) };
+    if (plan.changedCount === 0) continue;
+    if (!h.created) await tx.userMatrix.update({ where: { id: h.id }, data: { version: { increment: 1 } } });
+    const applied = await applyPlan(tx, actor, h.id, plan, () => opts.baseSource, null);
+    await recordAudit(tx, actor, {
+      action: "INITIALIZE",
+      entityType: "UserMatrix",
+      entityId: h.id,
+      groupId,
+      summary: `Usuarios contratados ${t.year} de ${group?.name ?? groupId} inicializados desde la base ${USERS_BASE_YEAR} (${value}): ${applied.length} meses${t.kind === "ESTIMATED" ? " (estimado, no observado)" : ""}; ${plan.protectedMonths.length} ya informados se conservan`,
+      before: { months: [] },
+      after: { months: applied.map((a) => ({ month: a.month, ...(a.after ?? {}) })) },
+    });
+    done.push({ year: t.year, kind: t.kind, months: applied.map((a) => a.month) });
+  }
+  return done;
+}
+
+/** Años distintos con alguna matriz (para el selector de años). */
+export async function listMatrixYears(actorId: string): Promise<number[]> {
+  await authorize(prisma, actorId, "READ");
+  const r = await prisma.userMatrix.findMany({ distinct: ["year"], select: { year: true }, orderBy: { year: "asc" } });
+  return r.map((x) => x.year);
+}
+
+export { currentYear };

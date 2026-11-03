@@ -1,8 +1,9 @@
 import type { Metadata } from "next";
 import Link from "next/link";
 import { requirePageUser } from "@/lib/session";
-import { listMatrices } from "@/server/usuarios";
-import { HISTORIC_YEAR, currentYear } from "@/domain/usuarios";
+import { listMatrices, listMatrixYears } from "@/server/usuarios";
+import { listUsersBaseConflicts } from "@/server/usuarios-base";
+import { currentYear, editability } from "@/domain/usuarios";
 import { first, type SearchParams } from "@/lib/format";
 import { Pager } from "@/components/list";
 import { BASE, Cell, Legend, SCOPE_LABEL, SLUG_SCOPE, SCOPE_SLUG, fichaHref, monthShort } from "./_lib";
@@ -15,7 +16,7 @@ export default async function UsuariosPage({ searchParams }: { searchParams: Pro
   const sp = await searchParams;
   const cy = currentYear();
   const yearParam = Number(first(sp.anio));
-  const year = Number.isInteger(yearParam) && yearParam >= HISTORIC_YEAR && yearParam <= cy + 1 ? yearParam : cy;
+  const year = Number.isInteger(yearParam) && yearParam >= 2000 && yearParam <= 2100 ? yearParam : cy;
   const scopeType = SLUG_SCOPE[first(sp.ambito)] ?? "group";
   const params = {
     anio: year,
@@ -31,26 +32,21 @@ export default async function UsuariosPage({ searchParams }: { searchParams: Pro
     status: params.status as "active" | "inactive" | "all",
     page: params.page,
   });
-  const years: number[] = [];
-  for (let y = HISTORIC_YEAR; y <= cy + 1; y++) years.push(y);
+  const years = [...new Set([...(await listMatrixYears(user.id)), cy - 1, cy])].sort((a, b) => a - b);
+  const ed = editability(year);
+  const conflicts = await listUsersBaseConflicts(user.id);
   return (
     <>
       <h1>Usuarios contratados</h1>
       <p className="muted">
         Usuarios que <strong>pagan</strong> cada mes (contratados). No son usuarios activos de la aplicación, cuentas de acceso ni personas del maestro
-        Personal. Grupo Cliente, Cliente e implantación tienen cada uno su propia matriz: no se suman ni se copian entre ámbitos. Solo se edita el año en curso ({cy}).
+        Personal. Grupo Cliente, Cliente e implantación tienen cada uno su propia matriz: no se suman ni se copian entre ámbitos. Se editan el año en curso ({cy}) y el anterior ({cy - 1}); los demás años se consultan.
       </p>
       <form className="toolbar" action={BASE} method="get">
         <div className="field">
           <label htmlFor="anio">Año</label>
-          <select id="anio" name="anio" defaultValue={String(year)}>
-            {years.map((y) => (
-              <option key={y} value={y}>
-                {y}
-                {y === cy ? " (en curso)" : y === HISTORIC_YEAR ? " (histórico)" : y > cy ? " (futuro)" : ""}
-              </option>
-            ))}
-          </select>
+          <input id="anio" name="anio" type="number" min={2000} max={2100} step={1} defaultValue={year} list="anios-con-datos" inputMode="numeric" />
+          <datalist id="anios-con-datos">{years.map((y) => <option key={y} value={y} />)}</datalist>
         </div>
         <div className="field">
           <label htmlFor="ambito">Ámbito</label>
@@ -77,6 +73,18 @@ export default async function UsuariosPage({ searchParams }: { searchParams: Pro
         <button className="btn btn-primary" type="submit">Filtrar</button>
         <Link className="btn btn-secondary" href={BASE}>Limpiar</Link>
       </form>
+      <p className="muted">
+        {year}: {ed.editable ? (year === cy ? "año en curso, editable" : "año anterior, editable") : ed.reason}
+      </p>
+      {conflicts.length > 0 ? (
+        <p className="notice notice-info" role="note">
+          {conflicts.length} Grupo(s) con la base de usuarios 2025 en discrepancia entre categorías (sin resolver, denominador pendiente):{" "}
+          {conflicts.slice(0, 8).map((c, i) => (
+            <span key={c.groupId}>{i ? ", " : ""}<Link href={fichaHref("group", c.groupId, 2025)}>{c.name}</Link></span>
+          ))}
+          {conflicts.length > 8 ? "…" : ""}
+        </p>
+      ) : null}
       {result.rows.length === 0 ? (
         <div className="empty">
           <p>{params.q || params.status !== "active" ? "Ningún elemento coincide con los filtros." : `Todavía no hay ${SCOPE_LABEL[scopeType].toLowerCase()}s en los maestros.`}</p>
@@ -115,7 +123,7 @@ export default async function UsuariosPage({ searchParams }: { searchParams: Pro
         </>
       )}
       {user.role !== "ADMIN" ? null : (
-        <p className="muted">Abra una fila para editar un mes, aplicar un valor desde un mes o inicializar el histórico.</p>
+        <p className="muted">Abra una fila para editar un mes, aplicar un valor desde un mes, copiar la base anterior o dar un valor inicial.</p>
       )}
     </>
   );

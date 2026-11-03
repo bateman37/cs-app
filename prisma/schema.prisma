@@ -425,7 +425,7 @@ model PersonTerm {
 // ---------------------------------------------------------------- CSAPP-02: usuarios contratados
 
 enum UserValueKind {
-  /// Carga inicial del histórico (2025): bloqueada tras la inicialización.
+  /// Carga inicial del histórico (base 2025). Ya no se bloquea por fila: edita la ventana año actual + anterior (HOTFIX-01 §7).
   INITIAL
   /// Base copiada del mismo mes del año anterior.
   COPIED
@@ -433,6 +433,8 @@ enum UserValueKind {
   PROPAGATED
   /// Ajuste explícito de un mes concreto.
   ADJUSTED
+  /// HOTFIX-01 §7: valor estimado a partir de la base 2025 en años anteriores («Estimado a partir de 2025»); no es un dato observado.
+  ESTIMATED
 }
 
 /// Matriz anual de usuarios que pagan de un ámbito (grupo, cliente o implantación).
@@ -1650,4 +1652,55 @@ model MasterLoadDecision {
 
   @@unique([batchId, reviewKey])
   @@index([checksum, reviewKey])
+}
+
+// ======================================================================================================================
+// HOTFIX-01 §6-§7 (bloque propio; migración 20261108090000_hotfix01_historico_usuarios). Sin claves foráneas a tablas existentes
+// para no tocar sus modelos: los identificadores son los del maestro y se validan en servidor.
+// ======================================================================================================================
+
+/// Grupo Cliente creado por la precarga del histórico económico porque no estaba en el maestro (sin Cliente, IDs, implantaciones ni usuarios inventados).
+/// Su estado comercial actual NO se deduce de su ausencia en CLIENTES.
+model HistoricGroupOrigin {
+  groupId       String   @id
+  /// Lote de carga (libro) que lo originó.
+  sourceBatchId String
+  originalLabel String
+  note          String
+  createdAt     DateTime @default(now())
+
+  @@index([sourceBatchId])
+}
+
+/// Valor de usuarios de 2025 (columna H) por Grupo y categoría, tal como figura en el libro. Dos categorías con valores distintos son una discrepancia
+/// que no se resuelve por máximo, suma ni último: exige elección explícita (HistoricUserResolution).
+model HistoricUserBase {
+  groupId     String
+  year        Int
+  category    String
+  value       Int
+  sourceRow   Int
+  sourceCell  String
+  /// El valor procede de una fórmula aritmética con resultado almacenado (nunca se ejecuta).
+  fromFormula Boolean  @default(false)
+  batchId     String
+  createdAt   DateTime @default(now())
+  updatedAt   DateTime @default(now()) @updatedAt
+
+  @@id([groupId, year, category])
+  @@index([batchId])
+}
+
+/// Elección explícita del Administrador entre los valores en discrepancia (o valor indicado) de un Grupo y año base.
+model HistoricUserResolution {
+  groupId     String
+  year        Int
+  /// Categoría elegida; nulo si el valor se escribió expresamente.
+  category    String?
+  value       Int
+  reason      String?
+  decidedById String
+  decidedAt   DateTime @default(now())
+
+  @@id([groupId, year])
 }

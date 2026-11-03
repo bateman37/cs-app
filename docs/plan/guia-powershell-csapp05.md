@@ -27,21 +27,9 @@ Terminal 1: `npm run build` y `npm start`. Terminal 2: detenga con `Ctrl+C` el t
 4. **Comprobación económica.** Elija grupo, servicio, fecha y modo; compruebe, por ejemplo, 12000 anuales con corte 15 de junio → 500 € del mes.
 5. **Configuración.** Cambiar el objetivo crea una revisión nueva; una edición obsoleta se rechaza; consultar con una revisión anterior es un recálculo identificado.
 
-## 4. Históricos anteriores a 2025 (solo si tiene la hoja)
+## 4. Histórico económico 2022–2025 y usuarios (HOTFIX-01)
 
-Simulación (no escribe nada):
-
-```powershell
-npx tsx scripts/importar-historico-financiero.ts --archivo "C:\ruta\privada\libro.xlsx" --admin su.correo@empresa.com
-```
-
-Aplicar (solo tras revisar la simulación; omite los años/categorías que ya tienen un conjunto activo y rechaza 2025 en adelante):
-
-```powershell
-npx tsx scripts/importar-historico-financiero.ts --archivo "C:\ruta\privada\libro.xlsx" --admin su.correo@empresa.com --aplicar
-```
-
-El libro no debe subirse al repositorio ni dejarse en una carpeta del proyecto. La interpretación de la categoría por las columnas «Soporte»/«Admin Delegada» está **pendiente de validar con el libro real**; las filas sin categoría explícita se informan y no se importan.
+Ya no hay comandos: en Administración › Cargas abra «Histórico económico y usuarios», suba `DATA FACTURACIÓN.xlsx` (solo el archivo), revise el resumen por año y categoría y pulse «Confirmar y activar» (aplica todos los conjuntos o ninguno). Contrato: [historico-economico.md](../importaciones/historico-economico.md). El libro no debe subirse al repositorio ni dejarse en una carpeta del proyecto.
 
 ## 5. Comandos de prueba (solo contra una base de test explícita)
 

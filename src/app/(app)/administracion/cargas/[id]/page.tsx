@@ -14,6 +14,7 @@ import { StatusPoller } from "./poller";
 import { ZendeskPanels } from "./zendesk-panels";
 import { Csapp04Panels } from "./csapp04-panels";
 import { FinancePanel } from "./finance-panel";
+import { HistoricChildPanel, HistoricPanel } from "./historic-panel";
 import { CoveragePanel } from "./coverage-panel";
 import { MaestrosPanel } from "./maestros-panel";
 import { listDeclarations } from "@/server/quality/coverage";
@@ -185,7 +186,10 @@ export default async function CargaPage({ params, searchParams }: { params: Prom
         </>
       ) : null}
 
-      {prepared && !["REJECTED", "CANCELLED"].includes(st) ? (
+      {prepared && !["REJECTED", "CANCELLED"].includes(st) ? <HistoricPanel batch={{ id: b.id, profileId: b.profileId, status: st, metadata: b.metadata }} base={`${BASE}/${b.id}`} /> : null}
+      <HistoricChildPanel batch={{ id: b.id, status: st, metadata: b.metadata }} base={`${BASE}/${b.id}`} />
+
+      {prepared && !["REJECTED", "CANCELLED"].includes(st) && (b.metadata as { origen?: string } | null)?.origen !== "HISTORICO_ECONOMICO" ? (
         <FinancePanel batch={{ id: b.id, profileId: b.profileId, status: st, version: b.version, supersedesBatchId: b.supersedesBatchId, supersededByBatchId: b.supersededByBatchId, declaredExtractionDate: b.declaredExtractionDate, createdAt: b.createdAt }} base={`${BASE}/${b.id}`} />
       ) : null}
 

@@ -8,7 +8,7 @@ const d = (v: string) => new Date(`${v}T00:00:00Z`);
 const helperNow = () => new Date(Math.max(Date.now(), Date.parse("2026-11-02T09:00:00Z")));
 
 export async function batchOf(adminId: string, profileId: string, extract: string | null = null, status: "COMPLETED" | "REVERTED" = "COMPLETED") {
-  return prisma.uploadBatch.create({ data: { profileId, profileVersion: 1, status, originalName: `${profileId}.xlsx`, storageId: `s-${randomUUID()}`, fileFormat: "xlsx", createdById: adminId, declaredExtractionDate: extract ? d(extract) : null } });
+  return prisma.uploadBatch.create({ data: { profileId, profileVersion: 1, status, originalName: `${profileId}.xlsx`, storageId: `s-${randomUUID()}`, fileFormat: "xlsx", createdById: adminId, legacyBase: true, declaredExtractionDate: extract ? d(extract) : null } });
 }
 
 /** Ticket con revisión y observación en un lote (la observación es la que sustenta la fotografía). */

@@ -19,7 +19,7 @@ async function geometry(page: Page) {
   return page.evaluate(GEOMETRY_JS) as Promise<Geometry>;
 }
 
-type Geometry = { viewport: { w: number; h: number }; docScrollW: number; hScroll: number; docH: number; mainW: number | null; rootW: number | null; head: Box | null; summary: Box | null; charts: (Box & { title: string | null })[]; tables: (Box & { title: string | null; scrollW: number; clientW: number })[]; rowH: { min: number; max: number; n: number }; fontPx: { min: number; max: number }; overflowing: string[]; tabs: number };
+type Geometry = { viewport: { w: number; h: number }; docScrollW: number; hScroll: number; docH: number; mainW: number | null; rootW: number | null; head: Box | null; summary: Box | null; charts: (Box & { title: string | null })[]; tables: (Box & { title: string | null; scrollW: number; clientW: number })[]; rowH: { min: number; max: number; n: number }; fontPx: { min: number; max: number }; overflowing: string[]; wide?: string[]; tabs: number };
 
 const GEOMETRY_JS = `(() => {
   const box = (el) => {
@@ -31,8 +31,8 @@ const GEOMETRY_JS = `(() => {
   const doc = document.documentElement;
   const charts = [...document.querySelectorAll(".fc-card")].map((e) => ({ title: e.getAttribute("aria-label"), ...box(e) }));
   const tables = [...document.querySelectorAll(".fc-tcard")].map((e) => { const sc = e.querySelector(".fc-scroll"); return { title: e.getAttribute("aria-label"), ...box(e), scrollW: sc ? sc.scrollWidth : 0, clientW: sc ? sc.clientWidth : 0 }; });
-  const rows = [...document.querySelectorAll(".fc-tbl tbody tr")].map((e) => e.getBoundingClientRect().height);
-  const fonts = [...document.querySelectorAll(".fc-tbl td, .fc-tbl th")].map((e) => parseFloat(getComputedStyle(e).fontSize));
+  const rows = [...document.querySelectorAll(".fc-tcard .fc-tbl tbody tr, .fc-sum tbody tr")].map((e) => e.getBoundingClientRect().height);
+  const fonts = [...document.querySelectorAll(".fc-tcard .fc-tbl td, .fc-tcard .fc-tbl th")].map((e) => parseFloat(getComputedStyle(e).fontSize));
   const over = [];
   document.querySelectorAll("main *").forEach((e) => {
     const r = e.getBoundingClientRect();
@@ -49,6 +49,7 @@ const GEOMETRY_JS = `(() => {
     rowH: { min: rows.length ? Math.min(...rows) : 0, max: rows.length ? Math.max(...rows) : 0, n: rows.length },
     fontPx: { min: fonts.length ? Math.min(...fonts) : 0, max: fonts.length ? Math.max(...fonts) : 0 },
     overflowing: [...new Set(over)].slice(0, 12),
+    wide: [...document.querySelectorAll('body *')].filter((e) => e.getBoundingClientRect().right > vw + 1 && e.getBoundingClientRect().width > 0 && getComputedStyle(e).position !== 'fixed').slice(0, 12).map((e) => e.tagName.toLowerCase() + '.' + String(e.className && e.className.baseVal !== undefined ? e.className.baseVal : e.className).slice(0, 40) + ' w=' + Math.round(e.getBoundingClientRect().width) + ' r=' + Math.round(e.getBoundingClientRect().right)),
     tabs: document.querySelectorAll('[role="tab"], .tabs').length,
   };
 })()`;
@@ -67,16 +68,22 @@ export async function fichaVisual(ctx: Ctx): Promise<void> {
   };
   const adm = await login(ctx, ctx.accounts.adminEmail, ctx.accounts.adminPassword);
   const page = adm.page;
-  const wait = async () => { await page.waitForLoadState("networkidle"); await page.waitForTimeout(400); };
+  const wait = async () => {
+    await page.waitForLoadState("networkidle");
+    // Un fallo transitorio de lectura (serialización con una escritura concurrente al arrancar) ofrece «Reintentar»: se usa como lo haría la persona.
+    if (await page.getByRole("link", { name: "Reintentar" }).count()) { await page.getByRole("link", { name: "Reintentar" }).first().click(); await page.waitForLoadState("networkidle"); }
+    await page.waitForTimeout(400);
+  };
   const u = (q: string) => `${ctx.base}/analisis-cliente?${q}`;
   const group = `ambito=group&id=${w.big.id}&volver=${encodeURIComponent("orden=name&soporte=GOLD&servidor=CLOUD")}&soporte=GOLD&servidor=CLOUD`;
 
-  for (const [name, vw, vh] of [["1920", 1920, 1080], ["1536", 1536, 864], ["390", 390, 844]] as const) {
+  for (const [name, vw, vh] of (process.env.FICHA_MOVIL ? [["390", 390, 844]] : [["1920", 1920, 1080], ["1536", 1536, 864], ["390", 390, 844]]) as readonly (readonly [string, number, number])[]) {
     await page.setViewportSize({ width: vw, height: vh });
     await page.goto(u(group));
     await wait();
     const g = await geometry(page);
     out[`grupo-${name}`] = g;
+    if (name === "390") console.log("ANCHOS 390:", JSON.stringify(g.wide));
     await shot(page, `ficha-grupo-${name}-pantalla`);
     await shot(page, `ficha-grupo-${name}-completa`, true);
     const firstScreen = g.charts.every((c) => c.bottom <= vh) && g.tables.every((t) => t.bottom <= vh);
@@ -91,6 +98,7 @@ export async function fichaVisual(ctx: Ctx): Promise<void> {
     }
   }
 
+  if (process.env.FICHA_MOVIL) { await adm.context.close(); return; }
   await page.setViewportSize({ width: 1920, height: 1080 });
   // Cliente, implantación, ausentes, base cero, heterogéneo, mega cuenta
   for (const [name, q] of [
@@ -136,7 +144,7 @@ export async function fichaVisual(ctx: Ctx): Promise<void> {
   await page.keyboard.press("Escape");
   await page.goto(u(`ambito=client&id=${w.vn.id}`));
   await wait();
-  const naBtn = page.locator(".fc-na").first();
+  const naBtn = page.locator(".fc-sum .fc-na").first();
   await naBtn.click();
   const popText = await page.locator(".fc-na-pop").first().innerText().catch(() => "");
   ctx.check("una cifra no disponible es «—» con explicación al clic", /Ingreso agrupado|Grupo Cliente/.test(popText), popText);

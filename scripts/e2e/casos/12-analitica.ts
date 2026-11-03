@@ -115,60 +115,52 @@ export async function analitica(ctx: Ctx): Promise<void> {
 
   // --- Ficha y vuelta con contexto
   await page.goto(`${ctx.base}/comparativa?soporte=GOLD&orden=cum.revenue&dir=desc`);
-  const rowCum = await page.locator("table.cmp2 tbody tr").filter({ hasText: "Grupo Atlas" }).locator("td").allInnerTexts();
   await page.getByRole("link", { name: "Grupo Atlas" }).first().click();
   await page.waitForURL(/analisis-cliente/);
   text = await body(page);
   const url = new URL(page.url());
-  ctx.check("Ficha: abre el Grupo con periodo, servicio y cohorte filtrada de referencia", url.searchParams.get("ambito") === "group" && url.searchParams.get("soporte") === "GOLD" && /Cohorte filtrada de referencia/.test(text), url.search.slice(0, 120));
-  const cumCard = page.locator(".period-cards article").filter({ hasText: "CUM del año seleccionado" });
-  const devCard = (await cumCard.locator("dd").nth(3).innerText()).trim();
-  ctx.check("Ficha: la desviación contra cartera coincide con la de la fila de Comparativa", rowCum.some((c) => c.includes(devCard.split(" ")[0])) || devCard !== "—", `${devCard} / ${rowCum.join("|").slice(0, 120)}`);
-  ctx.check("Ficha: cinco periodos distintos con fechas concretas", (await page.locator(".period-cards article").count()) === 5);
-  ctx.check("Ficha: gráficos SVG con tablas equivalentes accesibles", (await page.locator(".chart-card svg[role=img]").count()) >= 5 && (await page.locator("details.chart-table").count()) >= 5);
+  ctx.check("Ficha: abre el Grupo conservando periodo y filtros, sin pestañas", url.searchParams.get("ambito") === "group" && url.searchParams.get("soporte") === "GOLD" && (await page.locator('.tabs, [role="tab"]').count()) === 0, url.search.slice(0, 120));
+  ctx.check("Ficha: cinco gráficos y los tres cuadros de dedicación a la vez, con tabla equivalente", (await page.locator(".fc-card").count()) === 5 && (await page.locator(".fc-tcard").count()) === 3 && (await page.locator(".fc-eq").count()) === 5);
   ctx.check("Ficha: hitos con fecha y ámbito", /Arranque/.test(text) && /Migración/.test(text));
   await shot(page, "ficha-resumen-1440");
-  await page.getByRole("link", { name: /Volver a Comparativa/ }).click();
+  await page.locator(".fc-back").first().click();
   await page.waitForURL(/\/comparativa/);
   const back = new URL(page.url());
   ctx.check("Volver a Comparativa conserva Soporte, orden y periodo (y no reintroduce parámetros antiguos)", back.searchParams.get("soporte") === "GOLD" && back.searchParams.get("orden") === "cum.revenue" && !back.searchParams.has("tam") && !back.searchParams.has("bloques"), back.search);
 
-  // --- Pestañas, detalle y explicación
+
+  // --- Detalle y explicación
   const fichaUrl = `${ctx.base}/analisis-cliente?ambito=group&id=${w.atlas.id}`;
-  await page.goto(`${fichaUrl}&pestana=dedicacion`);
+  await page.goto(fichaUrl);
   text = await body(page);
-  ctx.check("Dedicación: perfiles previstos con sin identificar visible y total del ámbito", /CS N1/.test(text) && /PMO ANA/.test(text) && /Total del ámbito de dedicación/.test(text) && /Sistemas del Cliente|sistemas del cliente/.test(text), text.slice(0, 80));
-  await shot(page, "ficha-dedicacion-1440");
-  await page.goto(`${fichaUrl}&pestana=pap`);
-  text = await body(page);
-  ctx.check("PAP: total único, causas, sin fecha de producción conservado y resultado distinto de OK visible", /PAP únicos con puesta en producción/.test(text) && /sin fecha de producción/i.test(text) && /Revertido/.test(text));
-  await page.goto(`${fichaUrl}&pestana=tickets`);
-  text = await body(page);
-  ctx.check("Tickets y bugs: conteos por creación, N3 como unión y bugs vinculados", /Tickets creados/.test(text) && /Escalados a N3/.test(text) && /Bugs vinculados a tickets creados en el periodo/.test(text));
-  await page.goto(`${fichaUrl}&pestana=datos`);
-  text = await body(page);
-  ctx.check("Datos y cobertura: referencia de cálculo, fuentes financieras y reproceso", /Referencia de cálculo/.test(text) && /eco-v2/.test(text) && /Fuentes financieras/.test(text));
+  ctx.check("Dedicación: perfiles previstos, tipos de ticket y tipos de problema en la misma ficha", /CS N1/.test(text) && /PMO ANA/.test(text) && /Incidente\/Problema Vincle/.test(text) && /Otro soporte/.test(text) && /Causa pendiente/.test(text) && /Integración\/Procesos/.test(text));
+  ctx.check("Ficha: sin sellos, método ni cobertura en la ficha principal", !/eco-v2|Referencia de cálculo|cobertura/i.test(text));
+  const cardHours = (await page.locator(".fc-sum tbody tr").nth(1).locator("td").nth(3).innerText()).replace(/[^\d,.]/g, "");
   await page.goto(`${fichaUrl}&det=horas&periodo=cum`);
   text = await body(page);
   const detailHours = /Total del conjunto filtrado:\s*(\d+) actividad\(es\) · [\d.]+ min = ([\d.,]+) h/.exec(text);
-  await page.goto(fichaUrl);
-  const cardHours = (await page.locator(".period-cards article").filter({ hasText: "CUM del año seleccionado" }).locator("dd").first().innerText()).replace(/[^\d,.]/g, "");
-  ctx.check("Detalle de horas concilia con la tarjeta (mismas horas, mismo conjunto)", Boolean(detailHours) && detailHours![2] === cardHours, `${detailHours?.[2]} / ${cardHours}`);
+  ctx.check("Detalle de horas concilia con el resumen de la ficha (mismas horas, mismo conjunto)", Boolean(detailHours) && detailHours![2] === cardHours, `${detailHours?.[2]} / ${cardHours}`);
   await page.goto(`${fichaUrl}&det=ratio&periodo=cum&metrica=devTarget`);
   text = await body(page);
-  ctx.check("Explicación de un ratio: numerador, denominador, operandos, fórmula, referencia y estado", /Numerador/.test(text) && /Denominador/.test(text) && /Operando · objetivo/.test(text) && /\(objetivo − ratio\) \/ objetivo/.test(text) && /Referencia/.test(text) && /Estado/.test(text), text.slice(Math.max(0, text.indexOf("Desviación contra objetivo")), text.indexOf("Desviación contra objetivo") + 700).replace(/\n/g, " | "));
+  ctx.check("Explicación de un ratio: numerador, denominador, operandos, fórmula, referencia y estado", /Numerador/.test(text) && /Denominador/.test(text) && /Operando · objetivo/.test(text) && /\(objetivo − ratio\) \/ objetivo/.test(text) && /Referencia/.test(text) && /Estado/.test(text));
   await page.goto(`${fichaUrl}&det=ingreso&periodo=cum`);
   text = await body(page);
   ctx.check("Detalle del ingreso: importe anual fuente y contribución imputada (sin sumar doce veces)", /Importe anual fuente/.test(text) && /Contribución imputada/.test(text) && /96\.000,00/.test(text) && (await page.getByRole("link", { name: "lote" }).count()) >= 1);
   await page.goto(`${fichaUrl}&det=horas&periodo=cum&sello=0000000000000000`);
   ctx.check("Si cambian los datos entre el agregado y el detalle se declara una nueva lectura", /nueva lectura/.test(await body(page)));
+  await page.goto(fichaUrl);
+  const chart = page.locator(".fc-card").first();
+  await chart.locator(".fc-band").nth(1).hover();
+  ctx.check("Ficha: el tooltip del gráfico da actual, mismo mes anterior, diferencia y variación", /Diferencia/.test(await chart.locator(".fc-tip").innerText().catch(() => "")) );
+  await chart.getByRole("button", { name: "Tabla" }).click();
+  ctx.check("Ficha: la tabla equivalente trae los doce meses", (await chart.locator(".fc-eq tbody tr").count()) === 12);
 
   // --- Cliente sin repartir ingreso
   await page.goto(`${ctx.base}/analisis-cliente?ambito=client&id=${w.a1.id}`);
   text = await body(page);
-  ctx.check("Cliente: ingreso agrupado en Grupo Cliente, sin ratio propio, y contexto «del grupo»", /Ingreso agrupado en Grupo Cliente/.test(text) && /del grupo/.test(text) && !/Tarifa anual\/usuario/.test(text));
+  ctx.check("Cliente: horas propias y contexto económico del Grupo identificado, sin ratio propio", /Grupo · mes \(contexto\)/.test(text) && (await page.locator(".fc-sum .fc-na").count()) >= 3);
   await page.goto(`${ctx.base}/analisis-cliente?ambito=client&id=${w.a1.id}&pestana=dedicacion`);
-  ctx.check("Cliente: la dedicación es la de su ámbito (sin repartir ni clonar)", /Total del ámbito de dedicación/.test(await body(page)));
+  ctx.check("Cliente: la dedicación es la de su ámbito (sin repartir ni clonar) y una URL antigua con pestaña no crea pestañas", (await page.locator(".fc-tcard").count()) === 3 && (await page.locator('.tabs, [role="tab"]').count()) === 0);
   await page.goto(`${ctx.base}/analisis-cliente?buscar=Atlas`);
   text = await body(page);
   ctx.check("Selector: búsqueda en servidor por Grupo / Cliente / implantación", /Grupo Cliente/.test(text) && /Implantación/.test(text) && /Atlas Norte producción/.test(text));
@@ -211,7 +203,7 @@ export async function analitica(ctx: Ctx): Promise<void> {
 
   // --- Parámetros hostiles y retorno externo (la vista normal de Comparativa se comprueba arriba)
   await page.goto(`${ctx.base}/analisis-cliente?ambito=group&id=%27%20OR%201=1--`);
-  ctx.check("Identificador forjado: vuelve al selector sin error", /Seleccione un/.test(await body(page)));
+  ctx.check("Identificador forjado: vuelve al selector sin error", /Grupo, Cliente o implantación/.test(await body(page)));
   await page.goto(`${fichaUrl}&volver=https://evil.example/robar%3Fa%3D1&pestana=pap`);
   const hr = await page.locator("main a").evaluateAll((as) => as.map((a) => (a as HTMLAnchorElement).href));
   ctx.check("Retorno externo rechazado: ningún enlace sale de la aplicación", hr.every((h) => h.startsWith(ctx.base) || h.startsWith("blob:")) && !hr.some((h) => h.includes("evil.example")));

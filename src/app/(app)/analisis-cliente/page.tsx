@@ -118,7 +118,7 @@ async function FichaPage({ userId, isAdmin, nav, target, hasBack, sp }: { userId
     <>
       <Head f={f} nav={nav} hasBack={hasBack} />
       <Summary f={f} nav={nav} />
-      <div className="fc-grid">
+      <div className="fc-zones">
         <ChartsZone f={f} nav={nav} />
         <div className="fc-right">
           <div className="fc-pair">

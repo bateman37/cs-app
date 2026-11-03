@@ -146,6 +146,7 @@ export function Summary({ f, nav }: { f: FichaView; nav: Nav }) {
   const mo = Number(f.cut.slice(5, 7));
   const g = f.groupContext;
   return (
+    <div className="fc-sumwrap">
     <table className="fc-sum">
       <caption className="fc-sr">Resumen del mes y del acumulado del año (CUM): rentabilidad, desviación contra objetivo, rentabilidad del mismo periodo del año anterior, horas reales y objetivo, y desviación de horas.</caption>
       <thead>
@@ -171,5 +172,6 @@ export function Summary({ f, nav }: { f: FichaView; nav: Nav }) {
         ) : null}
       </tbody>
     </table>
+    </div>
   );
 }

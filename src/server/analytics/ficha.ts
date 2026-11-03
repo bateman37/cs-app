@@ -1,16 +1,17 @@
 import { Prisma } from "@/generated/prisma/client";
-import { effectiveCut } from "@/domain/finance";
+import { Dec, effectiveCut } from "@/domain/finance";
 import { likePattern, type AnalysisQuery } from "@/domain/analytics-query";
-import { economicsInTx, PERIOD_KEYS, type EconomicResult, type EntityResult, type PeriodKey } from "@/server/economics/engine";
-import { filterGroups, loadGroupMeta, type GroupMeta, type MetaCell } from "./portfolio";
-import { loadBugs, loadDedication, loadPap, loadTickets, type BugSummary, type DedicationPeriod, type EntityRef, type PapSummary, type PeriodRange, type TicketPeriod } from "./operational";
+import { economicsInTx, PERIOD_KEYS, type EconomicResult, type EntityResult, type PeriodSeries } from "@/server/economics/engine";
+import { alignMonths, annualPoints, cell, cellsOf, cumulativeCells, MEASURES, trimEmptyYears, type AnnualPoint, type Cell, type MeasureKey, type MonthRow, type MonthSrc } from "@/domain/ficha-series";
+import { equipoTable, problemTable, ticketTable, type DedMap, type EquipoTable, type ProblemTable, type TicketTable } from "@/domain/ficha-dedicacion";
+import { loadDedication, loadPap, type DedicationPeriod, type EntityRef, type PapSummary, type PeriodRange } from "./operational";
 import { readSnapshot, snapshotPoint, type Tx } from "./snapshot";
 
 /**
- * Ficha de Análisis Cliente (CSAPP-06 §6-§8): Grupo Cliente, Cliente o implantación, por secciones de carga diferida. El ingreso económico
- * existe solo al nivel Grupo; un Cliente/implantación muestra sus horas, usuarios y hechos operativos y, aparte, el contexto económico
- * «del grupo» sin repartir dinero. La cohorte de referencia de las desviaciones es el conjunto filtrado desde Comparativa (o la cartera
- * completa, identificada, si se abre directamente).
+ * Ficha de Análisis Cliente (HOTFIX-02 §8): UNA lectura panorámica de Grupo Cliente, Cliente o implantación (sin pestañas). El ingreso económico
+ * existe solo al nivel Grupo; un Cliente/implantación muestra sus horas, PAP y dedicación propios y, aparte, el contexto económico «del grupo»
+ * (series del Grupo identificadas como tales) sin repartir dinero. Los gráficos, tooltips y tablas equivalentes salen de las series del motor
+ * (`EntityResult.monthly/prevMonthly/history`) a través de `domain/ficha-series`: no hay otra fórmula para el gráfico.
  */
 
 // ---------------------------------------------------------------- Selector de entidades (búsqueda en servidor, paginada)
@@ -49,8 +50,6 @@ export type EntityContext = {
   children: { clients: Relation[]; clientsTotal: number; implementations: Relation[]; implementationsTotal: number };
   /** Datos propios de la entidad con vigencia a la fecha de corte (no inventa el dato propio de un hijo). */
   own: { support: string[]; hosting: string[]; complexity: string[]; product: string[] };
-  /** Dato de contexto del grupo, rotulado «del grupo» cuando la entidad es Cliente/implantación. */
-  groupMeta: GroupMeta | null;
 };
 
 const MAX_CHILDREN = 200;
@@ -84,13 +83,12 @@ export async function loadEntityContext(tx: Tx, ref: EntityRef, cut: string): Pr
   }
   const clientsOf = ref.type === "group" ? { groupId: ref.id } : null;
   const implsWhere = ref.type === "group" ? { client: { groupId: ref.id } } : ref.type === "client" ? { clientId: ref.id } : null;
-  const [clients, clientsTotal, impls, implsTotal, own, gm] = await Promise.all([
+  const [clients, clientsTotal, impls, implsTotal, own] = await Promise.all([
     clientsOf ? tx.client.findMany({ where: clientsOf, select: { id: true, name: true, isActive: true, _count: { select: { implementations: true } } }, orderBy: [{ name: "asc" }, { id: "asc" }], take: MAX_CHILDREN }) : Promise.resolve([]),
     clientsOf ? tx.client.count({ where: clientsOf }) : Promise.resolve(0),
     implsWhere ? tx.implementation.findMany({ where: implsWhere, select: { id: true, name: true, isActive: true }, orderBy: [{ name: "asc" }, { id: "asc" }], take: MAX_CHILDREN }) : Promise.resolve([]),
     implsWhere ? tx.implementation.count({ where: implsWhere }) : Promise.resolve(0),
     ownTerms(tx, ref, cut),
-    group ? loadGroupMeta(tx, cut, [group.id]) : Promise.resolve([]),
   ]);
   return {
     ref, name, isActive, group, client,
@@ -101,35 +99,59 @@ export async function loadEntityContext(tx: Tx, ref: EntityRef, cut: string): Pr
       implementationsTotal: implsTotal,
     },
     own,
-    groupMeta: gm[0] ?? null,
   };
 }
 
 // ---------------------------------------------------------------- Ficha completa
 
+export type FichaSeries = {
+  /** Serie económica (rentabilidad, ingreso, desviación, CUM): del propio Grupo o, en un Cliente/implantación, del Grupo identificado como contexto. */
+  economicOwner: { kind: "own" | "group"; name: string; id: string } | null;
+  rows: Record<MeasureKey, MonthRow[] | null>;
+  /** Motivo por el que una serie entera no existe (se muestra como «—» con explicación). */
+  missing: Partial<Record<MeasureKey, string>>;
+  year: number;
+  prevYear: number;
+  cutMonth: number;
+  /** Fecha hasta la que llega el año anterior comparable en el mes del corte (mes parcial: mismo día equivalente). */
+  prevCumTo: string;
+};
+
 export type FichaView = {
   query: AnalysisQuery;
   context: EntityContext;
   cut: string;
-  /** Resultado económico/horas de la entidad (Grupo: con ingreso; Cliente/implantación: horas y usuarios, sin ratio propio). */
+  /** Resultado de la entidad: Grupo con ingreso; Cliente/implantación con horas y usuarios, sin ratio propio. */
   entity: EntityResult;
   /** Cliente/implantación: contexto económico «del grupo» (no se suma al resultado operativo del Cliente). */
   groupContext: EntityResult | null;
-  cohort: { kind: "filtered" | "all" | "none"; groups: number; note: string | null; portfolio: EconomicResult["portfolio"] };
   economics: Pick<EconomicResult, "periodsDefinition" | "settings" | "recalculatedWithOlderSettings" | "reference" | "input" | "unattributed">;
-  dedication: Record<string, DedicationPeriod> | null;
-  pap: PapSummary | null;
-  tickets: { supported: boolean; periods: Record<string, TicketPeriod> } | null;
-  bugs: BugSummary | null;
-  sources: { profileId: string; status: string; extraction: string | null; received: string; rows: number }[] | null;
+  dedication: Record<string, DedicationPeriod>;
+  tables: { equipo: EquipoTable; ticket: TicketTable; problema: ProblemTable };
+  series: FichaSeries;
+  annual: AnnualPoint[];
+  pap: PapSummary;
   /** Hitos (arranque, migración CLOUD, cambio mayor de versión) con fecha y ámbito; solo los que existen en los maestros. */
   milestones: { type: string; date: string; scope: string; scopeName: string; note: string | null }[];
 };
 
-function ranges(e: EconomicResult): PeriodRange[] {
-  return [
-    ...PERIOD_KEYS.map((k) => ({ key: k as string, from: e.periodsDefinition[k].from, to: e.periodsDefinition[k].to })),
-  ];
+const rangesOf = (e: EconomicResult): PeriodRange[] => PERIOD_KEYS.map((k) => ({ key: k as string, from: e.periodsDefinition[k].from, to: e.periodsDefinition[k].to }));
+const MAX_HISTORY_YEARS = 8;
+
+/** Primer año con datos (ingreso u horas) del ámbito económico: acota los gráficos anuales a los años disponibles. */
+async function firstDataYear(tx: Tx, groupId: string | null, ref: EntityRef, cutYear: number): Promise<number> {
+  const col = Prisma.raw(ref.type === "group" ? '"groupId"' : ref.type === "client" ? '"clientId"' : '"implementationId"');
+  const [fin, own, grp] = await Promise.all([
+    groupId
+      ? tx.$queryRaw<{ y: number | null }[]>(Prisma.sql`SELECT min(s.year)::int AS y FROM "FinanceScope" s JOIN "FinanceRow" r ON r."batchId" = s."activeBatchId" WHERE r."groupId" = ${groupId}`)
+      : Promise.resolve([{ y: null }]),
+    tx.$queryRaw<{ y: number | null }[]>(Prisma.sql`SELECT extract(year FROM min("workDate"))::int AS y FROM "TimeActivity" WHERE ${col} = ${ref.id}`),
+    groupId && ref.type !== "group"
+      ? tx.$queryRaw<{ y: number | null }[]>(Prisma.sql`SELECT extract(year FROM min("workDate"))::int AS y FROM "TimeActivity" WHERE "groupId" = ${groupId}`)
+      : Promise.resolve([{ y: null }]),
+  ]);
+  const ys = [fin[0].y, own[0].y, grp[0].y].filter((y): y is number => typeof y === "number");
+  return Math.max(ys.length ? Math.min(...ys) : cutYear, cutYear - MAX_HISTORY_YEARS);
 }
 
 export async function getFicha(actorId: string, query: AnalysisQuery, ref: EntityRef): Promise<FichaView | null> {
@@ -138,63 +160,57 @@ export async function getFicha(actorId: string, query: AnalysisQuery, ref: Entit
     const context = await loadEntityContext(tx, ref, cut);
     if (!context) return null;
     await snapshotPoint("ficha:after-context");
+    const cutY = Number(cut.slice(0, 4));
+    const cutM = Number(cut.slice(5, 7));
     const common = { service: query.service, date: query.date, mode: query.mode, settingsRevision: query.revision ?? undefined, unpaged: true as const };
+    const firstYear = await firstDataYear(tx, context.group?.id ?? null, ref, cutY);
+    const historyYears = Array.from({ length: Math.max(0, cutY - firstYear) }, (_, i) => firstYear + i);
 
-    // Cohorte de referencia (solo Grupo): el conjunto filtrado desde Comparativa o la cartera completa (identificada). En pestañas distintas
-    // del resumen no se necesita la cohorte: el motor calcula solo la entidad.
-    let cohort: FichaView["cohort"] = { kind: "none", groups: 0, note: null, portfolio: null };
     let econ: EconomicResult;
     let entity: EntityResult;
     let groupContext: EntityResult | null = null;
     if (ref.type === "group") {
-      let ids = [ref.id];
-      if (query.tab === "resumen") {
-        const all = await loadGroupMeta(tx, cut);
-        const filtered = filterGroups(all, query);
-        const inFiltered = filtered.some((g) => g.id === ref.id);
-        const useFiltered = filtered.length > 0 && inFiltered && filtered.length < all.length;
-        ids = (useFiltered ? filtered : all).map((g) => g.id);
-        cohort = {
-          kind: useFiltered ? "filtered" : "all",
-          groups: ids.length,
-          note: useFiltered
-            ? `Cohorte filtrada de referencia: ${ids.length} de ${all.length} grupos (los filtros de Comparativa).`
-            : filtered.length > 0 && !inFiltered
-              ? `El grupo no pertenece al conjunto filtrado indicado: se usa la cartera completa (${all.length} grupos) como referencia general.`
-              : `Referencia general: cartera completa (${all.length} grupos).`,
-          portfolio: null,
-        };
-      }
-      econ = await economicsInTx(tx, { ...common, scope: { type: "groups", ids }, detailFor: ref.id });
-      cohort.portfolio = econ.portfolio;
-      if (query.tab !== "resumen") cohort = { kind: "none", groups: 1, note: "La desviación contra cartera se calcula en la pestaña Resumen y evolución.", portfolio: null };
+      econ = await economicsInTx(tx, { ...common, scope: { type: "groups", ids: [ref.id] }, detailFor: ref.id, historyYears });
       entity = econ.entities.find((e) => e.id === ref.id) as EntityResult;
     } else {
       econ = await economicsInTx(tx, { ...common, scope: ref.type === "client" ? { type: "client", id: ref.id } : { type: "implementation", id: ref.id }, detailFor: ref.id });
       entity = econ.entities[0];
       if (context.group) {
-        const g = await economicsInTx(tx, { ...common, scope: { type: "groups", ids: [context.group.id] } });
+        const g = await economicsInTx(tx, { ...common, scope: { type: "groups", ids: [context.group.id] }, detailFor: context.group.id, historyYears });
         groupContext = g.entities[0] ?? null;
       }
     }
     await snapshotPoint("ficha:after-economics");
 
-    const periods = ranges(econ);
-    const monthlyDed: PeriodRange[] = entity.monthly.map((m) => ({ key: m.label, from: m.from, to: m.to }));
-    // La dedicación mensual alimenta las gráficas del resumen y la tabla de equipos; los perfiles se calculan siempre sobre el mismo perímetro.
-    const dedication = await loadDedication(tx, ref, [...periods, ...monthlyDed], query.service);
-    const pap = query.tab === "pap" || query.tab === "resumen" ? await loadPap(tx, ref, [...periods, ...entity.monthly.map((m) => ({ key: m.label, from: m.from, to: m.to }))]) : null;
-    const tickets = query.tab === "tickets" ? await loadTickets(tx, ref, periods) : null;
-    const bugs = query.tab === "tickets" ? await loadBugs(tx, ref, periods) : null;
-    const sources =
-      query.tab === "datos"
-        ? (
-            await tx.$queryRaw<{ profileId: string; status: string; extraction: string | null; received: string; rows: number }[]>(Prisma.sql`
-              SELECT DISTINCT ON ("profileId") "profileId", status::text AS status, to_char("declaredExtractionDate", 'YYYY-MM-DD') AS extraction,
-                to_char("createdAt" AT TIME ZONE 'Europe/Madrid', 'YYYY-MM-DD HH24:MI') AS received, "rowsImported" AS rows
-              FROM "UploadBatch" WHERE status = 'COMPLETED' ORDER BY "profileId", "createdAt" DESC`)
-          )
-        : null;
+    const periods = rangesOf(econ);
+    const monthRanges = (xs: PeriodSeries[]): PeriodRange[] => xs.map((m) => ({ key: m.label, from: m.from, to: m.to }));
+    const dedication = await loadDedication(tx, ref, periods, query.service);
+    const pap = await loadPap(tx, ref, [...periods, ...monthRanges(entity.monthly), ...monthRanges(entity.prevMonthly)]);
+
+    // ---- Series: del Grupo (propias) o, para un Cliente/implantación, del Grupo como contexto; horas y PAP siempre del propio ámbito.
+    const owner = ref.type === "group" ? entity : groupContext;
+    const dayHours = Dec.parse(econ.settings.dayHours) as Dec;
+    const rows: FichaSeries["rows"] = { perDay: null, cumPerDay: null, hours: null, revenue: null, pap: null, devTarget: null };
+    const missing: FichaSeries["missing"] = {};
+    const align = (key: MeasureKey, cur: Cell[], prev: Cell[], cs: MonthSrc[], ps: MonthSrc[]) => alignMonths(MEASURES[key], cutM, cur, prev, cs, ps);
+    rows.hours = align("hours", cellsOf("hours", entity.monthly), cellsOf("hours", entity.prevMonthly), entity.monthly, entity.prevMonthly);
+    if (owner) {
+      rows.perDay = align("perDay", cellsOf("perDay", owner.monthly), cellsOf("perDay", owner.prevMonthly), owner.monthly, owner.prevMonthly);
+      rows.revenue = align("revenue", cellsOf("revenue", owner.monthly), cellsOf("revenue", owner.prevMonthly), owner.monthly, owner.prevMonthly);
+      rows.devTarget = align("devTarget", cellsOf("devTarget", owner.monthly), cellsOf("devTarget", owner.prevMonthly), owner.monthly, owner.prevMonthly);
+      rows.cumPerDay = align("cumPerDay", cumulativeCells(owner.monthly, dayHours), cumulativeCells(owner.prevMonthly, dayHours), owner.monthly, owner.prevMonthly);
+    } else {
+      for (const k of ["perDay", "revenue", "devTarget", "cumPerDay"] as const) missing[k] = "Sin Grupo Cliente asignado: no hay ingreso al que referir la rentabilidad.";
+    }
+    const papAny = Object.values(pap.periods).some((p) => p.total > 0) || pap.withoutProductionDate > 0;
+    const papCells = (xs: PeriodSeries[]): Cell[] => xs.map((m) => (papAny ? cell(String(pap.periods[m.label]?.total ?? 0)) : cell(null, "Sin PAP atribuidos a este ámbito.")));
+    rows.pap = align("pap", papCells(entity.monthly), papCells(entity.prevMonthly), entity.monthly, entity.prevMonthly);
+
+    const annual = owner ? trimEmptyYears(annualPoints(owner.history, cutY, owner.periods.cum)) : [];
+
+    const dedMap: DedMap = Object.fromEntries(PERIOD_KEYS.map((k) => [k, dedication[k]])) as DedMap;
+    const tables = { equipo: equipoTable(dedMap), ticket: ticketTable(dedMap), problema: problemTable(dedMap, entity.periods.cum.targetHours.value) };
+
     const gid = context.group?.id ?? null;
     const cid = context.client?.id ?? (ref.type === "client" ? ref.id : null);
     const ms = await tx.$queryRaw<{ type: string; date: string; note: string | null; gname: string | null; cname: string | null; iname: string | null }[]>(Prisma.sql`
@@ -207,12 +223,11 @@ export async function getFicha(actorId: string, query: AnalysisQuery, ref: Entit
         OR (${ref.type === "client"} AND m."implementationId" IN (SELECT id FROM "Implementation" WHERE "clientId" = ${ref.id}))
       ORDER BY m.date, m.type`);
     return {
-      query, context, cut, entity, groupContext, cohort,
+      query, context, cut, entity, groupContext,
       milestones: ms.map((m) => ({ type: m.type, date: m.date, note: m.note, scope: m.iname ? "implantación" : m.cname ? "cliente" : "grupo", scopeName: m.iname ?? m.cname ?? m.gname ?? "" })),
       economics: { periodsDefinition: econ.periodsDefinition, settings: econ.settings, recalculatedWithOlderSettings: econ.recalculatedWithOlderSettings, reference: econ.reference, input: econ.input, unattributed: econ.unattributed },
-      dedication, pap, tickets, bugs, sources,
+      dedication, tables, pap, annual,
+      series: { economicOwner: owner ? { kind: ref.type === "group" ? "own" : "group", name: owner.name, id: owner.id } : null, rows, missing, year: cutY, prevYear: cutY - 1, cutMonth: cutM, prevCumTo: econ.periodsDefinition.prevCum.to },
     };
   });
 }
-
-export type { MetaCell, PeriodKey };

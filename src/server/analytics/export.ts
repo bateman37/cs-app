@@ -5,7 +5,9 @@ import { VALUE_LABEL } from "@/domain/catalogs";
 import type { EconomicResult, PeriodKey, PeriodSeries } from "@/server/economics/engine";
 import { getPortfolioAll } from "./portfolio";
 import { getFicha } from "./ficha";
-import type { EntityRef } from "./operational";
+import { loadTickets, type EntityRef } from "./operational";
+import { MEASURES, type MeasureKey, type MonthRow } from "@/domain/ficha-series";
+import { readSnapshot } from "./snapshot";
 
 /**
  * CSV de resúmenes (CSAPP-06 §11). Mismo servicio, orden, periodo y estados que la pantalla: nunca la página renderizada ni ratios recalculados.
@@ -71,19 +73,16 @@ export async function portfolioCsv(actorId: string, query: AnalysisQuery): Promi
   return { filename: `comparativa_${query.date}_${query.service.toLowerCase()}.csv`, body: csvDocument(header, rows), rows: v.allRows.length, stamp: ctx.reference.dataStamp.stamp };
 }
 
-export const FICHA_TABLES = ["series", "dedicacion", "pap", "tickets"] as const;
+export const FICHA_TABLES = ["series", "interanual", "dedicacion", "pap", "tickets"] as const;
 export type FichaTable = (typeof FICHA_TABLES)[number];
 
 export async function fichaCsv(actorId: string, query: AnalysisQuery, ref: EntityRef, table: FichaTable): Promise<CsvResult | null> {
-  // Cada tabla necesita su pestaña: se fuerza para que la lectura traiga los datos de ese resumen.
-  const tab = table === "dedicacion" ? "dedicacion" : table === "pap" ? "pap" : table === "tickets" ? "tickets" : "resumen";
-  const v = await getFicha(actorId, { ...query, tab }, ref);
+  const v = await getFicha(actorId, query, ref);
   if (!v) return null;
   const ctx = v.economics;
   const scope = `${ref.type === "group" ? "grupo" : ref.type === "client" ? "cliente" : "implantación"}: ${v.context.name}`;
   const base = (): CsvValue[] => [...contextCells(query, ctx, scope), v.context.ref.type, v.context.name, v.context.ref.id];
   const head = [...CONTEXT_HEADER, "tipo_ambito", "ambito", "id"];
-  const periodDefs = ctx.periodsDefinition;
   let header: string[];
   const rows: CsvValue[][] = [];
   if (table === "series") {
@@ -91,22 +90,50 @@ export async function fichaCsv(actorId: string, query: AnalysisQuery, ref: Entit
     for (const k of Object.keys(PERIOD_NAME) as PeriodKey[]) rows.push([...base(), "PERIODO", PERIOD_NAME[k], ...periodCells(v.entity.periods[k])]);
     for (const m of v.entity.monthly) rows.push([...base(), "MENSUAL_ACTUAL", m.label, ...periodCells(m)]);
     for (const m of v.entity.prevMonthly) rows.push([...base(), "MENSUAL_ANTERIOR_COMPARABLE", m.label, ...periodCells(m)]);
+  } else if (table === "interanual") {
+    // El MISMO conjunto de filas que el gráfico, el tooltip y la tabla equivalente de la ficha (domain/ficha-series).
+    header = [...head, "medida", "unidad", "mes", "actual", "mismo_mes_anterior", "diferencia", "unidad_diferencia", "variacion_pct", "estado_variacion", "actual_hasta", "anterior_hasta", "mes_parcial"];
+    for (const [key, list] of Object.entries(v.series.rows) as [MeasureKey, MonthRow[] | null][]) {
+      const m = MEASURES[key];
+      if (!list) {
+        rows.push([...base(), m.title, m.unit, "", "", "", "", "", "", v.series.missing[key] ?? "no disponible", "", "", ""]);
+        continue;
+      }
+      for (const r of list) {
+        if (r.future) continue; // meses futuros: sin fila (no son ceros)
+        rows.push([...base(), m.title, m.unit, `${r.month}`, n(r.cur?.v ?? null), n(r.prev?.v ?? null), n(r.cmp?.diff ?? null), m.kind === "fraction" ? "puntos porcentuales" : m.unit, n(r.cmp?.pct ?? null), r.cmp?.state ?? "", r.curTo ?? "", r.prevTo ?? "", r.partial ? "sí" : "no"]);
+      }
+    }
   } else if (table === "dedicacion") {
-    header = [...head, "periodo", "perfil", "horas", "incidente_vincle_h", "otro_soporte_h", "sin_clasificar_h"];
-    for (const [pk, d] of Object.entries(v.dedication ?? {})) {
-      if (!(pk in periodDefs) && !/^\d{4}-\d{2}$/.test(pk)) continue;
-      const pname = pk in PERIOD_NAME ? PERIOD_NAME[pk as PeriodKey] : pk;
-      for (const p of d.profiles) rows.push([...base(), pname, p.profile, n(p.hours), n(p.incident), n(p.other), n(p.unclassified)]);
+    header = [...head, "cuadro", "fila", "perfil", "periodo", "horas", "porcentaje"];
+    const per = ["month", "prevMonth", "cum", "prevCum", "prevYear"] as const;
+    const pct = (f: string | null): CsvValue => n(f);
+    for (const r of v.tables.equipo.rows) for (const k of per) rows.push([...base(), "equipo_y_perfil", r.profile, r.profile, PERIOD_NAME[k], n(r.periods[k].hours), pct(r.share[k])]);
+    for (const k of per) rows.push([...base(), "equipo_y_perfil", "Total", "", PERIOD_NAME[k], n(v.tables.equipo.total[k].hours), ""]);
+    for (const g of v.tables.ticket.groups) {
+      for (const k of per) rows.push([...base(), "tipo_de_ticket_y_perfil", g.label, "(tipo)", PERIOD_NAME[k], n(g.total[k].hours), ""]);
+      for (const r of g.profiles) for (const k of per) rows.push([...base(), "tipo_de_ticket_y_perfil", g.label, r.profile, PERIOD_NAME[k], n(r.periods[k].hours), pct(r.share[k])]);
+    }
+    for (const k of per) rows.push([...base(), "tipo_de_ticket_y_perfil", "Total", "", PERIOD_NAME[k], n(v.tables.ticket.total[k].hours), ""]);
+    for (const r of [...v.tables.problema.rows, v.tables.problema.total]) {
+      rows.push([...base(), "tipo_de_problema_vincle", r.label, "", "cum_actual", n(r.cum.hours), pct(r.shareOfDedicated)]);
+      rows.push([...base(), "tipo_de_problema_vincle", r.label, "", "cum_actual_sobre_horas_objetivo", n(r.cum.hours), pct(r.shareOfTarget)]);
+      rows.push([...base(), "tipo_de_problema_vincle", r.label, "", "cum_anterior_comparable", n(r.prevCum.hours), ""]);
     }
   } else if (table === "pap") {
     header = [...head, "periodo", "pap_unicos", "correctivos", "correctivo_estandar", "correctivo_proyecto_personalizacion_config_procesos_infra", "origen_cliente", "evolutivos_sin_evidencia_de_facturacion", "peticion_cliente", "sin_clasificar", "resultado_no_ok", "tabla_aditiva"];
-    for (const [pk, p] of Object.entries(v.pap?.periods ?? {})) rows.push([...base(), pk in PERIOD_NAME ? PERIOD_NAME[pk as PeriodKey] : pk, String(p.total), String(p.corrective), String(p.standard), String(p.project), String(p.clientOrigin), String(p.evolutive), String(p.clientRequest), String(p.unclassified), String(p.nonOk), p.additive ? "sí" : "no (un PAP en varias categorías)"]);
-    rows.push([...base(), "SIN_FECHA_DE_PRODUCCION", String(v.pap?.withoutProductionDate ?? 0), "", "", "", "", "", "", "", "", ""]);
+    for (const [pk, p] of Object.entries(v.pap.periods)) {
+      if (!(pk in PERIOD_NAME)) continue;
+      rows.push([...base(), PERIOD_NAME[pk as PeriodKey], String(p.total), String(p.corrective), String(p.standard), String(p.project), String(p.clientOrigin), String(p.evolutive), String(p.clientRequest), String(p.unclassified), String(p.nonOk), p.additive ? "sí" : "no (un PAP en varias categorías)"]);
+    }
+    rows.push([...base(), "SIN_FECHA_DE_PRODUCCION", String(v.pap.withoutProductionDate), "", "", "", "", "", "", "", "", ""]);
   } else {
     header = [...head, "periodo", "tickets_creados", "incident", "problem", "otros_tipos", "escalados_n2", "escalados_n3_union", "n3_pmo", "n3_it", "n4_union", "n4_vfs", "n4_arq", "n4_vsw", "nota"];
-    if (!v.tickets?.supported) rows.push([...base(), "(no disponible)", "", "", "", "", "", "", "", "", "", "", "", "", "Las implantaciones no identifican tickets: solo Grupo y Cliente."]);
-    for (const [pk, t] of Object.entries(v.tickets?.periods ?? {})) {
-      rows.push([...base(), PERIOD_NAME[pk as PeriodKey], String(t.total), String(t.incident), String(t.problem), String(t.other), String(t.escalations.n2), String(t.escalations.n3), String(t.escalations.pmoN3), String(t.escalations.itN3), String(t.escalations.n4), String(t.escalations.vfsN4), String(t.escalations.arqN4), String(t.escalations.vswN4), "Cohorte por fecha de creación del ticket; no es la fecha del escalado. Desgloses no aditivos."]);
+    const periods = (Object.keys(PERIOD_NAME) as PeriodKey[]).map((k) => ({ key: k as string, from: ctx.periodsDefinition[k].from, to: ctx.periodsDefinition[k].to }));
+    const t = await readSnapshot(actorId, (tx) => loadTickets(tx, ref, periods));
+    if (!t.supported) rows.push([...base(), "(no disponible)", "", "", "", "", "", "", "", "", "", "", "", "", "Las implantaciones no identifican tickets: solo Grupo y Cliente."]);
+    for (const [pk, x] of Object.entries(t.periods)) {
+      rows.push([...base(), PERIOD_NAME[pk as PeriodKey], String(x.total), String(x.incident), String(x.problem), String(x.other), String(x.escalations.n2), String(x.escalations.n3), String(x.escalations.pmoN3), String(x.escalations.itN3), String(x.escalations.n4), String(x.escalations.vfsN4), String(x.escalations.arqN4), String(x.escalations.vswN4), "Cohorte por fecha de creación del ticket; no es la fecha del escalado. Desgloses no aditivos."]);
     }
   }
   return { filename: `ficha_${table}_${v.context.name.replace(/[^A-Za-z0-9._-]+/g, "_").slice(0, 40)}_${query.date}.csv`, body: csvDocument(header, rows), rows: rows.length, stamp: ctx.reference.dataStamp.stamp };

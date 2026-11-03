@@ -7,19 +7,19 @@ import { Notice, Pager, fdate, hrs, eur } from "@/components/analytics/ui";
 import { formatDecimalEs } from "@/lib/money";
 import { qs } from "@/lib/format";
 import { METRICS, RatioExplanation, type MetricKey } from "./explain";
-import { fichaHref } from "./links";
+import { fichaUrl, type Nav } from "./links";
 
 const KINDS = ["ratio", "ingreso", "horas", "pap", "tickets", "bugs"] as const;
 export type DetailKind = (typeof KINDS)[number];
 export const isDetailKind = (v: string): v is DetailKind => (KINDS as readonly string[]).includes(v);
 
-type Props = { actorId: string; f: FichaView; back: string; kind: DetailKind; period: string; metric: string; mode: string; page: number; isAdmin: boolean };
+type Props = { actorId: string; f: FichaView; nav: Nav; kind: DetailKind; period: string; metric: string; mode: string; page: number; isAdmin: boolean };
 
-export async function Detail({ actorId, f, back, kind, period, metric, mode, page, isAdmin }: Props) {
+export async function Detail({ actorId, f, nav, kind, period, metric, mode, page, isAdmin }: Props) {
   const q: AnalysisQuery = f.query;
   const ref: EntityRef = f.context.ref;
-  const close = fichaHref(q, ref, back, { pestana: q.tab === "resumen" ? undefined : q.tab });
-  const hrefTo = (extra: Record<string, string | number | undefined>) => fichaHref(q, ref, back, { pestana: q.tab === "resumen" ? undefined : q.tab, ...extra });
+  const close = fichaUrl(nav, ref);
+  const hrefTo = (extra: Record<string, string | number | undefined>) => fichaUrl(nav, ref, { sello: q.stamp || undefined, ...extra });
   const hoursMode = (HOURS_MODES as readonly string[]).includes(mode) ? (mode as HoursMode) : "incluidas";
   // Lecturas dentro del try; el JSX se construye fuera (un error de lectura se muestra con una acción útil).
   type Data = Awaited<ReturnType<typeof incomeDetail>> | Awaited<ReturnType<typeof hoursDetail>> | Awaited<ReturnType<typeof papDetail>> | Awaited<ReturnType<typeof ticketsDetail>> | Awaited<ReturnType<typeof bugsDetail>> | null;
@@ -40,18 +40,18 @@ export async function Detail({ actorId, f, back, kind, period, metric, mode, pag
       const p = f.entity.periods[pk];
       return (
         <div>
-          <p><Link href={close}>← Cerrar detalle</Link></p>
+          <p><Link href={close}>← Volver a la ficha</Link></p>
           <RatioExplanation metric={key} p={p} links={{ income: hrefTo({ det: "ingreso", periodo: pk }), hours: hrefTo({ det: "horas", periodo: pk }) }} reference={{ engine: f.economics.reference.engineVersion, stamp: f.economics.reference.dataStamp.stamp, settings: f.economics.settings.revisionNo, method: f.economics.reference.method, cut: f.cut }} />
         </div>
       );
     }
     const staleNotice = (stamp: string) => (q.stamp && q.stamp !== stamp ? <Notice kind="warn">Los datos han cambiado desde la lectura de la que partió (referencia <code>{q.stamp}</code> → <code>{stamp}</code>). Este detalle es una <strong>nueva lectura</strong>; <Link href={close}>actualice la ficha</Link> para ver las cifras al día. No concilia con la pantalla anterior.</Notice> : null);
     if (kind === "ingreso") {
-      if (ref.type !== "group") return <Notice kind="info">El ingreso se atribuye al Grupo Cliente: <Link href={f.context.group ? fichaHref(q, { type: "group", id: f.context.group.id }, back, { det: "ingreso", periodo: period }) : close}>abra el detalle en el grupo</Link>.</Notice>;
+      if (ref.type !== "group") return <Notice kind="info">El ingreso se atribuye al Grupo Cliente: <Link href={f.context.group ? fichaUrl(nav, { type: "group", id: f.context.group.id }, { det: "ingreso", periodo: period }) : close}>abra el detalle en el grupo</Link>.</Notice>;
       const d = data as Awaited<ReturnType<typeof incomeDetail>>;
       return (
         <section className="card" aria-label="Detalle del ingreso">
-          <p><Link href={close}>← Cerrar detalle</Link></p>
+          <p><Link href={close}>← Volver a la ficha</Link></p>
           <h2>Ingreso imputado · {d.period.label} ({fdate(d.period.from)} – {fdate(d.period.to)})</h2>
           {staleNotice(d.reference.stamp)}
           <p className="hint">{d.note}</p>
@@ -75,7 +75,7 @@ export async function Detail({ actorId, f, back, kind, period, metric, mode, pag
       const params = Object.fromEntries(new URLSearchParams(hrefTo({ det: "horas", periodo: period, modoh: m }).split("?")[1]));
       return (
         <section className="card" aria-label="Detalle de las horas">
-          <p><Link href={close}>← Cerrar detalle</Link></p>
+          <p><Link href={close}>← Volver a la ficha</Link></p>
           <h2>Horas · {d.period.label} ({fdate(d.period.from)} – {fdate(d.period.to)})</h2>
           {staleNotice(d.reference.stamp)}
           <ul className="link-list">{HOURS_MODES.map((x) => <li key={x}>{x === m ? <strong>{HOURS_MODE_LABEL[x]}</strong> : <Link href={hrefTo({ det: "horas", periodo: period, modoh: x })}>{HOURS_MODE_LABEL[x]}</Link>}</li>)}</ul>
@@ -92,7 +92,7 @@ export async function Detail({ actorId, f, back, kind, period, metric, mode, pag
       const d = data as Awaited<ReturnType<typeof papDetail>>;
       return (
         <section className="card" aria-label="Detalle PAP">
-          <p><Link href={close}>← Cerrar detalle</Link></p>
+          <p><Link href={close}>← Volver a la ficha</Link></p>
           <h2>PAP · {d.period.label}{d.period.from ? ` (${fdate(d.period.from)} – ${fdate(d.period.to)})` : ""}</h2>
           {staleNotice(d.reference.stamp)}
           <p className="hint">Identidad estable lista + ID; fecha de puesta en producción (no la de título ni solicitud). Un PAP aparece una vez aunque tenga varias causas o tickets.</p>
@@ -106,7 +106,7 @@ export async function Detail({ actorId, f, back, kind, period, metric, mode, pag
       const d = data as Awaited<ReturnType<typeof ticketsDetail>>;
       return (
         <section className="card" aria-label="Detalle de tickets">
-          <p><Link href={close}>← Cerrar detalle</Link></p>
+          <p><Link href={close}>← Volver a la ficha</Link></p>
           <h2>Tickets creados · {d.period.label} ({fdate(d.period.from)} – {fdate(d.period.to)})</h2>
           {staleNotice(d.reference.stamp)}
           {!d.supported ? <Notice kind="info">Las implantaciones no identifican tickets.</Notice> : (
@@ -123,7 +123,7 @@ export async function Detail({ actorId, f, back, kind, period, metric, mode, pag
     const d = data as Awaited<ReturnType<typeof bugsDetail>>;
     return (
       <section className="card" aria-label="Detalle de bugs vinculados">
-        <p><Link href={close}>← Cerrar detalle</Link></p>
+        <p><Link href={close}>← Volver a la ficha</Link></p>
         <h2>Bugs vinculados a tickets creados en el periodo · {d.period.label}</h2>
         {staleNotice(d.reference.stamp)}
         {!d.supported ? <Notice kind="info">Las implantaciones no identifican tickets, y con ello tampoco bugs vinculados.</Notice> : (

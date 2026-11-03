@@ -1,0 +1,18 @@
+{
+  "version": "0.1.0",
+  "sha": "dc6f4c4f943fcf349db38cee921e52bebc2c69bf",
+  "dirty": false,
+  "builtAt": "2026-11-03T09:14:05.997Z",
+  "node": "v24.21.0",
+  "migrations": [
+    "20261029200318_base_acceso_y_maestros",
+    "20261029220244_personal_usuarios_cargas",
+    "20261030080000_zendesk_tickets_y_tiempos",
+    "20261030120000_wrike_pap_bugs",
+    "20261031090000_finanzas_motor_economico",
+    "20261102090000_pulse_calidad_configuracion",
+    "20261103090000_calidad_health_cobertura",
+    "20261104090000_exportaciones_conciliacion",
+    "20261105090000_operacion_latido_instalacion"
+  ]
+}

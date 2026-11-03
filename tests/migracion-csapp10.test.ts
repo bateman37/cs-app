@@ -1,5 +1,5 @@
 import { execSync } from "node:child_process";
-import { readFileSync } from "node:fs";
+import { readFileSync, readdirSync } from "node:fs";
 import path from "node:path";
 import { Client } from "pg";
 import { describe, expect, it } from "vitest";
@@ -17,6 +17,9 @@ function withDb(url: string, name: string): string {
 }
 const PREVIAS = ["20261029200318_base_acceso_y_maestros", "20261029220244_personal_usuarios_cargas", "20261030080000_zendesk_tickets_y_tiempos", "20261030120000_wrike_pap_bugs", "20261031090000_finanzas_motor_economico", "20261102090000_pulse_calidad_configuracion", "20261103090000_calidad_health_cobertura", "20261104090000_exportaciones_conciliacion"];
 const NUEVA = "20261105090000_operacion_latido_instalacion";
+// Migraciones posteriores (HOTFIX-01 y siguientes): `migrate deploy` también las aplica; lo que añaden no cuenta como cambio de esta.
+const POSTERIORES = readdirSync("prisma/migrations").filter((m) => /^\d{14}_/.test(m) && m > NUEVA).sort();
+const sqlPosterior = POSTERIORES.map((m) => readFileSync(path.join("prisma", "migrations", m, "migration.sql"), "utf8")).join("\n");
 
 async function withTempDb<T>(name: string, fn: (db: Client, env: NodeJS.ProcessEnv) => Promise<T>): Promise<T> {
   const approved = resolveTestTarget();
@@ -64,7 +67,7 @@ describe("migración CSAPP-09 → CSAPP-10", () => {
       for (const [t, n] of [["ExportJob", 1], ["ReconRun", 1], ["User", 1], ["ClientGroup", 1]] as const) expect((await db.query(`SELECT count(*)::int AS n FROM "${t}"`)).rows[0].n, t).toBe(n);
       // Solo se añaden las dos tablas nuevas: ninguna columna anterior cambia (el código de 09 sigue siendo compatible con este esquema).
       const after = (await db.query(`SELECT table_name, column_name, data_type FROM information_schema.columns WHERE table_schema = 'public' ORDER BY 1, 2`)).rows;
-      const added = after.filter((r) => !before.some((b) => b.table_name === r.table_name && b.column_name === r.column_name));
+      const added = after.filter((r) => !before.some((b) => b.table_name === r.table_name && b.column_name === r.column_name) && !sqlPosterior.includes(`"${r.table_name}"`));
       expect([...new Set(added.map((r) => r.table_name))].sort()).toEqual(["InstallationMeta", "WorkerInstance"]);
       expect(before.every((b) => after.some((a) => a.table_name === b.table_name && a.column_name === b.column_name && a.data_type === b.data_type))).toBe(true);
       // Integridad de las tablas nuevas
@@ -81,7 +84,7 @@ describe("migración CSAPP-09 → CSAPP-10", () => {
     await withTempDb("cs_app_migra10b_test", async (db, env) => {
       execSync("npx prisma migrate deploy", { env, stdio: "pipe" });
       const applied = await db.query(`SELECT migration_name FROM _prisma_migrations ORDER BY migration_name`);
-      expect(applied.rows.map((r) => r.migration_name)).toEqual([...PREVIAS, NUEVA]);
+      expect(applied.rows.map((r) => r.migration_name)).toEqual([...PREVIAS, NUEVA, ...POSTERIORES]);
       const diff = execSync("npx prisma migrate diff --from-config-datasource --to-schema prisma/schema.prisma --script", { env, stdio: "pipe" }).toString();
       expect(diff).toMatch(/empty migration|-- This is an empty migration/i);
     });

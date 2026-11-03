@@ -7,7 +7,7 @@ const d = (v: string) => new Date(`${v}T00:00:00Z`);
 
 export async function fakeBatch(adminId: string, profileId = "zendesk-tiempo") {
   return prisma.uploadBatch.create({
-    data: { profileId, profileVersion: 1, status: "COMPLETED", originalName: "sintetico.xlsx", storageId: `s-${randomUUID()}`, fileFormat: "xlsx", createdById: adminId },
+    data: { profileId, profileVersion: 1, status: "COMPLETED", originalName: "sintetico.xlsx", storageId: `s-${randomUUID()}`, fileFormat: "xlsx", createdById: adminId, legacyBase: true },
   });
 }
 

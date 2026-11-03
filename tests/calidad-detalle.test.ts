@@ -134,7 +134,7 @@ describe("CSV, notas y seguridad", () => {
   it("la cartera exporta TODAS las filas filtradas (no la página), con unidades, colores textuales, pesos, revisión y corte; negativos y fórmulas neutralizadas", async () => {
     const w = await world();
     await saveHealthCell(admin.id, { scope: "group", entityId: w.g.id, year: 2026, month: 10, state: "POSITIVE", comment: "=HYPERLINK(\"x\")", expectedVersion: 0 }, { now: NOW });
-    const csv = await qualityCsv(admin.id, Q({ tam: "25", pagina: "1" }), "cartera", { now: NOW });
+    const csv = await qualityCsv(admin.id, Q({ pagina: "1" }), "cartera", { now: NOW });
     const rows = parse(csv.body.replace(/^﻿/, ""), { delimiter: ";", columns: true, skip_empty_lines: true }) as Record<string, string>[];
     expect(rows.map((r) => r.entidad)).toEqual(["Atlas", "Boreal"]);
     expect(rows[0]).toMatchObject({ ambito: "Grupo Cliente", corte_efectivo: "2026-10-31", estado_periodo: "cerrado", revision_calidad: "1 (inicial)", global_color: "sin color", HEALTH_color: "sin color" });
@@ -142,8 +142,11 @@ describe("CSV, notas y seguridad", () => {
     expect(rows[0].HEALTH_peso_configurado_pct).toBe("16,66666666666666666667");
     const health = await qualityCsv(admin.id, Q({ anio: "2026" }), "health", { now: NOW });
     expect(health.body).toContain("'=HYPERLINK"); // fórmula textual neutralizada
-    const small = await qualityCsv(admin.id, Q({ q: "Atl" }), "cartera", { now: NOW });
+    // Los segmentadores (Soporte) recortan el CSV igual que la pantalla; un parámetro retirado como q=Atl ya NO filtra.
+    await prisma.serviceTerm.create({ data: { attribute: "SUPPORT", value: "GOLD", groupId: w.g.id } });
+    const small = await qualityCsv(admin.id, Q({ soporte: "GOLD" }), "cartera", { now: NOW });
     expect(small.rows).toBe(1);
+    expect((await qualityCsv(admin.id, Q({ q: "Atl" }), "cartera", { now: NOW })).rows).toBe(2);
     const reader1 = await qualityCsv(reader.id, Q(), "cartera", { now: NOW });
     expect(reader1.rows).toBe(2); // Consulta lee y descarga
   });

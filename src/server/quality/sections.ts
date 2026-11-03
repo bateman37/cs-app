@@ -203,7 +203,7 @@ export async function ticketRows(tx: Tx, q: QualityQuery, ids: string[], cfg: Qu
   const pageCount = Math.max(1, Math.ceil(total / pageSize));
   const p = Math.min(Math.max(1, page), pageCount);
   const rows = await tx.$queryRaw<{ ticket_id: string; created: string; type: string; status: string; cause: string | null; destinations: string[] | null; std: boolean; link: boolean; bugs: string[] | null }[]>(Prisma.sql`
-    SELECT x.ticket_id, to_char(x.created_on, 'YYYY-MM-DD') AS created, x.type, x.status, x.cause, x.destinations, ${predicate.bugStd} AS std, ${predicate.bugLink} AS link,
+    SELECT x.ticket_id, to_char(x.created_on, 'YYYY-MM-DD') AS created, x.type, x.status, x.cause, x.destinations, COALESCE(${predicate.bugStd}, false) AS std, COALESCE(${predicate.bugLink}, false) AS link,
       ARRAY(SELECT DISTINCT w."workItemId" FROM "WorkItemLink" l JOIN "WorkItem" w ON w.id = l."workItemId" JOIN "WorkItemRevision" wr ON wr.id = w."currentRevisionId"
         WHERE l."ticketId" = x.ticket_id AND wr."isBug" AND l."drvState" = 'RESOLVED_EXTERNAL' AND COALESCE(l."manualState", '') <> 'REJECTED' ORDER BY 1) AS bugs
     FROM (${ticketSetSql(q.scope, ids, from, to)}) x WHERE x.entity IS NOT NULL AND ${where} ORDER BY x.created_on, x.ticket_id LIMIT ${pageSize} OFFSET ${(p - 1) * pageSize}`);

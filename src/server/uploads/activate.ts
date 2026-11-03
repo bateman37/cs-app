@@ -105,12 +105,22 @@ export async function runActivate(rt: JobRuntime): Promise<"completed" | "stale"
       const dedupeKey = batch.scopeKey ?? "";
       let previousBatchId: string | null = null;
       if (profile.policy === "REPLACE_SCOPE") {
-        const prev = await tx.$queryRaw<{ id: string }[]>(Prisma.sql`
-          SELECT id FROM "UploadBatch"
+        const prev = await tx.$queryRaw<{ id: string; receptionSeq: bigint | null }[]>(Prisma.sql`
+          SELECT id, "receptionSeq" FROM "UploadBatch"
           WHERE "profileId" = ${batch.profileId} AND "scopeKey" = ${batch.scopeKey} AND status = 'COMPLETED'
             AND "supersededByBatchId" IS NULL AND id <> ${batch.id}
           FOR UPDATE`);
         previousBatchId = prev[0]?.id ?? null;
+        // Lo último recibido manda (HOTFIX-01 §4): un lote más antiguo que el activo del ámbito no lo sustituye aunque termine más tarde.
+        const mine = await tx.$queryRaw<{ receptionSeq: bigint | null }[]>(Prisma.sql`SELECT "receptionSeq" FROM "UploadBatch" WHERE id = ${batch.id}`);
+        const activeSeq = prev[0]?.receptionSeq;
+        if (activeSeq !== null && activeSeq !== undefined && mine[0]?.receptionSeq !== null && mine[0]?.receptionSeq !== undefined && mine[0].receptionSeq < activeSeq) {
+          const detail = "Existe una carga recibida después y ya activa para este ámbito: este lote es anterior y no la sustituye. Suba de nuevo el archivo si desea restaurar este contenido.";
+          await tx.uploadBatch.update({ where: { id: batch.id }, data: { status: "CANCELLED", phase: "Sustituido por una carga posterior", statusDetail: detail, finishedAt: new Date(), version: { increment: 1 } } });
+          await markJobDone(tx, job);
+          await recordAudit(tx, actor, { action: "REPROCESS", entityType: "UploadBatch", entityId: batch.id, batchId: batch.id, summary: `Carga «${batch.originalName}»: no se activó; ${detail}` });
+          return "stale" as const;
+        }
       }
       const ctx: ActivationContext = {
         batchId: batch.id,

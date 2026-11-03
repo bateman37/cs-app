@@ -1625,3 +1625,24 @@ model InstallationMeta {
   value     String
   updatedAt DateTime @default(now())
 }
+
+// ================================================================ CSAPP-HOTFIX-01: precarga de maestros (bloque propio, al final) ====
+
+/// Decisión del administrador sobre una revisión de la precarga de maestros. Ligada al checksum del archivo y a una clave de CONTENIDO
+/// (nunca al número de fila). Sin relaciones a propósito (ver la migración): no altera UploadBatch ni User.
+model MasterLoadDecision {
+  id             String   @id @default(cuid())
+  batchId        String
+  checksum       String
+  reviewKey      String
+  kind           String
+  decision       String
+  payload        Json     @default("{}")
+  reason         String
+  decidedById    String
+  decidedByEmail String
+  decidedAt      DateTime @default(now())
+
+  @@unique([batchId, reviewKey])
+  @@index([checksum, reviewKey])
+}

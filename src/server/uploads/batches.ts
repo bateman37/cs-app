@@ -200,7 +200,7 @@ export async function listSources(actorId: string) {
   const profiles = await getProfiles();
   return {
     available: profiles.map((p) => ({
-      id: p.id, label: p.label, description: p.description, formats: p.formats, metadataFields: p.metadataFields,
+      id: p.id, label: p.label, description: p.description, formats: p.formats, metadataFields: p.metadataFields, note: p.note ?? null,
     })),
     pending: await getPendingSources(),
   };

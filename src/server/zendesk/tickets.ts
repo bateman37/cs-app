@@ -226,7 +226,7 @@ export const zendeskTickets: ImportProfile = {
   version: 1,
   formats: ["xlsx"],
   policy: "INCORPORATE",
-  metadataFields: [{ name: "hoja", label: "Hoja del libro (solo si hay varias hojas compatibles)", type: "text", required: false }],
+  metadataFields: [],
   metadataSchema: z.object({ hoja: z.string().trim().max(120).optional() }).strict(),
   selectsSheet: true,
   blocksConfirmOnErrors: true,

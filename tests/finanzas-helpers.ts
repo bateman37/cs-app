@@ -5,7 +5,7 @@ import { FINANCE_PROFILE_ID, type FinanceCategory } from "@/domain/finance";
 import { batch, drain, uploadText } from "./cargas-helpers";
 import { financeXlsx, type FinOpts, type FinRow } from "./generators/finance";
 
-export const META = (anio: number, extra: object = {}) => ({ anio, conjuntoCompleto: "si", ...extra });
+export const META = (anio: number, extra: object = {}) => ({ anio, ...extra });
 
 export async function prepareFin(actorId: string, cat: FinanceCategory, year: number, rows: FinRow[], opts: FinOpts & { declared?: object; metadata?: object; name?: string } = {}) {
   const file = await financeXlsx(rows, { category: cat, ...opts });

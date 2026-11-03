@@ -81,7 +81,7 @@ describe("equivalencias Wrike/PAP directamente a Grupo Cliente", () => {
     await importFile(admin.id, PAP, await papBuffer([
       papRow({ Title: "1: antes", Proyecto: "Proyecto PAP", "Fecha puesta en producción": papDate("2025-02-10") }),
       papRow({ Title: "2: despues", Proyecto: "Proyecto PAP", "Fecha puesta en producción": papDate("2025-03-10") }),
-    ]), { metadata: { lista: "lista-test" } });
+    ]), { metadata: {} });
     const items = Object.fromEntries((await prisma.papItem.findMany()).map((i) => [i.papId, i]));
     expect(items["1"]).toMatchObject({ drvScope: "UNMAPPED", drvGroupId: null });
     expect(items["2"]).toMatchObject({ drvScope: "GROUP_ONLY", drvGroupId: gb.id, drvClientId: null });

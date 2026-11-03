@@ -73,7 +73,7 @@ describe("tres perfiles, año y filtros", () => {
     const extra = [{ name: "Otra", rows: [["Grupo cliente", "Vta Potencial", "Diferencia"], ["Z", 9, 0]] }];
     const amb = await prepareFin(admin.id, "SOPORTE", 2026, [{ grupo: "A", vta: 10 }], { total: { vta: 10 }, extraSheets: extra });
     expect(amb.status).toBe("REJECTED");
-    const ok = await prepareFin(admin.id, "SOPORTE", 2026, [{ grupo: "A", vta: 10 }], { total: { vta: 10 }, extraSheets: extra, metadata: { anio: 2026, conjuntoCompleto: "si", hoja: "Otra" } });
+    const ok = await prepareFin(admin.id, "SOPORTE", 2026, [{ grupo: "A", vta: 10 }], { total: { vta: 10 }, extraSheets: extra, metadata: { anio: 2026, hoja: "Otra" } });
     expect(ok.status).toBe("READY");
     expect((await cfg(ok.id)).sums.unique).toBe("9");
   });
@@ -81,10 +81,10 @@ describe("tres perfiles, año y filtros", () => {
     const { uploadText } = await import("./cargas-helpers");
     const { financeXlsx } = await import("./generators/finance");
     const f = await financeXlsx([{ grupo: "A", vta: 1 }], { total: { vta: 1 } });
-    for (const metadata of [{}, { anio: 2026 }, { conjuntoCompleto: "si" }, { anio: 1999, conjuntoCompleto: "si" }, { anio: 2026, conjuntoCompleto: "no" }]) {
+    for (const metadata of [{}, { anio: 2026 }, { conjuntoCompleto: "si" }, { anio: 1999 }, { anio: 2026, conjuntoCompleto: "no" }]) {
       await expect(uploadText(admin.id, f, { profileId: "facturacion-soporte", name: "f.xlsx", metadata })).rejects.toBeInstanceOf(DomainError);
     }
-    await expect(uploadText(reader.id, f, { profileId: "facturacion-soporte", name: "f.xlsx", metadata: { anio: 2026, conjuntoCompleto: "si" } })).rejects.toThrow();
+    await expect(uploadText(reader.id, f, { profileId: "facturacion-soporte", name: "f.xlsx", metadata: { anio: 2026 } })).rejects.toThrow();
   });
 });
 

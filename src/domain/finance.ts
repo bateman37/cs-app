@@ -177,9 +177,11 @@ export const FILTER_VOCAB: Record<FinanceCategory, readonly string[]> = {
   OTROS: ["gestión activos", "otros"],
 };
 
-/** Años admitidos en las cargas comerciales: no se aplica a finanzas la limitación de edición de usuarios al año actual. */
-export function isValidFinanceYear(year: number, now: Date = new Date()): boolean {
-  return Number.isInteger(year) && year >= 2000 && year <= now.getUTCFullYear() + 1;
+/** Rango técnico del año de un conjunto financiero (HOTFIX-01 §3): entero de cuatro dígitos, sin lista codificada ni límite «año actual + 1». */
+export const FINANCE_YEAR_MIN = 1900;
+export const FINANCE_YEAR_MAX = 9999;
+export function isValidFinanceYear(year: number): boolean {
+  return Number.isInteger(year) && year >= FINANCE_YEAR_MIN && year <= FINANCE_YEAR_MAX;
 }
 
 const fold = (s: string) =>

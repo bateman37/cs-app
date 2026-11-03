@@ -249,25 +249,18 @@ function makeProfile(product: BugProduct): ImportProfile {
     label: LABEL[product],
     description:
       `CSV de bugs de producto ${product} (${headers.length} campos, UTF-8, coma). Se carga por separado del otro producto: el producto no se deduce ni se mezcla por coincidencia de ID. ` +
-      "Se guardan todos los Work Item Type, pero solo Bug_ cuenta como defecto. Declare qué vista contiene (abiertos, intervalo o amplia): la ausencia en otra vista no cierra ni borra un elemento.",
+      "Se guardan todos los Work Item Type, pero solo Bug_ cuenta como defecto. Se lee el listado completo suministrado (vista amplia, contrato de la fuente): la ausencia en otro export no cierra ni borra un elemento.",
     version: 1,
     formats: ["csv"],
     delimiter: ",",
     policy: "INCORPORATE",
-    metadataFields: [
-      {
-        name: "vista",
-        label: "Vista del listado",
-        type: "select",
-        required: true,
-        options: VIEW_KINDS.map((v) => ({ value: v.value, label: v.label })),
-      },
-      { name: "ambito", label: "Ámbito DevOps (proyecto/área); por defecto «principal»", type: "text", required: false },
-    ],
+    metadataFields: [],
+    // Vista amplia: contrato de la fuente autorizado por Dennis (HOTFIX-01 §3). No es una declaración por carga.
     metadataSchema: z
-      .object({ vista: z.enum(VIEW_KINDS.map((v) => v.value) as [string, ...string[]], { error: "Indique la vista del listado." }), ambito: z.string().trim().max(80).optional() })
-      .strict(),
-    scopeKey: (m) => bugScopeKey(product, m.ambito as string | undefined),
+      .object({ hoja: z.string().trim().max(120).optional() })
+      .strict()
+      .transform(() => ({ vista: "AMPLIA" })) as unknown as z.ZodType<Record<string, unknown>>,
+    scopeKey: () => bugScopeKey(product, undefined),
     blocksConfirmOnErrors: true,
     entityConflictPolicy: "conflict_all",
     matchHeaders,

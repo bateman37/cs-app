@@ -9,6 +9,7 @@ import { pap } from "../pap/profile";
 import { bugsVfs, bugsVsw } from "../bugs/profile";
 import { FINANCE_PROFILES } from "../finance/profile";
 import { SYNTHETIC_SCHEMA, syntheticIncorporar, syntheticSustituir } from "./synthetic/profile";
+import { precargaMaestros } from "../precarga/profile";
 
 /** Nueve perfiles operativos: Tickets y Tiempos Zendesk (CSAPP-03); Wrike, PAP y bugs VFS/VSW (CSAPP-04); tres financieros (CSAPP-05). */
 const OPERATIONAL: ImportProfile[] = [zendeskTickets, zendeskTiempo, wrike, pap, bugsVfs, bugsVsw, ...FINANCE_PROFILES];
@@ -56,7 +57,7 @@ export async function syntheticProfilesEnabled(): Promise<boolean> {
 }
 
 export async function getProfiles(): Promise<ImportProfile[]> {
-  return (await syntheticProfilesEnabled()) ? [...OPERATIONAL, ...SYNTHETIC] : [...OPERATIONAL];
+  return (await syntheticProfilesEnabled()) ? [...OPERATIONAL, precargaMaestros, ...SYNTHETIC] : [...OPERATIONAL, precargaMaestros];
 }
 
 export async function getProfile(id: string): Promise<ImportProfile | null> {

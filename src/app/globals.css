@@ -196,8 +196,8 @@ details.chart-table > summary { cursor: pointer; color: var(--blue); font-size: 
 .chips-group { display: inline-flex; flex-wrap: wrap; gap: 0.35rem; align-items: center; }
 .chips-title { font-size: 0.75rem; color: var(--muted); text-transform: uppercase; letter-spacing: 0.04em; margin-right: 0.15rem; }
 .chip { display: inline-block; padding: 0.2rem 0.65rem; border: 1px solid var(--border); border-radius: 999px; background: var(--surface); color: inherit; text-decoration: none; font-size: 0.8125rem; line-height: 1.3; }
-.chip:hover { border-color: var(--accent, #1f1fc4); }
-.chip-on { background: var(--accent, #1f1fc4); border-color: var(--accent, #1f1fc4); color: #fff; font-weight: 600; }
+.chip:hover { border-color: var(--blue); }
+.chip-on { background: var(--blue); border-color: var(--blue); color: #fff; font-weight: 600; }
 .chip-on::before { content: "✓ "; }
 
 /* ---------------------------------------------------------------- HOTFIX-02: tablas densas y Comparativa panorámica */
@@ -218,21 +218,23 @@ details.chart-table > summary { cursor: pointer; color: var(--blue); font-size: 
 .pbar-last { border: 1px solid var(--border); border-radius: 99px; background: var(--surface); }
 .prov { background: var(--warn-bg); color: #6b5a00; border: 1px solid var(--accent); border-radius: 99px; padding: 0.05rem 0.5rem; font-size: 0.75rem; cursor: help; }
 .cmp-error { background: var(--err-bg); border: 1px solid var(--err); color: var(--err); padding: 0.5rem 0.75rem; border-radius: var(--radius); font-size: 0.875rem; }
+.cmp-error-detail { margin-top: 0.3rem; font-size: 0.75rem; color: var(--text); }
+.cmp-error-detail code { overflow-wrap: anywhere; }
 .cmp-foot { display: flex; flex-wrap: wrap; align-items: center; gap: 0.3rem 1rem; font-size: 0.75rem; }
 .cmp-foot .btn { margin-left: auto; }
 .cmp2-scroll { max-height: calc(100vh - 11.5rem); min-height: 16rem; overscroll-behavior: contain; }
-.cmp2 { border-collapse: separate; border-spacing: 0; width: max-content; min-width: 100%; font-size: 12px; line-height: 1.2; font-variant-numeric: tabular-nums; }
-.cmp2 th, .cmp2 td { padding: 0 6px; height: 27px; border-bottom: 1px solid #ececf3; border-right: 1px solid #f1f1f6; background: var(--surface); white-space: nowrap; vertical-align: middle; }
-.cmp2 thead th { position: sticky; z-index: 2; background: #f0f0f7; color: var(--text); font-size: 11px; font-weight: 600; white-space: normal; text-align: right; vertical-align: bottom; line-height: 1.15; height: auto; padding: 3px 6px; }
+.cmp2 { border-collapse: separate; border-spacing: 0; table-layout: fixed; width: 100%; font-size: 12px; line-height: 1.2; font-variant-numeric: tabular-nums; }
+.cmp2 th, .cmp2 td { padding: 0 5px; height: 27px; border-bottom: 1px solid #ececf3; border-right: 1px solid #f1f1f6; background: var(--surface); white-space: nowrap; vertical-align: middle; }
+.cmp2 thead th { position: sticky; z-index: 2; background: #f0f0f7; color: var(--text); font-size: 11px; font-weight: 600; white-space: normal; text-align: right; vertical-align: bottom; line-height: 1.15; height: auto; padding: 3px 5px; }
 .cmp2 thead tr.groups th { top: 0; height: 36px; text-align: center; background: #e4e3fb; color: var(--blue-dark); vertical-align: middle; border-right: 1px solid #fff; }
 .cmp2 thead tr.groups th:first-child { text-align: left; }
 .cmp2 .blk-dates { display: block; font-weight: 400; font-size: 10.5px; color: var(--muted); }
-.cmp2 thead tr.cols th { top: 36px; min-width: 52px; }
+.cmp2 thead tr.cols th { top: 36px; }
 .cmp2 thead tr.cols th a { color: inherit; text-decoration: none; display: block; }
 .cmp2 thead tr.cols th a:hover { text-decoration: underline; }
 .cmp2 thead tr.cols th:nth-child(-n+3) { text-align: left; vertical-align: bottom; }
 .cmp2 .blk-start { border-left: 2px solid #d4d3ee; }
-.cmp2 .sticky-col { position: sticky; left: 0; z-index: 1; width: 11.5rem; min-width: 11.5rem; max-width: 15rem; box-shadow: 1px 0 0 var(--border); text-align: left; }
+.cmp2 .sticky-col { position: sticky; left: 0; z-index: 1; box-shadow: 1px 0 0 var(--border); text-align: left; }
 .cmp2 thead .sticky-col { z-index: 4; }
 .cmp2 th.name { font-size: 12px; font-weight: 600; color: var(--text); overflow: hidden; text-overflow: ellipsis; }
 .cmp2 th.name a { display: block; overflow: hidden; text-overflow: ellipsis; text-decoration: none; }
@@ -253,7 +255,7 @@ details.chart-table > summary { cursor: pointer; color: var(--blue); font-size: 
 .cmp2 tbody tr:nth-last-child(-n+2) .nd-pop { top: auto; bottom: 100%; }
 @media (max-width: 700px) {
   .cmp2-scroll { max-height: calc(100vh - 14rem); }
-  .cmp2 .sticky-col { width: 8.5rem; min-width: 8.5rem; max-width: 9rem; }
+  .cmp2 col:first-child { width: 112px !important; }
   .pend { margin-left: 0; }
 }
 

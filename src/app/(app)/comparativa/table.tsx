@@ -20,6 +20,9 @@ const COLS: Record<PeriodKey, ColKey[]> = {
   prevYear: ["hours", "revenue", "perDay"],
   prevCum: ["hours", "revenue", "perDay"],
 };
+/** Anchos fijos (px) para que la tabla compacta quepa a 1920 px con nombres y cifras grandes; las cabeceras se parten en 2–3 líneas, no el contenido. */
+const COL_W: Record<ColKey, number> = { hours: 56, revenue: 84, perDay: 66, devTarget: 86, devPortfolio: 76, stock: 56, tariff: 70 };
+const ID_W = [186, 112, 60];
 const fdm = (iso: string) => iso.split("-").reverse().join("/");
 
 /** Valor no disponible: «—» con la explicación breve al clic/foco (sin párrafos en la celda). Funciona sin JavaScript (`details`). */
@@ -117,6 +120,10 @@ export function ComparativeTable({ view, base }: { view: PortfolioView; base: st
   return (
     <div className="cmp-scroll cmp2-scroll" tabIndex={0} role="region" aria-label="Tabla comparativa de la cartera, desplazable">
       <table className="cmp2">
+        <colgroup>
+          {ID_W.map((w, i) => <col key={`id${i}`} style={{ width: w }} />)}
+          {PERIOD_BLOCKS.flatMap((b) => COLS[BLOCK_PERIOD[b]].map((c) => <col key={`${b}-${c}`} style={{ width: COL_W[c] }} />))}
+        </colgroup>
         <caption className="visually-hidden">Comparativa por Grupo Cliente: una fila por Grupo, con mes seleccionado, mes anterior, año actual acumulado, año anterior completo y acumulado anterior comparable. Desviación positiva: peor rendimiento.</caption>
         <thead>
           <tr className="groups">

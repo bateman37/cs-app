@@ -73,8 +73,9 @@ export default async function Page({ searchParams }: { searchParams: Promise<Sea
       </div>
       {error ? (
         <div className="cmp-error" role="alert">
-          <strong>No se pudo leer la cartera.</strong> <span>{error}</span>{" "}
+          <strong>No se pudo cargar la comparativa.</strong> <span>La lectura de los datos ha fallado; no se muestra ningún valor para no dar un cero falso. Inténtelo de nuevo y, si persiste, avise a un Administrador.</span>{" "}
           <Link href={`${BASE}${qs(params)}`} className="btn btn-secondary btn-sm" prefetch={false}>Reintentar</Link>
+          {isAdmin ? <details className="cmp-error-detail"><summary>Detalle técnico</summary><code>{error}</code></details> : null}
         </div>
       ) : null}
       {view && view.totalGroups === 0 ? (

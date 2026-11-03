@@ -131,7 +131,8 @@ export function parseAnalysisQuery(raw: RawParams, now: Date = new Date()): { qu
       revision,
       q,
       support: filterList("soporte", SUPPORT_VALUES),
-      hosting: filterList("alojamiento", HOSTING_VALUES),
+      // HOTFIX-02: el filtro de negocio es «servidor» (CLOUD/OP); `alojamiento` se conserva solo como alias heredado de las vistas aún no migradas.
+      hosting: filterList(raw.servidor !== undefined ? "servidor" : "alojamiento", HOSTING_VALUES),
       complexity: filterList("complejidad", COMPLEXITY_VALUES),
       product: product.success ? product.data : "",
       status: status.v,
@@ -159,7 +160,7 @@ export function queryToParams(q: AnalysisQuery, now: Date = new Date()): Record<
   if (q.revision !== null) out.revision = String(q.revision);
   if (q.q) out.q = q.q;
   if (q.support.length) out.soporte = q.support.join(",");
-  if (q.hosting.length) out.alojamiento = q.hosting.join(",");
+  if (q.hosting.length) out.servidor = q.hosting.join(",");
   if (q.complexity.length) out.complejidad = q.complexity.join(",");
   if (q.product) out.producto = q.product;
   if (q.status !== d.status) out.estado = q.status;

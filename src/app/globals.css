@@ -33,6 +33,9 @@ a:focus-visible, button:focus-visible, input:focus-visible, select:focus-visible
 .userbox { display: flex; gap: 0.75rem; align-items: center; font-size: 0.9rem; }
 .userbox .role { background: #2a2a31; padding: 0.1rem 0.5rem; border-radius: 99px; }
 main { max-width: 1180px; margin: 0 auto; padding: 1.25rem 1rem 3rem; }
+/* HOTFIX-02: el PADRE de las vistas panorámicas (Comparativa, Análisis Cliente, Calidad) usa todo el ancho; login, formularios de Administración y Pulse Rent conservan el límite. */
+main.main-wide { max-width: none; width: 100%; padding: 0.75rem 1.25rem 2rem; }
+@media (max-width: 700px) { main.main-wide { padding: 0.75rem 1rem 2rem; } }
 h1 { font-size: 1.6rem; margin: 0.25rem 0 1rem; color: var(--blue); }
 h2 { font-size: 1.2rem; margin: 0 0 0.75rem; }
 h3 { font-size: 1rem; margin: 1rem 0 0.5rem; }
@@ -193,6 +196,81 @@ details.chart-table > summary { cursor: pointer; color: var(--blue); font-size: 
 .chips-group { display: inline-flex; flex-wrap: wrap; gap: 0.35rem; align-items: center; }
 .chips-title { font-size: 0.75rem; color: var(--muted); text-transform: uppercase; letter-spacing: 0.04em; margin-right: 0.15rem; }
 .chip { display: inline-block; padding: 0.2rem 0.65rem; border: 1px solid var(--border); border-radius: 999px; background: var(--surface); color: inherit; text-decoration: none; font-size: 0.8125rem; line-height: 1.3; }
-.chip:hover { border-color: var(--accent, #1f1fc4); }
-.chip-on { background: var(--accent, #1f1fc4); border-color: var(--accent, #1f1fc4); color: #fff; font-weight: 600; }
+.chip:hover { border-color: var(--blue); }
+.chip-on { background: var(--blue); border-color: var(--blue); color: #fff; font-weight: 600; }
 .chip-on::before { content: "✓ "; }
+
+/* ---------------------------------------------------------------- HOTFIX-02: tablas densas y Comparativa panorámica */
+.cmp-page { display: flex; flex-direction: column; gap: 0.5rem; min-width: 0; }
+.cmp-head { display: flex; flex-wrap: wrap; align-items: baseline; gap: 0.15rem 1rem; }
+.cmp-head h1 { font-size: 1.2rem; margin: 0; }
+.cmp-sum { display: flex; flex-wrap: wrap; gap: 0 0.5rem; margin: 0; font-size: 0.8125rem; color: var(--muted); }
+.cmp-sum strong { color: var(--text); font-variant-numeric: tabular-nums; }
+.pend { margin-left: auto; font-size: 0.75rem; }
+.pend a, .pend span { background: var(--warn-bg); border: 1px solid var(--accent); color: #6b5a00; padding: 0.05rem 0.55rem; border-radius: 99px; text-decoration: none; cursor: help; }
+.pend a { cursor: pointer; }
+.cmp-controls { display: flex; flex-wrap: wrap; justify-content: space-between; align-items: center; gap: 0.4rem 1.5rem; }
+.pbar { display: flex; flex-wrap: wrap; align-items: center; gap: 0.35rem 0.5rem; font-size: 0.8125rem; }
+.pbar select { font: inherit; padding: 0.15rem 0.3rem; border: 1px solid var(--border); border-radius: var(--radius); background: var(--surface); }
+.pbar .seg { display: inline-flex; border: 1px solid var(--border); border-radius: 99px; overflow: hidden; }
+.pbar .seg a, .pbar-last { padding: 0.15rem 0.65rem; text-decoration: none; color: inherit; }
+.pbar .seg a.seg-on, .pbar-last.seg-on-link { background: var(--blue); color: #fff; font-weight: 600; }
+.pbar-last { border: 1px solid var(--border); border-radius: 99px; background: var(--surface); }
+.prov { background: var(--warn-bg); color: #6b5a00; border: 1px solid var(--accent); border-radius: 99px; padding: 0.05rem 0.5rem; font-size: 0.75rem; cursor: help; }
+.cmp-error { background: var(--err-bg); border: 1px solid var(--err); color: var(--err); padding: 0.5rem 0.75rem; border-radius: var(--radius); font-size: 0.875rem; }
+.cmp-error-detail { margin-top: 0.3rem; font-size: 0.75rem; color: var(--text); }
+.cmp-error-detail code { overflow-wrap: anywhere; }
+.cmp-foot { display: flex; flex-wrap: wrap; align-items: center; gap: 0.3rem 1rem; font-size: 0.75rem; }
+.cmp-foot .btn { margin-left: auto; }
+.cmp2-scroll { max-height: calc(100vh - 11.5rem); min-height: 16rem; overscroll-behavior: contain; }
+.cmp2 { border-collapse: separate; border-spacing: 0; table-layout: fixed; width: 100%; font-size: 12px; line-height: 1.2; font-variant-numeric: tabular-nums; }
+.cmp2 th, .cmp2 td { padding: 0 5px; height: 27px; border-bottom: 1px solid #ececf3; border-right: 1px solid #f1f1f6; background: var(--surface); white-space: nowrap; vertical-align: middle; }
+.cmp2 thead th { position: sticky; z-index: 2; background: #f0f0f7; color: var(--text); font-size: 11px; font-weight: 600; white-space: normal; text-align: right; vertical-align: bottom; line-height: 1.15; height: auto; padding: 3px 5px; }
+.cmp2 thead tr.groups th { top: 0; height: 36px; text-align: center; background: #e4e3fb; color: var(--blue-dark); vertical-align: middle; border-right: 1px solid #fff; }
+.cmp2 thead tr.groups th:first-child { text-align: left; }
+.cmp2 .blk-dates { display: block; font-weight: 400; font-size: 10.5px; color: var(--muted); }
+.cmp2 thead tr.cols th { top: 36px; }
+.cmp2 thead tr.cols th a { color: inherit; text-decoration: none; display: block; }
+.cmp2 thead tr.cols th a:hover { text-decoration: underline; }
+.cmp2 thead tr.cols th:nth-child(-n+3) { text-align: left; vertical-align: bottom; }
+.cmp2 .blk-start { border-left: 2px solid #d4d3ee; }
+.cmp2 .sticky-col { position: sticky; left: 0; z-index: 1; box-shadow: 1px 0 0 var(--border); text-align: left; }
+.cmp2 thead .sticky-col { z-index: 4; }
+.cmp2 th.name { font-size: 12px; font-weight: 600; color: var(--text); overflow: hidden; text-overflow: ellipsis; }
+.cmp2 th.name a { display: block; overflow: hidden; text-overflow: ellipsis; text-decoration: none; }
+.cmp2 th.name a:hover { text-decoration: underline; }
+.cmp2 td.meta { text-align: left; font-size: 11.5px; }
+.cmp2 td.num { text-align: right; }
+.cmp2 tbody tr:hover td, .cmp2 tbody tr:hover th { background: #f7f7fd; }
+.cmp2 tfoot th, .cmp2 tfoot td { position: sticky; bottom: 0; z-index: 2; background: #f0f0f7; font-weight: 600; border-top: 2px solid var(--border); }
+.cmp2 tfoot th.sticky-col { z-index: 3; }
+.cmp2 .dev-pos { color: var(--err); }
+.cmp2 .dev-neg { color: var(--ok); }
+.cmp2 .mixto { background: #ececf4; border-radius: 99px; padding: 0 0.45rem; font-size: 11px; cursor: help; }
+.nd { display: inline-block; position: relative; }
+.nd > summary { list-style: none; cursor: pointer; color: var(--muted); padding: 0 0.25rem; }
+.nd > summary::-webkit-details-marker { display: none; }
+.nd[open] > .nd-pop { display: block; }
+.nd-pop { display: none; position: absolute; right: 0; top: 100%; z-index: 6; width: 15rem; max-width: 70vw; white-space: normal; text-align: left; font-weight: 400; font-size: 11.5px; background: #fff; border: 1px solid var(--border); box-shadow: 0 4px 14px rgba(0,0,0,.16); border-radius: var(--radius); padding: 0.4rem 0.55rem; color: var(--text); }
+.cmp2 tbody tr:nth-last-child(-n+2) .nd-pop { top: auto; bottom: 100%; }
+@media (max-width: 700px) {
+  .cmp2-scroll { max-height: calc(100vh - 14rem); }
+  .cmp2 col:first-child { width: 112px !important; }
+  .pend { margin-left: 0; }
+}
+
+/* Clases de las fichas y de Calidad (HOTFIX-02): estilos densos propios, con prefijo, para no mezclar vistas. */
+.fc-page { display: flex; flex-direction: column; gap: 0.5rem; min-width: 0; }
+.fc-grid { display: grid; grid-template-columns: minmax(0, 1.1fr) minmax(0, 1fr); gap: 0.6rem; align-items: start; }
+.fc-panel { background: var(--surface); border: 1px solid var(--border); border-radius: var(--radius); padding: 0.4rem 0.6rem; min-width: 0; }
+.fc-panel h2 { font-size: 0.8125rem; margin: 0 0 0.3rem; color: var(--blue); }
+.fc-table { border-collapse: collapse; width: 100%; font-size: 12px; line-height: 1.2; font-variant-numeric: tabular-nums; }
+.fc-table th, .fc-table td { padding: 0 5px; height: 26px; border-bottom: 1px solid #ececf3; white-space: nowrap; }
+.fc-table td.num, .fc-table th.num { text-align: right; }
+@media (max-width: 1100px) { .fc-grid { grid-template-columns: minmax(0, 1fr); } }
+.ql-page { display: flex; flex-direction: column; gap: 0.5rem; min-width: 0; }
+.ql-kpis { display: grid; grid-template-columns: repeat(auto-fit, minmax(10rem, 1fr)); gap: 0.5rem; }
+.ql-kpi { background: var(--surface); border: 1px solid var(--border); border-radius: var(--radius); padding: 0.4rem 0.6rem; text-decoration: none; color: inherit; display: block; }
+.ql-table { border-collapse: separate; border-spacing: 0; width: 100%; font-size: 12px; line-height: 1.2; font-variant-numeric: tabular-nums; }
+.ql-table th, .ql-table td { padding: 0 6px; height: 27px; border-bottom: 1px solid #ececf3; white-space: nowrap; background: var(--surface); }
+.ql-table td.num { text-align: right; }

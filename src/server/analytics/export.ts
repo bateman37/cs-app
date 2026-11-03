@@ -19,7 +19,7 @@ export const PERIOD_NAME: Record<PeriodKey, string> = { month: "mes_seleccionado
 
 const n = (v: string | null | undefined): CsvValue => ({ n: v ?? null });
 const label = (v: string) => VALUE_LABEL[v] ?? v;
-const cell = (c: { values: string[]; heterogeneous: boolean }) => (c.values.length === 0 ? "sin informar" : c.heterogeneous ? `heterogéneo: ${c.values.map(label).join(" / ")}` : label(c.values[0]));
+const cell = (c: { values: string[]; heterogeneous: boolean }) => (c.values.length === 0 ? "sin informar" : c.heterogeneous ? `Mixto: ${c.values.map(label).join(" / ")}` : label(c.values[0]));
 
 type Ctx = Pick<EconomicResult, "settings" | "reference" | "input" | "periodsDefinition">;
 export const CONTEXT_HEADER = ["fecha_solicitada", "corte_efectivo", "modo", "servicio", "ambito", "metodo_ingreso", "revision_configuracion", "objetivo_eur_jornada", "jornada_horas", "version_motor", "sello_datos", "validacion", "generado"] as const;
@@ -46,10 +46,11 @@ export type CsvResult = { filename: string; body: string; rows: number; stamp: s
 export async function portfolioCsv(actorId: string, query: AnalysisQuery): Promise<CsvResult> {
   const v = await getPortfolioAll(actorId, query);
   const ctx = v.economics;
-  const header = [...CONTEXT_HEADER, "fila", "grupo_cliente", "id", "denominacion_bc", "estado_maestro", "plan_soporte", "alojamiento", "complejidad", "producto", "cobertura_maestro", "periodo", ...PERIOD_COLS, "cobertura_cartera_grupos", "cobertura_cartera_completos", "grupos_afectados", "ingreso_sin_dedicacion_eur", "grupos_sin_dedicacion"];
+  const header = [...CONTEXT_HEADER, "fila", "grupo_cliente", "id", "denominacion_bc", "estado_maestro", "soporte", "servidor", "complejidad", "producto", "cobertura_maestro", "periodo", ...PERIOD_COLS, "cobertura_cartera_grupos", "cobertura_cartera_completos", "grupos_afectados", "ingreso_sin_dedicacion_eur", "grupos_sin_dedicacion"];
   const rows: CsvValue[][] = [];
   const keys = Object.keys(PERIOD_NAME) as PeriodKey[];
-  const scope = `grupos filtrados (${v.filteredGroups} de ${v.totalGroups})`;
+  const sel = [query.support.length ? `soporte: ${query.support.map(label).join(" / ")}` : "", query.hosting.length ? `servidor: ${query.hosting.join(" / ")}` : ""].filter(Boolean).join("; ");
+  const scope = `grupos filtrados (${v.filteredGroups} de ${v.totalGroups})${sel ? ` · ${sel}` : ""}`;
   for (const k of keys) {
     const pf = ctx.portfolio?.[k];
     if (!pf) continue;
@@ -58,7 +59,7 @@ export async function portfolioCsv(actorId: string, query: AnalysisQuery): Promi
       ...contextCells(query, ctx, scope), "CARTERA", "(cartera filtrada)", "", "", "", "", "", "", "", "", PERIOD_NAME[k],
       p.from, p.to, p.provisional ? "provisional" : "cerrado", ctx.reference.validation.state === "VALIDATED" ? "sí" : "no",
       n(pf.hours), n(pf.revenue), pf.complete ? "AVAILABLE" : "PARTIAL", n(pf.revenue),
-      ...f(pf.perDay), ...f(pf.deviationVsTarget), n(null), "", "", n(null), "", "", n(null), n(null), n(null), n(null), ...f(null),
+      ...f(pf.perDay), ...f(pf.deviationVsTarget), n(null), "", "", n(null), "", "", n(null), v.totals[k].users, n(null), n(null), n(v.totals[k].tariff), v.totals[k].tariff === null ? "NOT_COMPUTABLE" : v.totals[k].tariffMissing > 0 ? "PARTIAL" : "AVAILABLE", v.totals[k].tariffMissing > 0 ? `${v.totals[k].tariffMissing} grupo(s) sin tarifa calculable no aportan` : "",
       String(pf.coverage.groups), String(pf.coverage.complete), pf.affected.map((a) => `${a.code}:${a.groups}`).join(" | "), n(pf.zeroHours.income), String(pf.zeroHours.count),
     ]);
   }

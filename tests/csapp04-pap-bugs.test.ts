@@ -142,6 +142,17 @@ describe("PAP: causas, campos y relaciones", () => {
     expect(await count("PapCause", `"revisionId" IN (SELECT r.id FROM "PapRevision" r JOIN "PapItem" i ON i.id = r."itemId" WHERE i."papId" = '1')`)).toBe(2);
   });
 
+  it("Petición cliente es categoría conocida (no «sin clasificar»); con una causa correctiva el PAP sigue siendo un único correctivo con desglose no aditivo", async () => {
+    const b = await papPrepare([
+      papRow({ Title: "1: solo petición", "Causa raíz": "Petición cliente" }),
+      papRow({ Title: "2: mixto", "Causa raíz": "peticion Cliente;#Correctivo (Estándar)" }),
+    ]);
+    const s = await papSummary(admin.id, b.id);
+    expect(s).toMatchObject({ distinctPap: 2, corrective: 1, nonCorrective: 1, unknownCause: 0 });
+    expect(s?.memberships.find((m) => m.category === "CLIENT_REQUEST")?.pap).toBe(2);
+    expect(s?.memberships.find((m) => m.category === "OTHER")).toBeUndefined();
+  });
+
   it("un nuevo «Correctivo (…)» futuro sigue siendo correctivo; una etiqueta desconocida queda sin clasificar", async () => {
     const b = await papPrepare([papRow({ Title: "1: x", "Causa raíz": "Correctivo (Tipo futuro)" }), papRow({ Title: "2: y", "Causa raíz": "Etiqueta nueva" })]);
     const s = await papSummary(admin.id, b.id);

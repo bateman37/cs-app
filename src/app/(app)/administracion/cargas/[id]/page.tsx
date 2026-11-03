@@ -16,6 +16,7 @@ import { Csapp04Panels } from "./csapp04-panels";
 import { FinancePanel } from "./finance-panel";
 import { CoveragePanel } from "./coverage-panel";
 import { listDeclarations } from "@/server/quality/coverage";
+import { snapshotImpact } from "@/server/uploads/snapshot";
 
 export const metadata: Metadata = { title: "Ficha de carga" };
 const BASE = "/administracion/cargas";
@@ -44,6 +45,7 @@ export default async function CargaPage({ params, searchParams }: { params: Prom
   const target = first(sp.target);
   const tf = { ticket: first(sp.tf_ticket) || undefined, person: first(sp.tf_person) || undefined, from: first(sp.tf_from) || undefined, to: first(sp.tf_to) || undefined, text: first(sp.tf_text) || undefined };
   const showRows = ["READY", "ACTIVATION_QUEUED", "ACTIVATING", "COMPLETED", "REVERTED", "FAILED"].includes(st) && b.rowsReceived > 0;
+  const impact = ["READY", "ACTIVATION_QUEUED"].includes(st) ? await snapshotImpact(user.id, id) : null;
   const [rows, history] = await Promise.all([
     showRows ? listStagedRows(user.id, id, { page: pp, pageSize: 20, classification: cls, onlyWarnings }) : null,
     listUploadHistory(user.id, id, { page: hp }),
@@ -97,6 +99,17 @@ export default async function CargaPage({ params, searchParams }: { params: Prom
         {!prepared && !terminal ? <p className="muted">La preparación no ha terminado: no se puede confirmar todavía.</p> : null}
         <ActionButtons id={b.id} version={b.version} actions={actions} completed={st === "COMPLETED"} />
       </section>
+
+      {impact && st !== "COMPLETED" && st !== "REVERTED" ? (
+        <section className="card" aria-labelledby="sec-impacto">
+          <h2 id="sec-impacto">Impacto de la activación</h2>
+          <p>
+            Al confirmar, este export completo pasa a ser el conjunto activo de tiempos de la fuente ({impact.incomingRows.toLocaleString("es-ES")} filas válidas distintas).
+            Sustituye {impact.activeKind === "legacy" ? "la base heredada (cargas anteriores a este cambio)" : <>la instantánea del lote <Link href={`${BASE}/${impact.activeBatchId}`}>{impact.activeBatchId}</Link></>}
+            {" "}({impact.activeRecords.toLocaleString("es-ES")} registros activos, {(Number(impact.activeMinutes) / 60).toLocaleString("es-ES", { maximumFractionDigits: 2 })} h). Las cargas anteriores se conservan para el historial y se pueden restaurar revirtiendo este lote.
+          </p>
+        </section>
+      ) : null}
 
       <section className="card" aria-labelledby="sec-datos">
         <h2 id="sec-datos">Datos del lote</h2>

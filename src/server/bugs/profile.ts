@@ -6,7 +6,6 @@ import {
   BUG_PROFILES,
   BUG_RULES,
   VFS_HEADERS,
-  VIEW_KINDS,
   VSW_HEADERS,
   classifyState,
   isBugType,

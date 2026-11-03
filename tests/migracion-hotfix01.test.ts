@@ -15,7 +15,6 @@ function withDb(url: string, name: string): string {
   return u.toString();
 }
 const PREVIAS = ["20261029200318_base_acceso_y_maestros", "20261029220244_personal_usuarios_cargas", "20261030080000_zendesk_tickets_y_tiempos", "20261030120000_wrike_pap_bugs", "20261031090000_finanzas_motor_economico", "20261102090000_pulse_calidad_configuracion", "20261103090000_calidad_health_cobertura", "20261104090000_exportaciones_conciliacion", "20261105090000_operacion_latido_instalacion"];
-const NUEVA = "20261106090000_hotfix01_ultima_carga";
 
 async function withTempDb<T>(name: string, fn: (db: Client, env: NodeJS.ProcessEnv) => Promise<T>): Promise<T> {
   const approved = resolveTestTarget();

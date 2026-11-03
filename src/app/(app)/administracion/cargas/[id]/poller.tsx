@@ -16,10 +16,11 @@ export function StatusPoller({ id, initial, label }: { id: string; initial: Esta
   const router = useRouter();
   const last = useRef(`${initial.status}|${initial.phase}|${initial.rowsProcessed}|${initial.version}|${initial.busy}`);
   const [live, setLive] = useState<Estado>(initial);
+  // El último sondeo manda mientras no sea más antiguo que lo que la ficha ya refrescó.
+  const shown = live.version >= initial.version ? live : initial;
   const active = working(initial);
 
   useEffect(() => {
-    setLive(initial);
     if (!active) return;
     let stop = false;
     let timer: ReturnType<typeof setTimeout> | undefined;
@@ -50,16 +51,14 @@ export function StatusPoller({ id, initial, label }: { id: string; initial: Esta
       if (timer) clearTimeout(timer);
       ctrl.abort();
     };
-    // `initial` cambia de identidad en cada refresco: solo importan sus valores.
-    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [id, active, router]);
 
   return (
-    <p role="status" aria-live="polite" data-testid="estado-lote" aria-busy={working(live) ? true : undefined}>
+    <p role="status" aria-live="polite" data-testid="estado-lote" aria-busy={working(shown) ? true : undefined}>
       <strong>{label}</strong>
-      {live.phase ? <> · {live.phase}</> : null}
-      {!live.terminal ? <> · {live.rowsProcessed.toLocaleString("es-ES")} filas leídas</> : null}
-      {live.terminal && live.busy ? <> · Operación aparte en curso (recálculo o reversión)…</> : null}
+      {shown.phase ? <> · {shown.phase}</> : null}
+      {!shown.terminal ? <> · {shown.rowsProcessed.toLocaleString("es-ES")} filas leídas</> : null}
+      {shown.terminal && shown.busy ? <> · Operación aparte en curso (recálculo o reversión)…</> : null}
     </p>
   );
 }

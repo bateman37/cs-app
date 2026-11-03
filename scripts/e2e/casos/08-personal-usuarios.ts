@@ -27,7 +27,7 @@ export async function personalUsuarios(ctx: Ctx): Promise<void> {
   const base = `${ctx.base}/administracion/usuarios`;
   await page.goto(`${base}/cliente/${client.id}?anio=${year - 1}`);
   await page.getByLabel("Usuarios contratados").fill("65");
-  await page.getByRole("button", { name: "Ver vista previa" }).click();
+  await page.getByRole("button", { name: "Ver vista previa" }).last().click(); // el formulario de valor inicial es el último de la ficha
   await page.getByRole("button", { name: "Confirmar inicialización" }).click();
   await page.waitForURL(/\/administracion\/usuarios\/cliente\/[^/]+(?!\/revisar)\?/, { timeout: 10000 }).catch(() => undefined);
   await page.waitForTimeout(1000);

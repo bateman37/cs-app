@@ -1,136 +1,79 @@
 import Link from "next/link";
+import type { ReactNode } from "react";
 import { DIAGNOSIS_ACTION, DIAGNOSIS_FAMILIES, DIAGNOSIS_LABEL, UNIT_LABEL, BACKLOG_UNIT, type DiagnosisFamily } from "@/domain/quality-config";
-import { COVERAGE_SOURCE_LABEL } from "@/domain/quality-coverage";
 import { qualityToParams, type QualityQuery } from "@/domain/quality-query";
 import { qs } from "@/lib/format";
 import { Pager, fdate } from "@/components/analytics/ui";
 import type { BacklogView, DiagnosisView, DiagRow } from "@/server/quality/detail";
-import type { QualityView } from "@/server/quality/engine";
-import { num } from "./ui";
+import { NeutralTag, num } from "./ui";
 
 const FAM = (f: string) => DIAGNOSIS_LABEL[f as DiagnosisFamily] ?? f;
+const dash = <span className="ql-muted" aria-label="sin dato">—</span>;
 
-export function ContextCard({ v }: { v: QualityView }) {
-  const p = v.period;
+function T({ cols, rows, right = [] }: { cols: string[]; rows: ReactNode[][]; right?: number[] }) {
   return (
-    <div className="card" aria-label="Contexto del cálculo">
-      <dl className="kv">
-        <dt>Mes y corte</dt>
-        <dd>
-          Mes {String(p.month).padStart(2, "0")}/{p.year} · fecha solicitada {fdate(p.requested)} · corte efectivo <strong>{fdate(p.cut)}</strong> {p.provisional ? <span className="badge badge-warn">provisional (mes no cerrado)</span> : <span className="badge badge-ok">mes completo</span>}
-          {p.clamped ? <> · <small>el corte pedido era posterior a hoy</small></> : null}
-        </dd>
-        <dt>Resultado global</dt><dd>Mensual: Health del mes, flujos del mismo periodo y stock observado compatible. No hay global anual: el CUM y el año anterior son contextos técnicos de evolución.</dd>
-        <dt>Configuración</dt>
-        <dd>
-          Calidad {v.config.revisionNo}{v.config.persisted ? "" : " (inicial, sin activaciones)"} · perfiles de Pulse {v.pulseRevision} · economía {v.manifest.economic}
-          {v.config.adapterNotes.length ? <> · <span className="badge badge-int">leída de v1 mediante adaptador</span></> : null}
-          {v.config.simulated ? <> · <span className="badge badge-warn">borrador (simulación)</span></> : null}
-        </dd>
-        <dt>Cobertura declarada</dt>
-        <dd>{Object.values(v.coverage).map((c) => <span key={c.source} className={`badge ${c.state === "COMPLETE" ? "badge-ok" : c.state === "PARTIAL" ? "badge-warn" : "badge-off"}`} title={c.reason}>{COVERAGE_SOURCE_LABEL[c.source]}: {c.state === "COMPLETE" ? "completa" : c.state === "PARTIAL" ? "parcial" : "sin declarar"}</span>)}{" "}<small>Un cero solo se sustenta con cobertura declarada de todos los clientes (Administración › Cargas).</small></dd>
-        <dt>Backlog (fotografía)</dt>
-        <dd>
-          {v.backlog.exact ? <>Fotografía del propio corte ({fdate(v.backlog.observedOn)}).</> : v.backlog.provisional ? <>Observado el {fdate(v.backlog.observedOn)} (política elegida; provisional, no es el valor del corte).</> : <span className="badge badge-off">sin fotografía compatible del corte</span>}{" "}
-          <small>{v.backlog.note}</small>
-        </dd>
-        <dt>Datos</dt><dd>Sello <code>{v.stamp}</code> · leído {new Date(v.readAt).toLocaleString("es-ES", { timeZone: "Europe/Madrid" })} · {v.filteredEntities} de {v.totalEntities} entidades con los filtros de filas</dd>
-      </dl>
-    </div>
-  );
-}
-
-export function Cards({ c, label }: { c: QualityView["cards"]; label?: string }) {
-  return (
-    <ul className="cards" aria-label={label ?? "Resumen de la cartera filtrada"}>
-      <li className="card"><strong>{c.green}</strong><br />Global verde</li>
-      <li className="card"><strong>{c.yellow}</strong><br />Global amarillo</li>
-      <li className="card"><strong>{c.red}</strong><br />Global rojo</li>
-      <li className="card"><strong>{c.noGlobal}</strong><br />Sin global calculable<br /><small>{c.uncalibrated} pendientes de calibración · {c.dataPending} de datos</small></li>
-    </ul>
-  );
-}
-
-function Matrix({ m, title, first, link }: { m: DiagnosisView["typeByFamily"]; title: string; first: string; link: (fam: string) => string }) {
-  return (
-    <div className="table-wrap" tabIndex={0} role="region" aria-label={`${title} (desplazable)`}>
-      <table>
-        <caption>{title}</caption>
-        <thead><tr><th scope="col">{first}</th>{m.cols.map((c) => <th key={c} scope="col"><Link href={link(c)}>{FAM(c)}</Link></th>)}</tr></thead>
-        <tbody>{m.rows.map((r) => <tr key={r}><th scope="row">{r}</th>{m.cols.map((c) => <td key={c}>{m.cells[`${r}|${c}`] ?? 0}</td>)}</tr>)}</tbody>
+    <div className="ql-wrap" tabIndex={0} role="region" aria-label="Tabla (desplazable)">
+      <table className="ql-table">
+        <thead><tr>{cols.map((c, i) => <th key={c + i} scope="col" className={right.includes(i) ? "ql-r" : undefined}>{c}</th>)}</tr></thead>
+        <tbody>{rows.map((r, i) => <tr key={i}>{r.map((c, j) => (j === 0 ? <th key={j} scope="row">{c}</th> : <td key={j} className={right.includes(j) ? "ql-r" : undefined}>{c}</td>))}</tr>)}</tbody>
       </table>
     </div>
   );
 }
 
-export function DiagnosisSection({ d, q, basePath, rows }: { d: DiagnosisView; q: QualityQuery; basePath: string; rows: { rows: DiagRow[]; total: number; page: number; pageCount: number } | null }) {
-  const link = (fam: string) => `${basePath}${qs(qualityToParams({ ...q, view: "diagnostico", fam }))}`;
+/**
+ * Diagnóstico por origen dentro del apartado de incidentes y problemas: las siete familias (Estándar, Configuración, Personalización, Integración y procesos,
+ * Infraestructura CLOUD, Sistemas del Cliente y Uso indebido). La orientación es una HIPÓTESIS de revisión; una etiqueta no demuestra falta de pruebas.
+ */
+export function DiagnosisBlock({ d, q, basePath, rows }: { d: DiagnosisView; q: QualityQuery; basePath: string; rows: { rows: DiagRow[]; total: number; page: number; pageCount: number } | null }) {
+  const link = (fam: string) => `${basePath}${qs(qualityToParams({ ...q, fam }))}`;
+  const fams = DIAGNOSIS_FAMILIES.filter((f) => d.typeByFamily.cols.includes(f) || d.n3ByFamily[f] !== undefined || d.hoursByFamily[f] !== undefined);
   return (
-    <section aria-labelledby="dg">
-      <h2 id="dg">Diagnóstico por origen {d.scopeName ? `· ${d.scopeName}` : "· cartera"} · {fdate(d.period.from)} – {fdate(d.period.to)}</h2>
-      {d.notes.map((n) => <p key={n} className="hint">{n}</p>)}
-      {d.totals.tickets === 0 ? <div className="empty">Sin tickets creados en el periodo para este ámbito (esto no prueba cero: depende de la cobertura declarada).</div> : (
+    <section className="ql-panel" aria-label="Causas por origen">
+      <h2>Causas por origen · {fdate(d.period.from)} – {fdate(d.period.to)}</h2>
+      {d.totals.tickets === 0 ? <p className="ql-note">Sin tickets creados en el periodo para esta selección (no prueba un cero si falta cobertura).</p> : (
         <>
-          <p>Tickets del periodo por <strong>identidad única</strong>: {d.totals.tickets}. Cada ticket se cuenta una vez en su familia; las familias de PAP pueden solaparse. Pendientes: {d.pending.noCause} sin causa registrada · {d.pending.infraNoHosting} de infraestructura sin alojamiento vigente{d.pending.unmapped.length ? ` · causas sin correspondencia: ${d.pending.unmapped.join(", ")}` : ""}.</p>
-          <Matrix m={d.typeByFamily} title="Type × familia de causa (tickets creados en el periodo)" first="type" link={link} />
-          <Matrix m={d.envByFamily} title="Entorno/tipología × familia de causa (señal frente a diagnóstico registrado)" first="Entorno y tipología" link={link} />
-          <div className="table-wrap" tabIndex={0} role="region" aria-label="Familias: horas, N3 y orientación (desplazable)">
-            <table>
-              <caption>Por familia: escalados N3, horas y orientación</caption>
-              <thead><tr><th scope="col">Familia</th><th scope="col">Escalados N3</th><th scope="col">Horas elegibles</th><th scope="col">Orientación (hipótesis de revisión)</th></tr></thead>
-              <tbody>{DIAGNOSIS_FAMILIES.filter((f) => d.n3ByFamily[f] !== undefined || d.hoursByFamily[f] !== undefined).map((f) => <tr key={f}><th scope="row"><Link href={link(f)}>{FAM(f)}</Link></th><td>{d.n3ByFamily[f] ?? 0}</td><td>{num(d.hoursByFamily[f] ?? "0")} h</td><td>{DIAGNOSIS_ACTION[f]}</td></tr>)}</tbody>
-            </table>
-          </div>
-          <p>PAP del periodo por origen (no aditivo; total por identidad {d.papTotalUnique}): {d.papByOrigin.length ? d.papByOrigin.map((p) => `${p.origin} ${p.count}`).join(" · ") : "sin PAP con causa"}.</p>
+          <p className="ql-note">{d.totals.tickets} tickets del periodo, cada uno una vez en su familia. {d.pending.noCause > 0 ? `${d.pending.noCause} con «Causa sin informar» (siguen contando en las horas y el volumen). ` : ""}{d.pending.infraNoHosting > 0 ? `${d.pending.infraNoHosting} de infraestructura sin alojamiento vigente. ` : ""}La orientación es una hipótesis de revisión de QA, no una conclusión.</p>
+          <T
+            cols={["Origen", "Incidentes", "Problemas", "Escalados N3", "Horas", "Orientación (hipótesis)"]}
+            right={[1, 2, 3, 4]}
+            rows={fams.map((f) => [<Link key={f} href={link(f)} prefetch={false}>{FAM(f)}</Link>, d.typeByFamily.cells[`incident|${f}`] ?? 0, d.typeByFamily.cells[`problem|${f}`] ?? 0, d.n3ByFamily[f] ?? 0, `${num(d.hoursByFamily[f] ?? "0", 1)} h`, DIAGNOSIS_ACTION[f]])}
+          />
+          <p className="ql-note">PAP del periodo por origen (no aditivo; total único {d.papTotalUnique}): {d.papByOrigin.length ? d.papByOrigin.map((p) => `${p.origin} ${p.count}`).join(" · ") : "sin PAP con causa"}.</p>
         </>
       )}
       {rows ? (
-        <div>
+        <>
           <h3>Tickets de «{FAM(q.fam)}» ({rows.total})</h3>
-          <div className="table-wrap" tabIndex={0} role="region" aria-label="Tickets de la familia (desplazable)">
-            <table>
-              <caption className="visually-hidden">Tickets de la familia</caption>
-              <thead><tr><th scope="col">Ticket</th><th scope="col">type</th><th scope="col">Creación</th><th scope="col">Status</th><th scope="col">Entorno y tipología</th><th scope="col">Causa registrada</th><th scope="col">N3</th><th scope="col">Vínculo a bug</th></tr></thead>
-              <tbody>{rows.rows.map((t) => <tr key={t.ticketId}><td>{t.ticketId}</td><td>{t.type}</td><td>{fdate(t.created)}</td><td>{t.status}</td><td>{t.entorno ?? "—"}</td><td>{t.cause ?? <span className="badge badge-off">sin causa</span>}</td><td>{t.n3 ? "sí" : "no"}</td><td>{t.bugLink ? "sí" : "no"}</td></tr>)}</tbody>
-            </table>
-          </div>
-          <Pager base={basePath} params={qualityToParams({ ...q, view: "diagnostico" })} page={rows.page} pageCount={rows.pageCount} total={rows.total} noun="tickets" />
-        </div>
-      ) : <p className="hint">Elija una familia para ver sus tickets (el detalle usa los mismos predicados que la matriz y totaliza todas sus filas).</p>}
+          <T cols={["Ticket", "Tipo", "Creación", "Estado", "Entorno y tipología", "Causa registrada", "N3", "Bug"]} rows={rows.rows.map((t) => [t.ticketId, t.type, fdate(t.created), t.status, t.entorno ?? dash, t.cause ?? <NeutralTag key="c">Causa sin informar</NeutralTag>, t.n3 ? "sí" : "no", t.bugLink ? "sí" : "no"])} />
+          <Pager base={basePath} params={qualityToParams(q)} page={rows.page} pageCount={rows.pageCount} total={rows.total} noun="tickets" />
+        </>
+      ) : null}
     </section>
   );
 }
 
-export function BacklogSection({ b, q, basePath }: { b: BacklogView; q: QualityQuery; basePath: string }) {
+/** Backlog abierto y envejecido (observación de la carga, no estado histórico): incidentes y problemas separados, antigüedad, causas y detalle. */
+export function BacklogBlock({ b, q, basePath }: { b: BacklogView; q: QualityQuery; basePath: string }) {
   return (
-    <section aria-labelledby="bk">
-      <h2 id="bk">Tickets sin resolver y antigüedad {b.scopeName ? `· ${b.scopeName}` : "· cartera"}</h2>
-      {b.notes.map((n) => <p key={n} className="notice notice-info">{n}</p>)}
-      {!b.stats ? <div className="empty">Sin fotografía compatible: el stock no está disponible (no se rellena con el estado actual ni se interpola). Un Administrador puede declarar la cobertura de un lote en Administración › Cargas.</div> : (
+    <section className="ql-panel" aria-label="Backlog abierto y antigüedad">
+      <h2>Backlog abierto y antigüedad</h2>
+      {!b.stats ? <p className="ql-note">Sin observación compatible del corte: el stock no está disponible y no se rellena con el estado de otra fecha. {b.notes[0]}</p> : (
         <>
-          <p>Observado el <strong>{fdate(b.observedOn)}</strong> · usuarios de ese mes: {b.usersAtD ?? "sin informar"} · edad = días naturales entre la creación y esa observación (no tiempo en estado ni desde el escalado); envejecido = edad &gt; umbral ({b.thresholds.incident ?? "sin configurar"} d incidentes · {b.thresholds.problem ?? "sin configurar"} d problemas).</p>
-          <div className="table-wrap" tabIndex={0} role="region" aria-label="Estadísticos por tipo (desplazable)">
-            <table>
-              <caption>Stock por tipo</caption>
-              <thead><tr><th scope="col">Tipo</th><th scope="col">Activos</th><th scope="col">Mediana</th><th scope="col">P90</th><th scope="col">Máxima</th><th scope="col">Envejecidos</th><th scope="col">% envejecido</th><th scope="col">Activos {UNIT_LABEL[BACKLOG_UNIT]}</th><th scope="col">Envejecidos {UNIT_LABEL[BACKLOG_UNIT]}</th><th scope="col">Bandas</th></tr></thead>
-              <tbody>
-                {(["incident", "problem"] as const).map((t) => {
-                  const s = b.stats![t];
-                  return <tr key={t}><th scope="row">{t === "incident" ? "Incidentes" : "Problemas"}</th><td>{s.count}</td><td>{s.count ? num(s.median) : "n/a"}</td><td>{s.count ? num(s.p90) : "n/a"}</td><td>{s.max ?? "n/a"}</td><td>{s.aged}</td><td>{s.agedPct === null ? "n/a" : `${num(s.agedPct, 1)} %`}</td><td>{s.per100 === null ? "sin usuarios" : num(s.per100)}</td><td>{s.agedPer100 === null ? "sin usuarios" : num(s.agedPer100)}</td><td>{s.bands.map((x) => `${x.label}: ${x.n}`).join(" · ") || "sin bandas configuradas"}</td></tr>;
-                })}
-              </tbody>
-            </table>
-          </div>
-          <p className="hint">Stock y flujo de altas se presentan separados y no se suman. Otros: {b.other.resolved} resueltos/cerrados · {b.other.questionTask} question/task · {b.other.unknownStatus} con estado desconocido (limitan la cobertura) · {b.other.invalidDates} con creación posterior a la observación.</p>
-          <h3>Detalle de tickets ({b.total})</h3>
-          <div className="table-wrap" tabIndex={0} role="region" aria-label="Tickets activos (desplazable)">
-            <table>
-              <caption className="visually-hidden">Tickets activos de la fotografía</caption>
-              <thead><tr><th scope="col">Ticket</th><th scope="col">Tipo</th><th scope="col">Status</th><th scope="col">Creación</th><th scope="col">Observación</th><th scope="col">Edad (días)</th><th scope="col">Envejecido</th><th scope="col">Motivo</th><th scope="col">Origen</th></tr></thead>
-              <tbody>{b.rows.map((t) => <tr key={t.ticketId}><td>{t.ticketId}</td><td>{t.type}</td><td>{t.status}</td><td>{fdate(t.created)}</td><td>{fdate(t.observedOn)}</td><td>{t.age}</td><td>{t.aged ? <span className="badge badge-warn">sí</span> : "no"}</td><td>{t.reason}</td><td>{FAM(t.family)}</td></tr>)}</tbody>
-            </table>
-          </div>
-          <Pager base={basePath} params={qualityToParams({ ...q, view: "backlog" })} page={b.page} pageCount={b.pageCount} total={b.total} noun="tickets" />
+          <p className="ql-note">Observado el <strong>{fdate(b.observedOn)}</strong> (observación de la carga, no estado histórico). Edad = días naturales entre la creación y esa observación; envejecido = edad &gt; umbral ({b.thresholds.incident ?? "sin configurar"} d incidentes · {b.thresholds.problem ?? "sin configurar"} d problemas). {b.notes.slice(1).join(" ")}</p>
+          <T
+            cols={["Tipo", "Activos", "Mediana (d)", "P90 (d)", "Máx. (d)", "Envejecidos", "% env.", `Activos ${UNIT_LABEL[BACKLOG_UNIT]}`, `Envejecidos ${UNIT_LABEL[BACKLOG_UNIT]}`, "Tramos de antigüedad"]}
+            right={[1, 2, 3, 4, 5, 6, 7, 8]}
+            rows={(["incident", "problem"] as const).map((t) => {
+              const s = b.stats![t];
+              return [t === "incident" ? "Incidentes" : "Problemas", s.count, s.count ? num(s.median) : dash, s.count ? num(s.p90) : dash, s.max ?? dash, b.thresholds[t] === null ? <NeutralTag key="u">Sin umbral</NeutralTag> : s.aged, s.agedPct === null ? dash : `${num(s.agedPct, 1)} %`, s.per100 === null ? dash : num(s.per100), s.agedPer100 === null ? dash : num(s.agedPer100), s.bands.map((x) => `${x.label}: ${x.n}`).join(" · ") || "sin tramos configurados"];
+            })}
+          />
+          {b.byFamily.length ? <><h3>Causas del backlog abierto</h3><T cols={["Origen", "Incidentes", "Problemas", "Envejecidos"]} right={[1, 2, 3]} rows={b.byFamily.map((f) => [FAM(f.family), f.incident, f.problem, f.aged])} /></> : null}
+          <p className="ql-note">Otros en la observación: {b.other.resolved} resueltos o cerrados · {b.other.questionTask} question/task · {b.other.unknownStatus} con estado desconocido · {b.other.invalidDates} con creación posterior a la observación.</p>
+          <h3>Tickets abiertos ({b.total})</h3>
+          <T cols={["Ticket", "Tipo", "Estado", "Creación", "Edad (d)", "Envejecido", "Origen"]} right={[4]} rows={b.rows.map((t) => [t.ticketId, t.type, t.status, fdate(t.created), t.age, t.aged ? <NeutralTag key="a" partial>sí</NeutralTag> : "no", FAM(t.family)])} />
+          <Pager base={basePath} params={qualityToParams(q)} page={b.page} pageCount={b.pageCount} total={b.total} noun="tickets" />
         </>
       )}
     </section>

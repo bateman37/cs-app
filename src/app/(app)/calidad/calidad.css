@@ -1,0 +1,98 @@
+/*
+ * Calidad (HOTFIX-02 §6 y §9): Resumen de clientes y apartados de los seis indicadores. Prefijo `.ql-` para no tocar los estilos de otras vistas.
+ * Densidad: tablas ≈12 px, filas 26–30 px, números tabulares. Sin zoom, transform ni overflow oculto: lo que no cabe se desplaza dentro de su región.
+ */
+/* El ancho panorámico del `main` lo resuelve el layout común; esta regla solo garantiza que Calidad no quede en la columna estrecha heredada. */
+main:has(> .ql-page) { max-width: none; padding: 0.6rem 20px 2rem; }
+
+.ql-page { --ql-red-bg: #fdeaea; --ql-red: #a11d1d; --ql-yel-bg: #fbf0b3; --ql-yel: #5a4a00; --ql-grn-bg: #cdeedb; --ql-grn: #0d4a28; --ql-gry-bg: #ececf1; --ql-gry: #4a4a55; font-size: 13px; }
+.ql-page h1 { font-size: 1.15rem; margin: 0; white-space: nowrap; }
+.ql-page h2 { font-size: 0.95rem; margin: 0 0 0.4rem; }
+.ql-page h3 { font-size: 0.85rem; margin: 0.9rem 0 0.35rem; color: var(--muted); text-transform: none; }
+.ql-page small { font-size: 0.85em; }
+.ql-num { font-variant-numeric: tabular-nums; }
+
+/* ---- Cabecera compacta: periodo, nivel, segmentadores */
+.ql-bar { display: flex; flex-wrap: wrap; align-items: center; gap: 0.35rem 1rem; padding: 0.3rem 0 0.5rem; }
+.ql-bar .chips { gap: 0.3rem 0.9rem; }
+.ql-bar .chip { padding: 0.12rem 0.55rem; font-size: 0.75rem; }
+.ql-period { display: inline-flex; align-items: center; gap: 0.3rem; flex-wrap: wrap; }
+.ql-period form { display: inline-flex; align-items: center; gap: 0.25rem; margin: 0; }
+.ql-period input[type="month"] { font: inherit; font-size: 0.8rem; padding: 0.12rem 0.3rem; border: 1px solid var(--border); border-radius: var(--radius); background: var(--surface); }
+.ql-period button { font: inherit; font-size: 0.75rem; padding: 0.15rem 0.5rem; border: 1px solid var(--border); border-radius: var(--radius); background: var(--surface); cursor: pointer; }
+.ql-arrow { display: inline-block; padding: 0.05rem 0.45rem; border: 1px solid var(--border); border-radius: var(--radius); background: var(--surface); text-decoration: none; font-weight: 700; }
+.ql-arrow[aria-disabled="true"] { color: var(--muted); pointer-events: none; opacity: 0.55; }
+.ql-bar .ql-spacer { flex: 1 1 auto; }
+.ql-tag { display: inline-block; padding: 0.05rem 0.45rem; border-radius: 99px; font-size: 0.7rem; font-weight: 600; background: var(--ql-yel-bg); color: var(--ql-yel); white-space: nowrap; }
+.ql-pending { font-size: 0.75rem; color: var(--muted); text-decoration: underline dotted; white-space: nowrap; }
+.ql-links { display: inline-flex; gap: 0.75rem; font-size: 0.75rem; align-items: center; }
+.ql-crumb { margin: 0.1rem 0 0.4rem; font-size: 0.8rem; color: var(--muted); display: flex; gap: 0.4rem 0.8rem; flex-wrap: wrap; align-items: baseline; }
+
+/* ---- Seis accesos */
+.ql-acc-grid { display: grid; grid-template-columns: repeat(6, minmax(0, 1fr)); gap: 0.5rem; margin: 0 0 0.6rem; padding: 0; list-style: none; }
+.ql-acc { display: grid; grid-template-rows: auto auto auto; gap: 0.1rem; padding: 0.4rem 0.6rem; background: var(--surface); border: 1px solid var(--border); border-left-width: 5px; border-radius: var(--radius); color: var(--text); text-decoration: none; min-width: 0; height: 100%; }
+.ql-acc:hover { border-color: var(--blue); }
+.ql-acc[aria-current="page"] { outline: 2px solid var(--blue); outline-offset: -1px; }
+.ql-acc-name { font-weight: 700; font-size: 0.85rem; display: flex; justify-content: space-between; gap: 0.4rem; align-items: baseline; }
+.ql-acc-val { font-size: 1.05rem; font-weight: 700; font-variant-numeric: tabular-nums; white-space: nowrap; }
+.ql-acc-val small { font-weight: 400; color: var(--muted); font-size: 0.72rem; }
+.ql-acc-sub { font-size: 0.72rem; color: var(--muted); line-height: 1.3; }
+.ql-acc-red { border-left-color: #b42318; } .ql-acc-yellow { border-left-color: #d8c04a; } .ql-acc-green { border-left-color: #2f9e5f; } .ql-acc-uncalibrated, .ql-acc-nodata { border-left-color: #9a9aa8; }
+
+/* ---- Estados con color + texto + símbolo */
+.ql-st { display: inline-block; padding: 0 0.35rem; border-radius: 4px; font-size: 0.72rem; font-weight: 600; white-space: nowrap; line-height: 1.5; }
+.ql-st-red { background: var(--ql-red-bg); color: var(--ql-red); border: 1px solid #e6a9a9; }
+.ql-st-yellow { background: var(--ql-yel-bg); color: var(--ql-yel); border: 1px solid #d8c04a; }
+.ql-st-green { background: var(--ql-grn-bg); color: var(--ql-grn); border: 1px solid #8ccaa4; }
+.ql-st-grey { background: var(--ql-gry-bg); color: var(--ql-gry); border: 1px solid #d3d3dc; font-weight: 500; }
+.ql-st-partial { background: #fff; color: var(--ql-yel); border: 1px dashed #b89c1d; font-weight: 500; }
+
+/* ---- Tablas densas */
+.ql-wrap { overflow-x: auto; border: 1px solid var(--border); border-radius: var(--radius); background: var(--surface); margin-bottom: 0.6rem; }
+.ql-table { width: 100%; border-collapse: collapse; font-size: 12px; font-variant-numeric: tabular-nums; }
+.ql-table th, .ql-table td { padding: 0.18rem 0.5rem; border-bottom: 1px solid var(--border); vertical-align: middle; height: 28px; text-align: left; line-height: 1.25; }
+.ql-table thead th { background: #f0f0f6; position: sticky; top: 0; z-index: 1; font-size: 11.5px; color: var(--text); white-space: nowrap; }
+.ql-table thead th a { color: inherit; text-decoration: none; display: inline-block; }
+.ql-table thead th a:hover, .ql-table thead th a:focus-visible { text-decoration: underline; color: var(--blue); }
+.ql-table tbody th { font-weight: 600; max-width: 22rem; overflow-wrap: anywhere; }
+.ql-table tbody tr:hover { background: #f7f7fc; }
+.ql-table td.ql-r, .ql-table th.ql-r { text-align: right; }
+.ql-table tfoot td, .ql-table tfoot th { background: #f7f7fb; font-weight: 600; }
+.ql-table .ql-k > a { display: inline-flex; align-items: baseline; gap: 0.3rem; color: inherit; text-decoration: none; flex-wrap: nowrap; white-space: nowrap; }
+.ql-table .ql-k > a:hover .ql-v, .ql-table .ql-k > a:focus-visible .ql-v { text-decoration: underline; color: var(--blue); }
+.ql-v { font-weight: 700; }
+.ql-u { color: var(--muted); font-size: 0.85em; }
+.ql-obs { color: var(--muted); font-size: 0.85em; }
+.ql-name small { display: block; color: var(--muted); font-weight: 400; font-size: 0.85em; }
+.ql-name a { text-decoration: none; }
+.ql-name a:hover { text-decoration: underline; }
+.ql-muted { color: var(--muted); }
+.ql-empty { padding: 0.8rem 1rem; background: var(--surface); border: 1px dashed var(--border); border-radius: var(--radius); }
+.ql-err { padding: 0.6rem 0.8rem; background: var(--err-bg); border-left: 5px solid var(--err); border-radius: var(--radius); margin: 0 0 0.6rem; }
+
+/* ---- Apartados */
+.ql-cols { display: grid; grid-template-columns: minmax(0, 1fr) minmax(0, 1fr); gap: 0.75rem; align-items: start; }
+.ql-panel { background: var(--surface); border: 1px solid var(--border); border-radius: var(--radius); padding: 0.5rem 0.7rem 0.6rem; margin-bottom: 0.6rem; min-width: 0; }
+.ql-panel > .ql-wrap { border: 0; margin: 0; }
+.ql-chart { max-width: 560px; min-width: 0; }
+.ql-chart svg { width: 100%; height: auto; display: block; }
+.ql-chart .legend { margin: 0 0 0.2rem; font-size: 0.72rem; }
+.ql-note { font-size: 0.75rem; color: var(--muted); margin: 0.2rem 0 0.4rem; }
+.ql-calc { margin: 0.4rem 0; font-size: 0.8rem; }
+.ql-calc summary { cursor: pointer; font-weight: 600; color: var(--blue); }
+.ql-calc dl { display: grid; grid-template-columns: 11rem 1fr; gap: 0.15rem 0.8rem; margin: 0.4rem 0; }
+.ql-calc dt { color: var(--muted); } .ql-calc dd { margin: 0; }
+.ql-health td { text-align: center; min-width: 4.2rem; }
+.ql-health td a { display: block; text-decoration: none; color: inherit; }
+.ql-mini { display: inline-block; height: 8px; background: var(--blue); border-radius: 2px; vertical-align: middle; min-width: 1px; }
+
+@media (max-width: 1100px) {
+  .ql-acc-grid { grid-template-columns: repeat(3, minmax(0, 1fr)); }
+  .ql-cols { grid-template-columns: minmax(0, 1fr); }
+}
+@media (max-width: 640px) {
+  main:has(> .ql-page) { padding-left: 16px; padding-right: 16px; }
+  .ql-acc-grid { grid-template-columns: repeat(2, minmax(0, 1fr)); }
+  .ql-page h1 { white-space: normal; }
+  .ql-calc dl { grid-template-columns: 1fr; }
+}

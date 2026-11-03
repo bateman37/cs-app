@@ -9,6 +9,8 @@ import { parseInput } from "@/server/parse";
 import { adminTransaction } from "@/server/tx";
 import { readSnapshot } from "@/server/analytics/snapshot";
 import { readDataStamp } from "@/server/analytics/stamp";
+import { hasCommonFilters, type CommonFilters } from "@/domain/filtros-comunes";
+import { loadServiceFacts, selectByFilters } from "./selection";
 
 /**
  * Client Health mensual (CSAPP-08 §4). Edición atómica de UNA celda (ámbito + entidad + año + mes) con `expectedVersion`, historial y auditoría
@@ -86,7 +88,7 @@ export async function saveHealthCell(actorId: string, raw: unknown, opts: { now?
   });
 }
 
-export type HealthMatrixQuery = { scope: "group" | "client"; year: number; q: string; page: number; pageSize: number };
+export type HealthMatrixQuery = { scope: "group" | "client"; year: number; q: string; page: number; pageSize: number; /** Solo estas entidades (la selección actual de Calidad o el objeto abierto). */ ids?: string[]; /** Segmentadores Soporte/Servidor de la selección y fecha de corte con la que se evalúan. */ filters?: CommonFilters; cut?: string };
 export type HealthMatrixRow = { id: string; name: string; parent: string | null; cells: Record<number, HealthCell | null> };
 export type HealthMatrix = { query: HealthMatrixQuery; total: number; page: number; pageCount: number; rows: HealthMatrixRow[]; canEdit: boolean; /** Solo con `all`: sello de datos y fecha de la lectura coherente que sustenta la matriz completa. */ stamp: string; readAt: string };
 
@@ -99,9 +101,13 @@ export async function getHealthMatrix(actorId: string, q: HealthMatrixQuery, opt
     const needle = fold(q.q);
     const ents =
       q.scope === "group"
-        ? (await tx.clientGroup.findMany({ select: { id: true, name: true }, orderBy: [{ name: "asc" }, { id: "asc" }] })).map((g) => ({ id: g.id, name: g.name, parent: null as string | null }))
-        : (await tx.client.findMany({ where: { isInternal: false }, select: { id: true, name: true, group: { select: { name: true } } }, orderBy: [{ name: "asc" }, { id: "asc" }] })).map((c) => ({ id: c.id, name: c.name, parent: c.group?.name ?? null }));
-    const filtered = needle === "" ? ents : ents.filter((e) => fold(e.name).includes(needle) || fold(e.parent ?? "").includes(needle));
+        ? (await tx.clientGroup.findMany({ select: { id: true, name: true }, orderBy: [{ name: "asc" }, { id: "asc" }] })).map((g) => ({ id: g.id, name: g.name, parent: null as string | null, groupId: g.id as string | null }))
+        : (await tx.client.findMany({ where: { isInternal: false }, select: { id: true, name: true, groupId: true, group: { select: { name: true } } }, orderBy: [{ name: "asc" }, { id: "asc" }] })).map((c) => ({ id: c.id, name: c.name, parent: c.group?.name ?? null, groupId: c.groupId }));
+    const facts = q.filters && hasCommonFilters(q.filters) ? await loadServiceFacts(tx, q.cut ?? todayMadrid()) : null;
+    const entsF = q.filters ? selectByFilters(ents, q.scope, q.filters, facts) : ents;
+    const only = q.ids ? new Set(q.ids) : null;
+    const scoped = only ? entsF.filter((e) => only.has(e.id)) : entsF;
+    const filtered = needle === "" ? scoped : scoped.filter((e) => fold(e.name).includes(needle) || fold(e.parent ?? "").includes(needle));
     // `all`: la matriz COMPLETA en esta misma instantánea (CSV); sin llamadas paginadas independientes que mezclen estados distintos.
     const pageCount = opts.all ? 1 : Math.max(1, Math.ceil(filtered.length / q.pageSize));
     const page = opts.all ? 1 : Math.min(Math.max(1, q.page), pageCount);
@@ -117,7 +123,7 @@ export async function getHealthMatrix(actorId: string, q: HealthMatrixQuery, opt
     }
     const stamp = opts.all ? (await readDataStamp(tx)).stamp : "";
     const readAt = opts.all ? (await tx.$queryRaw<{ t: Date }[]>(Prisma.sql`SELECT now() AS t`))[0].t.toISOString() : "";
-    return { query: q, stamp, readAt, total: filtered.length, page, pageCount, canEdit: actor.role === "ADMIN", rows: slice.map((e) => ({ ...e, cells: Object.fromEntries(Array.from({ length: 12 }, (_, i) => [i + 1, by.get(e.id)?.get(i + 1) ?? null])) })) };
+    return { query: q, stamp, readAt, total: filtered.length, page, pageCount, canEdit: actor.role === "ADMIN", rows: slice.map((e) => ({ id: e.id, name: e.name, parent: e.parent, cells: Object.fromEntries(Array.from({ length: 12 }, (_, i) => [i + 1, by.get(e.id)?.get(i + 1) ?? null])) })) };
   });
 }
 

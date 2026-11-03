@@ -11,7 +11,7 @@ import {
 import { chooseSnapshot, coverageOf, type Coverage, type CoverageSource, type Declaration, type SnapshotChoice } from "@/domain/quality-coverage";
 import { healthStateOf, healthUse, type HealthUse } from "@/domain/quality-health";
 import { qualityPeriod, type QualityPeriod, type QualityQuery } from "@/domain/quality-query";
-import { loadGroupMeta, filterGroups, type GroupMeta } from "@/server/analytics/portfolio";
+import { loadGroupMeta, type GroupMeta } from "@/server/analytics/portfolio";
 import { readSnapshot, snapshotPoint, type Tx } from "@/server/analytics/snapshot";
 import { readDataStamp } from "@/server/analytics/stamp";
 import { getActive, getManifest } from "@/server/pulse/config";
@@ -19,6 +19,8 @@ import { selectorsOf } from "@/server/pulse/sql";
 import { loadDeclarations, loadTicketBatches } from "./coverage";
 import { hourFacts, papFacts, stockSetSql, ticketFacts, type HourRow, type PapFacts, type TicketFacts } from "./facts";
 import { loadHealthForMonth } from "./health";
+import { hasCommonFilters } from "@/domain/filtros-comunes";
+import { loadServiceFacts, selectByFilters } from "./selection";
 
 /**
  * Motor de Calidad (CSAPP-08 §5-§7, §10). Una instantánea REPEATABLE READ lee datos, configuración, usuarios, referencias y agregados; todo se calcula por
@@ -29,7 +31,6 @@ export type Scope = "group" | "client";
 const QSC: Record<Scope, QScope> = { group: "GRUPO", client: "CLIENTE" };
 
 export type Ent = { id: string; name: string; parent: string | null; groupId: string | null; isActive: boolean };
-const fold = (s: string) => s.normalize("NFD").replace(/[̀-ͯ]/g, "").toLowerCase();
 
 const toCriteria = (m: GroupMeta): CriteriaMeta => ({ support: m.support, hosting: m.hosting, complexity: m.complexity, product: { ...m.product, contains: m.product.contains } });
 
@@ -73,7 +74,7 @@ function usersOf(lookup: UserLookup, id: string, p: QualityPeriod): Users {
 
 // ---------------------------------------------------------------- Resultado
 
-export type Explain = { formula: string; numerator: string | null; denominator: string | null; unit: string; period: string; sources: string[]; notes: string[]; breakdown: Record<string, string>; coverage: { source: string; state: string; reason: string }[] };
+export type Explain = { formula: string; numerator: string | null; denominator: string | null; /** Magnitud OBSERVADA (conteo u horas) aunque el ratio no sea calculable o no esté sustentado: nunca un cero inventado. */ observed: string | null; unit: string; period: string; sources: string[]; notes: string[]; breakdown: Record<string, string>; coverage: { source: string; state: string; reason: string }[] };
 export type QualityRow = {
   id: string; name: string; parent: string | null; scope: Scope;
   users: { stock: number | null; userMonths: string | null };
@@ -84,6 +85,17 @@ export type QualityRow = {
   flags: { uncalibrated: boolean; dataPending: boolean; hasGlobal: boolean };
   /** Tamaño de cobertura calculable (%) de la asignación. */
   coveragePercent: string;
+};
+/** Resumen de un acceso (indicador) sobre la selección visible: estado visual (nunca un verde por falta de dato o de calibración), magnitud observada total y reparto. */
+export type KpiAccess = {
+  key: IndicatorKey; entities: number; green: number; yellow: number; red: number;
+  /** Con dato pero sin umbral/regla confirmado: se muestran magnitudes, no color. */
+  uncalibrated: number; noData: number;
+  state: "red" | "yellow" | "green" | "uncalibrated" | "nodata";
+  /** Suma de la magnitud observada (horas o conteo) de las entidades de la selección; null si ninguna tiene magnitud. */
+  observedTotal: string | null;
+  /** Solo Client Health: feedback del mes de la selección. */
+  health: { positive: number; mixed: number; negative: number; blank: number } | null;
 };
 export type PortfolioCards = { green: number; yellow: number; red: number; noGlobal: number; total: number; uncalibrated: number; dataPending: number };
 export type BacklogInfo = { choice: SnapshotChoice; observedOn: string | null; usersMonth: { year: number; month: number } | null; exact: boolean; provisional: boolean; unknownFreshnessBatches: number; note: string; earlierInfo: { observedOn: string; gapDays: number } | null };
@@ -98,6 +110,8 @@ export type QualityView = {
   totalEntities: number; filteredEntities: number;
   cards: PortfolioCards;
   rows: QualityRow[]; page: number; pageCount: number;
+  /** Los seis accesos resumidos sobre la selección visible (segmentadores aplicados), y los identificadores de esa selección. */
+  access: Record<IndicatorKey, KpiAccess>; selection: string[]; pendingData: boolean;
   coverage: Record<CoverageSource, Coverage>;
   backlog: BacklogInfo;
   notes: string[];
@@ -246,8 +260,8 @@ export function evaluateMonth(f: MonthFacts, q: QualityQuery, cfg: QualityConfig
     const t = tFacts.get(e.id);
     const p = pFacts.get(e.id);
     const hr = hoursBy.get(e.id) ?? [];
-    const ex = (formula: string, numerator: string | null, denominator: string | null, unit: string, sources: string[], notes: string[], breakdown: Record<string, string>, covs: Coverage[]): Explain => ({
-      formula, numerator, denominator, unit, period: `${from} – ${to}`, sources, notes, breakdown, coverage: covs.map((c) => ({ source: c.source, state: c.state, reason: c.reason })),
+    const ex = (formula: string, numerator: string | null, denominator: string | null, unit: string, sources: string[], notes: string[], breakdown: Record<string, string>, covs: Coverage[], observed: string | null = numerator): Explain => ({
+      formula, numerator, denominator, observed, unit, period: `${from} – ${to}`, sources, notes, breakdown, coverage: covs.map((c) => ({ source: c.source, state: c.state, reason: c.reason })),
     });
     const per100 = (n: number) => (n === 0 && u.userMonths === null ? null : flowRate(n, u.userMonths));
     const usersNote = u.reason ? [u.reason] : u.estimated ? ["Denominador de usuarios estimado a partir de 2025 (no es un dato observado ese mes); no es evidencia de calidad histórica medida."] : [];
@@ -306,7 +320,7 @@ export function evaluateMonth(f: MonthFacts, q: QualityQuery, cfg: QualityConfig
     const explain = {} as Record<IndicatorKey, Explain>;
     if (focus && !focus.has(e.id)) { rawOf.set(e.id, { input: { dedication: ded, pap, n3, bugs, incidents }, explain, users: u }); continue; } // fuera del foco: solo magnitudes para la cohorte
     explain.HEALTH = ex("Categoría mensual propia del ámbito (positivo / mixto / negativo / sin feedback).", null, null, "categoría", ["Client Health (matriz mensual)"], [], {}, []);
-    explain.DEDICATION = ex("Σ horas elegibles de los perfiles elegidos (servicio " + svcFilter + ") ÷ usuarios·mes", selConfigured ? hours.toString() : null, u.userMonths?.toString() ?? null, UNIT_LABEL.HOURS_PER_USER_MONTH, ["Tiempos Zendesk / Wrike (TimeActivity)"], dedNotes, { ...byProfile, ...bySvc, "selección": selConfigured ? profileSel.join(", ") : "sin configurar" }, dedCovs);
+    explain.DEDICATION = ex("Σ horas elegibles de los perfiles elegidos (servicio " + svcFilter + ") ÷ usuarios·mes", selConfigured ? hours.toString() : null, u.userMonths?.toString() ?? null, UNIT_LABEL.HOURS_PER_USER_MONTH, ["Tiempos Zendesk / Wrike (TimeActivity)"], dedNotes, { ...byProfile, ...bySvc, "selección": selConfigured ? profileSel.join(", ") : "sin configurar" }, dedCovs, (selConfigured ? hours : eligible.filter(inScope).reduce((acc, r) => acc.add(r.minutes), ZERO).divInt(60)).toString());
     explain.PAP_CORRECTIVE = ex("PAP únicos por lista+ID con alguna causa correctiva y producción en el periodo × 100 ÷ usuarios·mes", p ? mkNum(p.corrective) : "0", u.userMonths?.toString() ?? null, UNIT_LABEL.PER_100_USER_MONTHS, ["PAP"], [...usersNote, ...papNote], { estándar: mkNum(p?.standard ?? 0), "proyecto (config./personalización/procesos/infra.)": mkNum(p?.project ?? 0), "origen cliente": mkNum(p?.clientOrigin ?? 0), "total PAP del periodo": mkNum(p?.total ?? 0), "sin fecha": mkNum(p?.noDate ?? 0), "sin causa": mkNum(p?.unknownState ?? 0), "nota": "Las pertenencias pueden solaparse; el total correctivo no las suma." }, papCovs);
     explain.N3_ESCALATIONS = ex("Tickets únicos creados en el periodo con destino PMO N3 o IT N3 (unión) × 100 ÷ usuarios·mes", mkNum(t?.n3 ?? 0), u.userMonths?.toString() ?? null, UNIT_LABEL.PER_100_USER_MONTHS, ["Tickets Zendesk (tags exactos)"], usersNote, { "PMO N3": mkNum(t?.n3pmo ?? 0), "IT N3": mkNum(t?.n3it ?? 0), nota: "Dos tags N3 cuentan uno; la fecha es la de creación del ticket." }, [coverage.tickets]);
     explain.INCIDENTS_PROBLEMS = ex("Flujo: tickets incident/problem creados en el periodo × 100 ÷ usuarios·mes. Stock: envejecidos (edad > umbral) × 100 ÷ usuarios al corte observado, por tipo.", mkNum((t?.inc ?? 0) + (t?.prob ?? 0)), u.userMonths?.toString() ?? null, `${UNIT_LABEL.PER_100_USER_MONTHS} (flujo) / ${UNIT_LABEL[BACKLOG_UNIT]} (stock)`, ["Tickets Zendesk", "Fotografías de tickets"], [...usersNote, backlog.note], { incidentes: mkNum(t?.inc ?? 0), problemas: mkNum(t?.prob ?? 0), "stock incidentes activos": mkNum(st?.incident.count ?? 0), "stock incidentes envejecidos": mkNum(st?.incident.aged ?? 0), "stock problemas activos": mkNum(st?.problem.count ?? 0), "stock problemas envejecidos": mkNum(st?.problem.aged ?? 0), "usuarios al corte observado": uD === null ? "sin informar" : String(uD), nota: "Flujo y stock se presentan separados; no se suman como tickets adicionales." }, [coverage.tickets]);
@@ -379,6 +393,33 @@ export function evaluateMonth(f: MonthFacts, q: QualityQuery, cfg: QualityConfig
   return { evaluateAll, selConfigured, profileSel };
 }
 
+function accessOf(visible: Ent[], rowsMap: Map<string, QualityRow>): Record<IndicatorKey, KpiAccess> {
+  const out = {} as Record<IndicatorKey, KpiAccess>;
+  for (const k of INDICATOR_KEYS) {
+    const a: KpiAccess = { key: k, entities: visible.length, green: 0, yellow: 0, red: 0, uncalibrated: 0, noData: 0, state: "nodata", observedTotal: null, health: k === "HEALTH" ? { positive: 0, mixed: 0, negative: 0, blank: 0 } : null };
+    let obs: Dec | null = null;
+    for (const e of visible) {
+      const r = rowsMap.get(e.id) as QualityRow;
+      const i = r.evaluation.indicators[k];
+      if (k === "HEALTH") {
+        if (i.availability === "BLANK" || i.value === null) a.health!.blank++;
+        else a.health![i.value as "positive" | "mixed" | "negative"]++;
+      }
+      if (i.color) a[i.color]++;
+      else if (k === "HEALTH" && i.availability === "BLANK") { /* sin feedback: ni dato pendiente ni sin calibrar */ }
+      else if (["SIN_CALIBRAR", "SIN_REGLA", "SIN_REFERENCIA", "REGLA_INVALIDA", "COMPOSICION_SIN_ELEGIR"].includes(i.status) && (i.value !== null || k === "HEALTH")) a.uncalibrated++;
+      else a.noData++;
+      const o = r.explain[k]?.observed;
+      if (o !== null && o !== undefined && o !== "") obs = (obs ?? ZERO).add(Dec.parse(o) as Dec);
+    }
+    a.observedTotal = obs === null ? null : obs.toString();
+    // Verde solo si TODA la selección con dato está en verde: la ausencia de dato o de calibración nunca produce un verde.
+    a.state = a.red > 0 ? "red" : a.yellow > 0 ? "yellow" : a.uncalibrated > 0 || (a.green > 0 && a.noData > 0) ? "uncalibrated" : a.green > 0 ? "green" : "nodata";
+    out[k] = a;
+  }
+  return out;
+}
+
 export async function computeQuality(tx: Tx, q: QualityQuery, opts: QualityOptions = {}): Promise<QualityView> {
   const today = todayMadrid(opts.now ?? new Date());
   const active = await getActive(tx, "QUALITY", q.qrev ?? undefined);
@@ -396,16 +437,9 @@ export async function computeQuality(tx: Tx, q: QualityQuery, opts: QualityOptio
   const declarations = await loadDeclarations(tx);
   const ticketBatches = await loadTicketBatches(tx);
 
-  // --- Filtros de FILAS (identidad, producto/soporte/alojamiento/complejidad vigentes, estado): no tocan las referencias.
-  const needle = fold(q.base.q);
-  const visibleGroups = new Set(filterGroups(groups, { ...q.base, q: "" }).map((g) => g.id));
-  const filtersOn = q.base.support.length + q.base.hosting.length + q.base.complexity.length > 0 || q.base.product !== "" || q.base.coverage !== "todas";
-  const visible = all.filter((e) => {
-    if (q.base.status !== "todos" && (q.base.status === "activos") !== e.isActive) return false;
-    if (needle !== "" && !fold(e.name).includes(needle) && !fold(e.parent ?? "").includes(needle)) return false;
-    if (scope === "group") return visibleGroups.has(e.id);
-    return !filtersOn || (e.groupId !== null && visibleGroups.has(e.groupId));
-  });
+  // --- Selección por los segmentadores Soporte/Servidor (AND en el mismo Cliente): es de PRESENTACIÓN y no toca las referencias de la cohorte.
+  const serviceFacts = hasCommonFilters(q.filters) ? await loadServiceFacts(tx, period.cut) : null;
+  const visible = selectByFilters(all, scope, q.filters, serviceFacts);
 
   const baseNotes: string[] = [];
   if (period.future) baseNotes.push("El mes elegido todavía no ha empezado: no hay datos ni se inventan.");
@@ -449,7 +483,7 @@ export async function computeQuality(tx: Tx, q: QualityQuery, opts: QualityOptio
     const frows = all.filter((e) => focus.has(e.id)).map((e) => rowsMap.get(e.id) as QualityRow);
     return {
       query: q, period, config: { revisionNo: active.revisionNo, persisted: active.persisted, adapterNotes: cfg.adapter?.notes ?? [], simulated: Boolean(opts.configOverride) }, pulseRevision: pulse.revisionNo, manifest, stamp, readAt,
-      totalEntities: all.length, filteredEntities: frows.length, cards: { green: 0, yellow: 0, red: 0, noGlobal: 0, total: 0, uncalibrated: 0, dataPending: 0 }, rows: frows, page: 1, pageCount: 1, coverage, backlog, notes: [...baseNotes],
+      totalEntities: all.length, filteredEntities: frows.length, cards: { green: 0, yellow: 0, red: 0, noGlobal: 0, total: 0, uncalibrated: 0, dataPending: 0 }, rows: frows, page: 1, pageCount: 1, access: accessOf(all.filter((e) => focus.has(e.id)), rowsMap), selection: [...focus], pendingData: false, coverage, backlog, notes: [...baseNotes],
       healthSummary: { withFeedback: 0, blank: 0, uncalibrated: 0 }, dedicationProfiles: { selected: profileSel, confirmed: cfg.dedication.selectionConfirmed }, config_payload: cfg, activeCards: null,
     };
   }
@@ -467,17 +501,8 @@ export async function computeQuality(tx: Tx, q: QualityQuery, opts: QualityOptio
   const cards = cardsOf(rowsMap);
   const activeCards = opts.configOverride && !opts.skipActiveCompare ? cardsOf(evaluateAll(active.payload)) : null;
 
-  // --- Filtro de color (presentación: no recalcula referencias), orden estable y página
-  const matches = (r: QualityRow): boolean => {
-    switch (q.color) {
-      case "": return true;
-      case "green": case "yellow": case "red": return r.evaluation.global.color === q.color;
-      case "sin_global": return r.evaluation.global.color === null;
-      case "sin_calibrar": return r.flags.uncalibrated;
-      case "datos_pendientes": return r.flags.dataPending;
-    }
-  };
-  const filtered = visible.filter((e) => matches(rowsMap.get(e.id) as QualityRow));
+  // --- Orden estable y página (el filtro de color se retiró: la selección es solo Soporte/Servidor)
+  const filtered = visible;
   const sign = q.base.dir === "asc" ? 1 : -1;
   const rank = { green: 0, yellow: 1, red: 2 } as const;
   const keyOf = (r: QualityRow): number | null => {
@@ -499,7 +524,7 @@ export async function computeQuality(tx: Tx, q: QualityQuery, opts: QualityOptio
   const pageCount = Math.max(1, Math.ceil(sorted.length / q.base.pageSize));
   const page = Math.min(q.base.page, pageCount);
   const slice = opts.allRows ? sorted : sorted.slice((page - 1) * q.base.pageSize, page * q.base.pageSize);
-  const selected = q.sel && !slice.some((e) => e.id === q.sel) ? all.filter((e) => e.id === q.sel) : [];
+  const selected = !opts.allRows && q.sel && !slice.some((e) => e.id === q.sel) ? all.filter((e) => e.id === q.sel) : [];
   const rows = [...slice, ...selected].map((e) => rowsMap.get(e.id) as QualityRow);
 
   const notes = [...baseNotes];
@@ -517,7 +542,7 @@ export async function computeQuality(tx: Tx, q: QualityQuery, opts: QualityOptio
   void lastDayOfMonth; void INDICATOR_NAME; void METRIC_UNIT;
   return {
     query: q, period, config: { revisionNo: active.revisionNo, persisted: active.persisted, adapterNotes: cfg.adapter?.notes ?? [], simulated: Boolean(opts.configOverride) }, pulseRevision: pulse.revisionNo, manifest, stamp, readAt,
-    totalEntities: all.length, filteredEntities: filtered.length, cards, rows, page, pageCount, coverage, backlog, notes, healthSummary: hs,
+    totalEntities: all.length, filteredEntities: filtered.length, cards, rows, page, pageCount, access: accessOf(visible, rowsMap), selection: visible.map((e) => e.id), pendingData: Object.values(coverage).some((c) => c.state !== "COMPLETE") || cards.dataPending > 0, coverage, backlog, notes, healthSummary: hs,
     dedicationProfiles: { selected: profileSel, confirmed: cfg.dedication.selectionConfirmed }, config_payload: cfg, activeCards,
   };
 }

@@ -21,6 +21,8 @@ export async function analitica(ctx: Ctx): Promise<void> {
   const today = todayMadrid();
   const admin = await ctx.prisma.user.findUniqueOrThrow({ where: { email: ctx.accounts.adminEmail } });
   await guardedTruncate(ctx.prisma, resolveTestTarget(), ["FinanceRow", "FinanceBatch", "FinanceScope", "ZdTimeEntry", "WrikeTimeEntry", "ZdTicketObservation", "ZdTicketRevision", "ZdTicket", "UserMatrixMonth", "UserMatrix", "ServiceTerm", "ServiceAssignment", "ExternalIdentity", "Milestone", "Implementation", "Client", "ClientGroup", "PapCause", "PapRevision", "PapItem", "UploadBatch", "Product", "PersonTerm", "PersonAlias", "StaffCatalogItem", "Person"]);
+  // Con la base vaciada, la revisión 1 de la configuración económica se repone antes de abrir pantallas en paralelo (la migración la crea en una instalación real).
+  await (await import("../../../src/server/economics/settings")).ensureInitialSettings(ctx.prisma);
   // Importación diferida: el módulo del generador abre `prisma`, que debe apuntar a la base de test ya fijada por el recorrido.
   const { seedAnalitica } = await import("../../../tests/generators/analitica");
   const w = await seedAnalitica(admin.id, today);
@@ -34,44 +36,86 @@ export async function analitica(ctx: Ctx): Promise<void> {
   const page = adm.page;
   await page.setViewportSize({ width: 1440, height: 900 });
 
-  // --- Comparativa
+  // --- Comparativa (HOTFIX-02 §6–7): tabla densa de una línea por Grupo, dos filtros de negocio, periodo compacto
+  await page.setViewportSize({ width: 1920, height: 1080 });
   await page.goto(`${ctx.base}/comparativa`);
   let text = await body(page);
-  ctx.check("Comparativa: abre por defecto con hoy, a fecha de corte, Soporte; tabla, tarjetas y ratio ponderado", (await page.locator("table.cmp").count()) === 1 && /Ratio ponderado de cartera/.test(text) && /A fecha de corte/.test(await page.locator("#f-modo").evaluate((e: HTMLSelectElement) => e.selectedOptions[0].textContent ?? "")) && /ingreso imputado/i.test(text), text.slice(0, 100));
-  ctx.check("Comparativa: etiqueta el dinero como ingreso imputado y la rentabilidad en €/jornada dedicada", /facturado \+ potencial anual distribuido linealmente/.test(text) && /€\/jornada dedicada/.test(text));
-  ctx.check("Comparativa: el mes en curso se marca provisional", /provisional/.test(await page.locator("table.cmp thead").innerText()));
-  ctx.check("Comparativa: cabeceras con fechas concretas de cada bloque", /Mes seleccionado · \d{2}\/\d{2}\/\d{4} – \d{2}\/\d{2}\/\d{4}/.test(await page.locator("table.cmp thead").innerText()));
-  ctx.check("Comparativa: columna Grupo Cliente (BC) y enlaces a ficha", (await page.locator("table.cmp tbody th a").count()) >= 6);
-  await shot(page, "comparativa-1440");
-  const cardRatio = async () => (await page.locator(".cards .card").filter({ hasText: "Ratio ponderado de cartera" }).locator(".stat-value").innerText()).trim();
-  const ratio0 = await cardRatio();
-
-  await page.goto(`${ctx.base}/comparativa?modo=FULL_MONTH`);
+  const groupsTotal0 = await ctx.prisma.clientGroup.count();
+  ctx.check("Comparativa: abre por defecto con una tabla densa y los seis bloques (Identificación + cinco periodos), objetivo vigente y «Provisional»", (await page.locator("table.cmp2").count()) === 1 && (await page.locator("table.cmp2 thead tr.groups th").count()) === 6 && /Objetivo 550/.test(text) && /Provisional/.test(text) && /Rentabilidad agregada: mes/.test(text), text.slice(0, 120));
+  const head = await page.locator("table.cmp2 thead").innerText();
+  ctx.check("Comparativa: bloques con los nombres de §7 y fechas concretas", ["Identificación", "Mes seleccionado", "Mes anterior", "Año actual CUM", "Año anterior completo", "CUM anterior comparable"].every((b) => head.includes(b)) && /\d{2}\/\d{2}\/\d{4} – \d{2}\/\d{2}\/\d{4}/.test(head) && /Usuarios al corte/.test(head) && /Tarifa anual/.test(head) && /Desv\. media filtrada/.test(head));
+  ctx.check("Comparativa: una fila de una línea por Grupo y nombre enlazado a Análisis Cliente", (await page.locator("table.cmp2 tbody tr").count()) === groupsTotal0 && (await page.locator("table.cmp2 tbody th a").count()) === groupsTotal0 && (await page.locator("table.cmp2 tbody tr").evaluateAll((rs) => rs.every((r) => r.getBoundingClientRect().height <= 30))));
+  const geo = async () => page.evaluate(() => { const c = document.querySelector(".cmp2-scroll") as HTMLElement; return { sw: c.scrollWidth, cw: c.clientWidth, doc: document.documentElement.scrollWidth - document.documentElement.clientWidth, main: getComputedStyle(document.querySelector("main") as HTMLElement).maxWidth }; });
+  const g1920 = await geo();
+  ctx.check("Comparativa 1920×1080: la tabla compacta con TODOS los bloques cabe sin scroll horizontal (contenedor ni documento) y el padre «main» no limita el ancho", g1920.sw <= g1920.cw && g1920.doc <= 0 && g1920.main === "none", JSON.stringify(g1920));
+  await shot(page, "comparativa-1920");
+  await page.setViewportSize({ width: 1536, height: 864 });
+  const g1536 = await geo();
+  ctx.check("Comparativa 1536×864: sin scroll horizontal del documento (la tabla se desplaza dentro de su contenedor, accesible por teclado)", g1536.doc <= 0 && (await page.locator(".cmp2-scroll").getAttribute("tabindex")) === "0", JSON.stringify(g1536));
+  await shot(page, "comparativa-1536");
+  await page.setViewportSize({ width: 1920, height: 1080 });
   text = await body(page);
-  ctx.check("Comparativa: «mes completo» del mes en curso sigue provisional y muestra fecha solicitada y corte efectivo", /Fecha solicitada/.test(text) && /mes completo/.test(text) && /provisional/.test(text));
-  await page.goto(`${ctx.base}/comparativa?tam=25&orden=cum.hours&dir=desc`);
-  const names1 = await page.locator("table.cmp tbody th[scope=row] a").allInnerTexts();
-  const ratioP1 = await cardRatio();
-  ctx.check("Comparativa: orden numérico descendente por horas CUM (Atlas primero) y 25 filas por página", names1.length === 25 && names1[0] === "Grupo Atlas", names1.slice(0, 3).join("|"));
-  await page.getByRole("link", { name: "Siguiente →" }).click();
-  await page.waitForURL(/pagina=2/);
-  const names2 = await page.locator("table.cmp tbody th[scope=row] a").allInnerTexts();
-  ctx.check("Comparativa: segunda página con otras filas y las tarjetas de cartera no cambian", names2.length > 0 && names2.every((n) => !names1.includes(n)) && (await cardRatio()) === ratioP1);
+  ctx.check("Comparativa: sin información técnica en la vista (método, sello, revisión de configuración, cobertura, introducciones) ni filtros retirados", !/Método de ingreso|Referencia de datos|Revisión de configuración|Cobertura|Referencia de cálculo|Buscar grupo|Servicio económico|Complejidad|Filas por página|Bloques/.test(text) && (await page.locator("main select[name=tam], main input[name=q], main select[name=revision]").count()) === 0);
+  ctx.check("Comparativa: exactamente dos filtros de negocio (Soporte y Servidor) como segmentadores multiselección", (await page.locator(".chips-group").count()) === 2 && (await page.locator(".chips-group").nth(0).locator(".chip").count()) === 4 && (await page.locator(".chips-group").nth(1).locator(".chip").count()) === 2);
+  ctx.check("Comparativa: valores no disponibles como «—» con motivo al clic (sin párrafos en la celda) y un único «Datos pendientes» hacia el diagnóstico", (await page.locator("table.cmp2 details.nd").count()) > 0 && (await page.getByRole("link", { name: "Datos pendientes" }).count()) === 1 && /conciliacion#diagnostico/.test((await page.getByRole("link", { name: "Datos pendientes" }).getAttribute("href")) ?? ""));
+  const nd = page.locator("table.cmp2 tbody details.nd").first();
+  await nd.locator("summary").click();
+  ctx.check("Comparativa: la explicación del «—» se abre al clic", await nd.locator(".nd-pop").isVisible());
+  await nd.locator("summary").click();
+  const sticky = await page.locator("table.cmp2 thead th").first().evaluate((e) => getComputedStyle(e).position);
+  ctx.check("Comparativa: cabeceras y primera columna fijas", sticky === "sticky" && (await page.locator("table.cmp2 tbody th.sticky-col").first().evaluate((e) => getComputedStyle(e).position)) === "sticky");
+  await page.goto(`${ctx.base}/comparativa?orden=cum.hours&dir=desc`);
+  const names1 = await page.locator("table.cmp2 tbody th[scope=row] a").allInnerTexts();
+  ctx.check("Comparativa: orden numérico descendente por horas CUM desde la cabecera (Atlas primero)", names1[0] === "Grupo Atlas", names1.slice(0, 3).join("|"));
   await page.goto(`${ctx.base}/comparativa?orden=month.perDay&dir=asc`);
-  const last = await page.locator("table.cmp tbody tr").last().innerText();
-  ctx.check("Comparativa: los grupos sin ratio (nulos) van al final, no como ceros", /no calculable|sin fuente|parcial/.test(last), last.slice(0, 80));
-  await page.goto(`${ctx.base}/comparativa?q=atlas`);
-  ctx.check("Comparativa: la búsqueda filtra grupos completos y cambia la cartera", (await page.locator("table.cmp tbody th[scope=row] a").count()) === 1 && (await cardRatio()) !== ratio0);
-  await page.goto(`${ctx.base}/comparativa?q=zzzzzz`);
-  ctx.check("Comparativa: sin coincidencias muestra estado vacío con acción", /Sin coincidencias/.test(await body(page)) && (await page.getByRole("link", { name: "Restablecer filtros" }).count()) === 1);
+  const last = await page.locator("table.cmp2 tbody tr").last().innerText();
+  ctx.check("Comparativa: los grupos sin ratio (nulos) van al final, no como ceros", /—/.test(last), last.slice(0, 80));
+  const footTotal = await page.locator("table.cmp2 tfoot th").innerText();
+  ctx.check("Comparativa: totales al pie de TODO el filtrado", new RegExp(`Total filtrado \\(${groupsTotal0} grupos\\)`).test(footTotal), footTotal);
+  // Segmentadores: clic selecciona y deselecciona; AND dentro del mismo Cliente; OR dentro del mismo filtro
+  await page.goto(`${ctx.base}/comparativa`);
+  await page.locator(".chips-group").nth(0).getByText("Gold", { exact: true }).click();
+  await page.waitForURL(/soporte=GOLD/);
+  const goldNames = await page.locator("table.cmp2 tbody th[scope=row] a").allInnerTexts();
+  ctx.check("Comparativa: un clic selecciona Gold (sin Ctrl) y el Grupo incluido conserva todas sus cifras; Cénit (Gold en un Cliente) entra con valor «Mixto»", goldNames.includes("Grupo Atlas") && goldNames.includes("Grupo Cénit") && !goldNames.includes("Grupo Boreal") && /Mixto/.test(await page.locator("table.cmp2 tbody tr").filter({ hasText: "Grupo Cénit" }).innerText()), goldNames.join("|"));
+  await page.locator(".chips-group").nth(0).getByText("Gold", { exact: true }).click();
+  await page.waitForFunction(() => !location.search.includes("soporte"));
+  ctx.check("Comparativa: otro clic deselecciona y vuelve a todos los Grupos", (await page.locator("table.cmp2 tbody tr").count()) === groupsTotal0);
+  await page.goto(`${ctx.base}/comparativa?soporte=SILVER_RECURRENTE&servidor=CLOUD`);
+  ctx.check("Comparativa: Silver Recurrente + CLOUD exige el MISMO Cliente (Cénit tiene Silver Recurrente en un Cliente y CLOUD en otro): sin coincidencias", /Sin coincidencias/.test(await body(page)));
   await page.goto(`${ctx.base}/comparativa?soporte=SILVER_RECURRENTE`);
-  ctx.check("Comparativa: «grupos que contienen» un plan conserva el grupo entero (heterogéneo Cénit)", (await page.locator("table.cmp tbody").innerText()).includes("Grupo Cénit") && /heterogéneo/.test(await page.locator("table.cmp tbody").innerText()));
-  await page.goto(`${ctx.base}/comparativa?bloques=mes,anterior,cum,anioant,cumant`);
-  ctx.check("Comparativa: los cinco bloques accesibles sin perder filtros", (await page.locator("table.cmp thead tr.groups th").count()) === 6);
+  const silver = await page.locator("table.cmp2 tbody th[scope=row] a").allInnerTexts();
+  await page.goto(`${ctx.base}/comparativa?servidor=CLOUD`);
+  const cloud = await page.locator("table.cmp2 tbody th[scope=row] a").allInnerTexts();
+  ctx.check("Comparativa: cada filtro por separado sí incluye a Cénit", silver.includes("Grupo Cénit") && cloud.includes("Grupo Cénit"));
+  // Parámetros antiguos: se ignoran y NO se propagan en enlaces
+  await page.goto(`${ctx.base}/comparativa?q=zzzzzz&estado=inactivos&producto=VFS&complejidad=BASIC&cobertura=parcial&servicio=OTROS&revision=1&tam=25&bloques=mes&ref=cum&alojamiento=OP`);
+  const hrefs0 = await page.locator("main a").evaluateAll((as) => as.map((a) => (a as HTMLAnchorElement).getAttribute("href") ?? ""));
+  ctx.check("Comparativa: los parámetros antiguos de la URL no filtran en secreto ni se propagan en ningún enlace", (await page.locator("table.cmp2 tbody tr").count()) === groupsTotal0 && !hrefs0.some((h) => /[?&](q|estado|producto|complejidad|cobertura|servicio|revision|tam|bloques|ref|alojamiento)=/.test(h)), hrefs0.filter((h) => /[?&]q=/.test(h)).slice(0, 1).join());
+  await page.goto(`${ctx.base}/comparativa?fecha=2026-13-45&orden=x%27%3B--&modo=bad&dir=up&pagina=-1&soporte=ZZZ`);
+  ctx.check("Comparativa: valores hostiles se sustituyen por los iniciales sin error", (await page.locator("table.cmp2").count()) === 1);
+  // Barra de periodo
+  await page.goto(`${ctx.base}/comparativa`);
+  await page.getByRole("link", { name: "Mes completo" }).click();
+  await page.waitForURL(/modo=FULL_MONTH/);
+  ctx.check("Comparativa: la barra de periodo cambia a «Mes completo» y sigue marcando Provisional", /Provisional/.test(await body(page)));
+  await page.getByRole("link", { name: "Último mes cerrado" }).click();
+  await page.waitForURL(/fecha=/);
+  ctx.check("Comparativa: «Último mes cerrado» abre el mes anterior completo y cerrado (sin Provisional)", !/Provisional/.test(await body(page)));
+  await page.goto(`${ctx.base}/comparativa?soporte=GOLD`);
+  await page.getByRole("link", { name: "Mes completo" }).click();
+  await page.waitForURL(/modo=FULL_MONTH/);
+  ctx.check("Comparativa: cambiar el periodo conserva Soporte/Servidor", /soporte=GOLD/.test(page.url()));
+  // Diagnóstico de datos en Administración
+  await page.goto(`${ctx.base}/comparativa`);
+  await page.getByRole("link", { name: "Datos pendientes" }).click();
+  await page.waitForURL(/administracion\/conciliacion/);
+  ctx.check("Administración › Conciliación incluye «Diagnóstico de datos» con método, revisión de configuración, referencia y cobertura financiera", /Diagnóstico de datos/.test(await body(page)) && /Método de ingreso/.test(await body(page)) && /Referencia de datos/.test(await body(page)) && /Fuentes financieras/.test(await body(page)));
+  await page.goto(`${ctx.base}/comparativa?modo=FULL_MONTH`);
 
   // --- Ficha y vuelta con contexto
-  await page.goto(`${ctx.base}/comparativa?soporte=GOLD&orden=cum.revenue&dir=desc&tam=25&bloques=mes,cum,cumant`);
-  const rowCum = await page.locator("table.cmp tbody tr").filter({ hasText: "Grupo Atlas" }).locator("td").allInnerTexts();
+  await page.goto(`${ctx.base}/comparativa?soporte=GOLD&orden=cum.revenue&dir=desc`);
+  const rowCum = await page.locator("table.cmp2 tbody tr").filter({ hasText: "Grupo Atlas" }).locator("td").allInnerTexts();
   await page.getByRole("link", { name: "Grupo Atlas" }).first().click();
   await page.waitForURL(/analisis-cliente/);
   text = await body(page);
@@ -87,7 +131,7 @@ export async function analitica(ctx: Ctx): Promise<void> {
   await page.getByRole("link", { name: /Volver a Comparativa/ }).click();
   await page.waitForURL(/\/comparativa/);
   const back = new URL(page.url());
-  ctx.check("Volver a Comparativa conserva filtro, orden, tamaño de página y bloques", back.searchParams.get("soporte") === "GOLD" && back.searchParams.get("orden") === "cum.revenue" && back.searchParams.get("tam") === "25" && back.searchParams.get("bloques") === "mes,cum,cumant", back.search);
+  ctx.check("Volver a Comparativa conserva Soporte, orden y periodo (y no reintroduce parámetros antiguos)", back.searchParams.get("soporte") === "GOLD" && back.searchParams.get("orden") === "cum.revenue" && !back.searchParams.has("tam") && !back.searchParams.has("bloques"), back.search);
 
   // --- Pestañas, detalle y explicación
   const fichaUrl = `${ctx.base}/analisis-cliente?ambito=group&id=${w.atlas.id}`;
@@ -138,8 +182,11 @@ export async function analitica(ctx: Ctx): Promise<void> {
   const lines = csvText.replace(/^\uFEFF/, "").trim().split("\r\n");
   const groupsTotal = await ctx.prisma.clientGroup.count();
   ctx.check("CSV de la cartera: 200, text/csv UTF-8, BOM, sin caché pública y TODAS las filas (5 periodos por grupo + 5 de cartera)", csvAdmin.status === 200 && /text\/csv; charset=utf-8/.test(csvAdmin.headers.get("content-type") ?? "") && (csvBytes[0] === 0xef && csvBytes[1] === 0xbb && csvBytes[2] === 0xbf) && /no-store/.test(csvAdmin.headers.get("cache-control") ?? "") && lines.length === 1 + groupsTotal * 5 + 5, `${lines.length} líneas / ${groupsTotal} grupos`);
-  const csvFiltered = await (await fetch(`${ctx.base}/api/analitica/comparativa.csv?q=atlas`, { headers: { Cookie: adminCookie } })).text();
-  ctx.check("CSV filtrado: solo el conjunto filtrado, con contexto en columnas", csvFiltered.trim().split("\r\n").length === 1 + 5 + 5 && /sello_datos/.test(csvFiltered) && /ingreso imputado/.test(csvFiltered));
+  const csvFiltered = await (await fetch(`${ctx.base}/api/analitica/comparativa.csv?soporte=GOLD`, { headers: { Cookie: adminCookie } })).text();
+  const goldGroups = await ctx.prisma.clientGroup.count({ where: { name: { in: ["Grupo Atlas", "Grupo Cénit"] } } });
+  ctx.check("CSV filtrado = pantalla: solo el conjunto filtrado por Soporte (todos sus periodos), con contexto y selección en columnas", csvFiltered.trim().split("\r\n").length === 1 + goldGroups * 5 + 5 && /sello_datos/.test(csvFiltered) && /ingreso imputado/.test(csvFiltered) && /soporte: Gold/.test(csvFiltered));
+  const csvLegacy = await (await fetch(`${ctx.base}/api/analitica/comparativa.csv?q=atlas&estado=inactivos`, { headers: { Cookie: adminCookie } })).text();
+  ctx.check("CSV: los parámetros antiguos no recortan la exportación", csvLegacy.trim().split("\r\n").length === lines.length);
   const fichaCsv = await fetch(`${ctx.base}/api/analitica/ficha.csv?ambito=group&id=${w.atlas.id}&tabla=series`, { headers: { Cookie: adminCookie } });
   const fichaLines = (await fichaCsv.text()).trim().split("\r\n");
   ctx.check("CSV de la ficha: periodos y series mensuales de ambos años", fichaCsv.status === 200 && fichaLines.length > 5 + Number(today.slice(5, 7)), String(fichaLines.length));
@@ -150,7 +197,7 @@ export async function analitica(ctx: Ctx): Promise<void> {
   // --- Consulta
   const rd = await login(ctx, ctx.accounts.readerEmail, ctx.accounts.readerPassword);
   await rd.page.goto(`${ctx.base}/comparativa`);
-  ctx.check("Consulta lee Comparativa", (await rd.page.locator("table.cmp").count()) === 1);
+  ctx.check("Consulta lee Comparativa", (await rd.page.locator("table.cmp2").count()) === 1);
   await rd.page.goto(`${fichaUrl}&det=ingreso&periodo=cum`);
   const rText = await rd.page.locator("main").innerText();
   const hrefs = await rd.page.locator("main a").evaluateAll((as) => as.map((a) => (a as HTMLAnchorElement).getAttribute("href") ?? ""));
@@ -162,10 +209,7 @@ export async function analitica(ctx: Ctx): Promise<void> {
   ctx.check("Consulta no obtiene archivos originales de Cargas", [401, 403].includes((await fetch(`${ctx.base}/api/cargas/${batch.id}/archivo`, { headers: { Cookie: readerCookie } })).status));
   await rd.context.close();
 
-  // --- Parámetros hostiles y retorno externo
-  await page.goto(`${ctx.base}/comparativa?fecha=2026-13-45&orden=x%27%3B--&modo=bad&dir=up&pagina=-1&tam=9999&soporte=ZZZ&bloques=mes,zzz`);
-  text = await body(page);
-  ctx.check("Parámetros hostiles: la página carga y avisa de que los ignora (sin error ni inyección)", /Se han ignorado parámetros no válidos/.test(text) && (await page.locator("table.cmp").count()) === 1);
+  // --- Parámetros hostiles y retorno externo (la vista normal de Comparativa se comprueba arriba)
   await page.goto(`${ctx.base}/analisis-cliente?ambito=group&id=%27%20OR%201=1--`);
   ctx.check("Identificador forjado: vuelve al selector sin error", /Seleccione un/.test(await body(page)));
   await page.goto(`${fichaUrl}&volver=https://evil.example/robar%3Fa%3D1&pestana=pap`);

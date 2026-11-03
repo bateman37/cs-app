@@ -146,7 +146,7 @@ function AnnualEq({ f, kind }: { f: FichaView; kind: "revenue" | "perDay" }) {
 export function ChartsZone({ f, nav }: { f: FichaView; nav: Nav }) {
   const s = f.series;
   const own = s.economicOwner;
-  const ctxName = own && own.kind === "group" ? ` · Grupo «${own.name}» (contexto)` : "";
+  const ctxName = own && own.kind === "group" ? " · Grupo (contexto)" : "";
   const target = coord(f.economics.settings.targetEurosPerDay) as number;
   const perDay = s.rows.perDay;
   const emptyEco = s.missing.perDay ?? "Sin datos.";

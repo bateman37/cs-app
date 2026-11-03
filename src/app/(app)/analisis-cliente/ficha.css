@@ -41,7 +41,7 @@
 .fc-sum { width: 100%; border-collapse: collapse; background: #fff; border: 1px solid var(--border, #d9d9e3); border-radius: 6px; margin-bottom: 8px; font-variant-numeric: tabular-nums; }
 .fc-sum th, .fc-sum td { padding: 0 8px; height: 26px; font-size: 12px; text-align: right; border-bottom: 1px solid #ececf2; white-space: nowrap; vertical-align: middle; }
 .fc-sum thead th { font-size: 11px; font-weight: 600; color: var(--muted, #5d5d6b); background: #f6f6fb; height: 24px; }
-.fc-sum th:first-child, .fc-sum td:first-child { text-align: left; font-weight: 600; }
+.fc-sum th:first-child, .fc-sum td:first-child { text-align: left; font-weight: 600; white-space: normal; min-width: 150px; }
 .fc-sum tbody tr:last-child td, .fc-sum tbody tr:last-child th { border-bottom: 0; }
 .fc-sum .fc-ctx th, .fc-sum .fc-ctx td { background: #fbfaf0; }
 .fc-sum a { text-decoration: none; }

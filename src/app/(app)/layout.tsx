@@ -2,6 +2,7 @@ import Link from "next/link";
 import { requirePageUser } from "@/lib/session";
 import { ROLE_LABEL } from "@/lib/access";
 import { LogoutButton, MainNav } from "@/components/nav";
+import { MainShell } from "@/components/main-shell";
 
 export default async function AppLayout({ children }: { children: React.ReactNode }) {
   const user = await requirePageUser();
@@ -16,7 +17,7 @@ export default async function AppLayout({ children }: { children: React.ReactNod
           <LogoutButton />
         </div>
       </header>
-      <main id="contenido">{children}</main>
+      <MainShell>{children}</MainShell>
     </>
   );
 }

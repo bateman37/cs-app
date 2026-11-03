@@ -330,14 +330,18 @@ describe("ámbitos, usuarios y consistencia", () => {
     const cur = await run({ fecha: "2026-11-30", modo: "FULL_MONTH" });
     expect(cur.period).toMatchObject({ cut: "2026-11-02", clamped: true, provisional: true });
   });
-  it("filtros de presentación y página no mueven la cohorte ni las tarjetas; el orden es estable", async () => {
-    await world();
+  it("la página y los parámetros retirados no mueven la cohorte ni las tarjetas; el orden es estable; los segmentadores solo recortan las filas", async () => {
+    const w = await world();
     const all = await run();
     const page = await run({ pagina: "2", tam: "25" });
     expect(page.cards).toEqual(all.cards);
-    const filtered = await run({ color: "green" });
-    expect(filtered.rows).toHaveLength(0);
-    expect(filtered.cards).toEqual(all.cards); // las tarjetas son del conjunto filtrado por identidad, no por color
+    const retired = await run({ color: "green", q: "zzz" }); // retirados: no filtran en secreto
+    expect(retired.rows.map((r) => r.id)).toEqual(all.rows.map((r) => r.id));
+    expect(retired.cards).toEqual(all.cards);
+    await prisma.serviceTerm.create({ data: { attribute: "SUPPORT", value: "GOLD", groupId: w.g.id } });
+    const gold = await run({ soporte: "GOLD" });
+    expect(gold.rows.map((r) => r.name)).toEqual(["Atlas"]);
+    expect(gold.rows[0].evaluation.indicators).toEqual(all.rows.find((r) => r.name === "Atlas")!.evaluation.indicators); // la cohorte de referencia no cambia
     expect((await run()).rows.map((r) => r.id)).toEqual(all.rows.map((r) => r.id));
   });
   it("lectura consistente: un cambio de Health entre la instantánea y una lectura posterior no se mezcla en la misma respuesta", async () => {

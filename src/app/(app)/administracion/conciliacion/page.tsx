@@ -6,6 +6,7 @@ import { first, type SearchParams } from "@/lib/format";
 import { todayMadrid } from "@/domain/vigencia";
 import { getReconRun, listReconRuns, type Check } from "@/server/reconciliation/service";
 import { runReconciliationAction } from "./actions";
+import { DiagnosticoDatos } from "./diagnostico";
 
 export const metadata: Metadata = { title: "Conciliación" };
 export const dynamic = "force-dynamic";
@@ -20,7 +21,9 @@ export default async function ConciliacionPage({ searchParams }: { searchParams:
   const today = todayMadrid();
   return (
     <>
-      <h1>Conciliación</h1>
+      <h1>Conciliación y diagnóstico de datos</h1>
+      <p className="quick"><a href="#diagnostico">Diagnóstico de datos</a> · <a href="#rec-form">Comprobación de tres niveles</a></p>
+      <DiagnosticoDatos userId={user.id} />
       <p className="muted">
         Comprueba, en tres niveles, que fuente, hechos elegibles y resultado cuadran. <strong>Solo lee</strong>: no modifica fuentes, no activa configuración ni reprocesa lotes. Cada ejecución se registra con su manifiesto y no se reescribe. Contrato: <code>docs/validacion/conciliacion-contrato.md</code>.
       </p>

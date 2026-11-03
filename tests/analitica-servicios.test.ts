@@ -3,13 +3,14 @@ import { parse } from "csv-parse/sync";
 import { prisma } from "@/lib/db";
 import { Dec } from "@/domain/finance";
 import { parseAnalysisQuery, type AnalysisQuery } from "@/domain/analytics-query";
-import { runEconomics } from "@/server/economics/engine";
+import { PERIOD_KEYS, runEconomics } from "@/server/economics/engine";
 import { listHoursDetail } from "@/server/economics/detail";
 import { getPortfolio } from "@/server/analytics/portfolio";
 import { getFicha, searchEntitiesView } from "@/server/analytics/ficha";
 import { bugsDetail, hoursDetail, incomeDetail, papDetail, ticketsDetail } from "@/server/analytics/detail";
 import { fichaCsv, portfolioCsv } from "@/server/analytics/export";
-import { setSnapshotTestHook } from "@/server/analytics/snapshot";
+import { setSnapshotTestHook, readSnapshot } from "@/server/analytics/snapshot";
+import { loadBugs, loadTickets, type EntityRef } from "@/server/analytics/operational";
 import { resetDatabase, makeUsers } from "./helpers";
 import { addClient, addGroup, addTicket, addWrike, addZd, fakeBatch, seedFinance, serviceAssignment, setUsers } from "./economia-helpers";
 
@@ -27,6 +28,14 @@ const NOW = new Date("2026-10-30T10:00:00Z");
 const Q = (extra: Record<string, string> = {}): AnalysisQuery => parseAnalysisQuery({ fecha: "2026-06-30", modo: "FULL_MONTH", ...extra }, NOW).query;
 const d = (v: string) => new Date(`${v}T00:00:00Z`);
 const D = (v: string) => Dec.parse(v) as Dec;
+/** La ficha panorámica ya no lleva tickets ni bugs (viven en Calidad): sus resúmenes siguen en operational y se leen con los mismos periodos de la ficha. */
+async function fichaOps(q: AnalysisQuery, ref: EntityRef) {
+  const f = await getFicha(admin.id, q, ref);
+  if (!f) return null;
+  const periods = PERIOD_KEYS.map((k) => ({ key: k as string, from: f.economics.periodsDefinition[k].from, to: f.economics.periodsDefinition[k].to }));
+  const [tickets, bugs] = await readSnapshot(admin.id, async (tx) => [await loadTickets(tx, ref, periods), await loadBugs(tx, ref, periods)] as const);
+  return { ...f, tickets, bugs };
+}
 
 async function world() {
   const A = await addGroup("Alfa");
@@ -164,27 +173,6 @@ describe("Análisis Cliente: ficha", () => {
     expect((await getFicha(admin.id, Q(), { type: "client", id: "inexistente-1234" }))).toBeNull();
   });
 
-  it("la cohorte filtrada de Comparativa se conserva: la desviación de la ficha coincide con la de la fila; abierta directamente usa la cartera completa identificada", async () => {
-    const w = await world();
-    await tk(w, { ticketId: "T1", org: "9001" });
-    await prisma.serviceTerm.create({ data: { attribute: "SUPPORT", value: "GOLD", groupId: w.A.id } });
-    await prisma.serviceTerm.create({ data: { attribute: "SUPPORT", value: "GOLD", groupId: w.B.id } });
-    await addZd({ batchId: bid, date: "2026-06-10", minutes: 600, groupId: w.A.id, clientId: w.A1.id, ticketId: "T1" });
-    await addZd({ batchId: bid, date: "2026-06-10", minutes: 1800, groupId: w.B.id, clientId: w.B1.id, ticketId: "T1" });
-    await addZd({ batchId: bid, date: "2026-06-10", minutes: 60, groupId: w.C.id, ticketId: "T1" });
-    const q = Q({ soporte: "GOLD" });
-    const port = await getPortfolio(admin.id, q);
-    const row = port.rows.find((r) => r.meta.name === "Alfa")!;
-    const ficha = (await getFicha(admin.id, q, { type: "group", id: w.A.id }))!;
-    expect(ficha.cohort).toMatchObject({ kind: "filtered", groups: 2 });
-    expect(ficha.entity.periods.month.deviationVsPortfolio).toEqual(row.periods.month.deviationVsPortfolio);
-    expect(ficha.entity.periods.cum.deviationVsPortfolio).toEqual(row.periods.cum.deviationVsPortfolio);
-    const direct = (await getFicha(admin.id, Q(), { type: "group", id: w.A.id }))!;
-    expect(direct.cohort.kind).toBe("all");
-    expect(direct.cohort.note).toMatch(/Referencia general/);
-    expect(direct.entity.periods.month.deviationVsPortfolio!.value).not.toBe(row.periods.month.deviationVsPortfolio!.value);
-  });
-
   it("dedicación por perfil y causa a la fecha del trabajo: sin identificar visible, Sistemas del Cliente conservado, clases que reconcilian el total", async () => {
     const w = await world();
     await tk(w, { ticketId: "T1", org: "9001", cause: "incidente_estándar_plataforma" });
@@ -201,7 +189,7 @@ describe("Análisis Cliente: ficha", () => {
     await z("2026-06-04", 30, "T4"); // sin causa, sin perfil
     await addWrike({ batchId: bid, date: "2026-06-05", minutes: 90, groupId: w.A.id, project: "Soporte PMO", pmo: true, roleId: w.ana.id });
     await serviceAssignment({ matchKind: "WRIKE_PROJECT", matchValue: "soporte pmo", service: "SOPORTE" });
-    const f = (await getFicha(admin.id, Q({ pestana: "dedicacion" }), { type: "group", id: w.A.id }))!;
+    const f = (await getFicha(admin.id, Q(), { type: "group", id: w.A.id }))!;
     const m = f.dedication!.month;
     expect(m.profiles.map((p) => p.profile)).toEqual(["CS N1", "CS N2", "PMO ANA", "Sin identificar"]);
     expect(Object.fromEntries(m.profiles.map((p) => [p.profile, p.hours]))).toEqual({ "CS N1": "4", "CS N2": "2", "PMO ANA": "1.5", "Sin identificar": "0.5" });
@@ -229,11 +217,11 @@ describe("Análisis Cliente: ficha", () => {
     await mk("2", { date: "2026-06-11", result: "Revertido", state: "CORRECTIVE", causes: [["Correctivo uso indebido", "CORRECTIVE", "CLIENT_ORIGIN"]] });
     await mk("3", { date: null, result: null, state: "UNKNOWN", causes: [] });
     await mk("4", { date: "2026-06-12", result: "OK", state: "NON_CORRECTIVE", causes: [["Evolutivo", "EVOLUTIVE", null]], group: (await addGroup("Otro")).id });
-    const f = (await getFicha(admin.id, Q({ pestana: "pap" }), { type: "group", id: w.A.id }))!;
-    const p = f.pap!.periods.month;
+    const f = (await getFicha(admin.id, Q(), { type: "group", id: w.A.id }))!;
+    const p = f.pap.periods.month;
     expect(p).toMatchObject({ total: 2, corrective: 2, standard: 1, clientOrigin: 1, evolutive: 1, nonOk: 1, additive: false });
-    expect(f.pap!.withoutProductionDate).toBe(1);
-    expect(f.pap!.results.map((r) => r.result)).toEqual(expect.arrayContaining(["OK", "Revertido", "(sin resultado)"]));
+    expect(f.pap.withoutProductionDate).toBe(1);
+    expect(f.pap.results.map((r) => r.result)).toEqual(expect.arrayContaining(["OK", "Revertido", "(sin resultado)"]));
     const det = await papDetail(reader.id, Q(), { type: "group", id: w.A.id }, "month", 1);
     expect(det.total).toBe(p.total);
     expect(det.rows.map((r) => r.papId).sort()).toEqual(["1", "2"]);
@@ -246,19 +234,19 @@ describe("Análisis Cliente: ficha", () => {
     await tk(w, { ticketId: "T2", org: "9002", created: "2026-06-06", destinations: ["IT_N3"], type: "problem", status: "open" });
     await tk(w, { ticketId: "T3", org: "9001", created: "2026-05-06", type: "question", status: "closed" });
     await tk(w, { ticketId: "T4", org: "9003", created: "2026-06-06", type: "incident" });
-    const f = (await getFicha(admin.id, Q({ pestana: "tickets" }), { type: "group", id: w.A.id }))!;
-    const t = f.tickets!.periods.month;
+    const f = (await fichaOps(Q(), { type: "group", id: w.A.id }))!;
+    const t = f.tickets.periods.month;
     expect(t).toMatchObject({ total: 2, incident: 1, problem: 1, other: 0 });
     expect(t.escalations).toMatchObject({ n3: 2, pmoN3: 1, itN3: 2 });
-    expect(f.tickets!.periods.prevMonth.total).toBe(1);
-    expect(f.tickets!.periods.cum.other).toBe(1);
-    const only1 = (await getFicha(admin.id, Q({ pestana: "tickets" }), { type: "client", id: w.A1.id }))!;
-    expect(only1.tickets!.periods.month.total).toBe(1);
+    expect(f.tickets.periods.prevMonth.total).toBe(1);
+    expect(f.tickets.periods.cum.other).toBe(1);
+    const only1 = (await fichaOps(Q(), { type: "client", id: w.A1.id }))!;
+    expect(only1.tickets.periods.month.total).toBe(1);
     const dt = await ticketsDetail(reader.id, Q(), { type: "group", id: w.A.id }, "month", 1);
     expect(dt.total).toBe(2);
     const impl = await prisma.implementation.create({ data: { clientId: w.A1.id, name: "Impl" } });
-    const im = (await getFicha(admin.id, Q({ pestana: "tickets" }), { type: "implementation", id: impl.id }))!;
-    expect(im.tickets!.supported).toBe(false);
+    const im = (await fichaOps(Q(), { type: "implementation", id: impl.id }))!;
+    expect(im.tickets.supported).toBe(false);
   });
 
   it("bugs vinculados: un bug con dos problemas = 1 bug y 2 problemas; un problema con dos bugs = 1 problema y 2 bugs; rechazados, pendientes e internos fuera", async () => {
@@ -294,13 +282,13 @@ describe("Análisis Cliente: ficha", () => {
     await link(b5, "C1", { state: "CENTRAL_INTERNAL" }); // central interno: contexto, no afecta a la cartera
     const b6 = await bug("106");
     await link(b6, "ZZ9", { state: "PENDING_TICKET" }); // pendiente: fuera del conteo confirmado
-    const f = (await getFicha(admin.id, Q({ pestana: "tickets" }), { type: "group", id: w.A.id }))!;
-    expect(f.bugs!.periods.month).toMatchObject({ bugs: 3, problems: 3, incidents: 0 }); // b1 (2 problemas), b2 y b3 (el mismo problema P3)
-    expect(f.bugs!.outside).toMatchObject({ rejectedInScope: 1, pendingTicketGlobal: 1, centralInternalGlobal: 1 });
-    const onlyP1P2 = (await getFicha(admin.id, Q({ pestana: "tickets" }), { type: "client", id: w.A1.id }))!;
-    expect(onlyP1P2.bugs!.periods.month).toMatchObject({ bugs: 1, problems: 2 });
-    const onlyP3 = (await getFicha(admin.id, Q({ pestana: "tickets" }), { type: "client", id: w.A2.id }))!;
-    expect(onlyP3.bugs!.periods.month).toMatchObject({ bugs: 2, problems: 1 });
+    const f = (await fichaOps(Q(), { type: "group", id: w.A.id }))!;
+    expect(f.bugs.periods.month).toMatchObject({ bugs: 3, problems: 3, incidents: 0 }); // b1 (2 problemas), b2 y b3 (el mismo problema P3)
+    expect(f.bugs.outside).toMatchObject({ rejectedInScope: 1, pendingTicketGlobal: 1, centralInternalGlobal: 1 });
+    const onlyP1P2 = (await fichaOps(Q(), { type: "client", id: w.A1.id }))!;
+    expect(onlyP1P2.bugs.periods.month).toMatchObject({ bugs: 1, problems: 2 });
+    const onlyP3 = (await fichaOps(Q(), { type: "client", id: w.A2.id }))!;
+    expect(onlyP3.bugs.periods.month).toMatchObject({ bugs: 2, problems: 1 });
     const det = await bugsDetail(reader.id, Q(), { type: "group", id: w.A.id }, "month", 1);
     expect(det.total).toBe(3);
     expect(det.rows.find((r) => r.workItemId === "101")!.tickets).toHaveLength(2);

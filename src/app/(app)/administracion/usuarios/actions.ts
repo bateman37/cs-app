@@ -3,6 +3,7 @@
 import type { FormState } from "@/components/form-kit";
 import { runAdminAction } from "@/app/action-utils";
 import { confirmMatrixChange, copyFromPreviousYear, initializeHistoric } from "@/server/usuarios";
+import { resolveUsersBase } from "@/server/usuarios-base";
 import { DomainError } from "@/server/errors";
 import { SCOPE_SLUG } from "./_lib";
 
@@ -34,9 +35,9 @@ export async function initializeHistoricAction(_: S, fd: FormData): Promise<S> {
     fd,
     async (a, raw) => {
       await initializeHistoric(a, raw);
-      return { href: back(raw, 2025) };
+      return { href: back(raw, raw.year) };
     },
-    { ok: "Histórico inicializado.", redirectTo: (r) => r.href },
+    { ok: "Valor inicial guardado.", redirectTo: (r) => r.href },
   );
 }
 
@@ -48,5 +49,17 @@ export async function copyPreviousYearAction(_: S, fd: FormData): Promise<S> {
       return { href: back(raw, raw.year) };
     },
     { ok: "Base copiada.", redirectTo: (r) => r.href },
+  );
+}
+
+/** Elección explícita de la base 2025 de un Grupo con valores distintos por categoría. */
+export async function resolveUsersBaseAction(_: S, fd: FormData): Promise<S> {
+  return runAdminAction(
+    fd,
+    async (a, raw) => {
+      await resolveUsersBase(a, raw);
+      return { href: `${BASE}/grupo/${encodeURIComponent(raw.groupId)}?anio=2025&ok=1` };
+    },
+    { ok: "Base 2025 resuelta.", redirectTo: (r) => r.href },
   );
 }

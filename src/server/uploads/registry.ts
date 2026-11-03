@@ -8,10 +8,11 @@ import { wrike } from "../wrike/time";
 import { pap } from "../pap/profile";
 import { bugsVfs, bugsVsw } from "../bugs/profile";
 import { FINANCE_PROFILES } from "../finance/profile";
+import { historicoEconomico } from "../finance/historic";
 import { SYNTHETIC_SCHEMA, syntheticIncorporar, syntheticSustituir } from "./synthetic/profile";
 
 /** Nueve perfiles operativos: Tickets y Tiempos Zendesk (CSAPP-03); Wrike, PAP y bugs VFS/VSW (CSAPP-04); tres financieros (CSAPP-05). */
-const OPERATIONAL: ImportProfile[] = [zendeskTickets, zendeskTiempo, wrike, pap, bugsVfs, bugsVsw, ...FINANCE_PROFILES];
+const OPERATIONAL: ImportProfile[] = [zendeskTickets, zendeskTiempo, wrike, pap, bugsVfs, bugsVsw, ...FINANCE_PROFILES, historicoEconomico];
 
 /** Fuentes previstas, mostradas como pendientes (no disponibles). */
 export const PENDING_SOURCES: PendingSource[] = [];

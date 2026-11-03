@@ -3,8 +3,12 @@ import Link from "next/link";
 import { notFound } from "next/navigation";
 import { requirePageUser } from "@/lib/session";
 import { getMatrix } from "@/server/usuarios";
+import { getGroupUsersBase } from "@/server/usuarios-base";
+import { resolveUsersBaseAction } from "../../actions";
+import { ActionForm, SubmitButton } from "@/components/form-kit";
+import { CATEGORY_LABEL } from "@/domain/finance";
 import { DomainError } from "@/server/errors";
-import { HISTORIC_YEAR, KIND_LABEL, MONTHS, currentYear } from "@/domain/usuarios";
+import { KIND_LABEL, MONTHS, currentYear } from "@/domain/usuarios";
 import { first, formatDateTime, type SearchParams } from "@/lib/format";
 import { BASE, Cell, Legend, SCOPE_LABEL, SLUG_SCOPE, SCOPE_SLUG, monthName } from "../../_lib";
 
@@ -32,8 +36,8 @@ export default async function FichaUsuariosPage({ params, searchParams }: { para
     <option key={n} value={n}>{monthName(n)}</option>
   ));
   const empty = m.months.every((x) => x.value === null);
-  const years: number[] = [];
-  for (let y = HISTORIC_YEAR; y <= cy + 1; y++) years.push(y);
+  const years = [...new Set([cy - 1, cy, year])].sort((a, b) => a - b);
+  const base = type === "group" ? await getGroupUsersBase(user.id, id) : null;
   return (
     <>
       <p><Link href={`${BASE}?anio=${year}&ambito=${SCOPE_SLUG[type]}`}>← Volver a la matriz</Link></p>
@@ -47,6 +51,14 @@ export default async function FichaUsuariosPage({ params, searchParams }: { para
           </li>
         ))}
       </ul>
+      <form className="toolbar" action={`${BASE}/${ambito}/${id}`} method="get">
+        <div className="field">
+          <label htmlFor="otro-anio">Otro año</label>
+          <input id="otro-anio" name="anio" type="number" min={2000} max={2100} step={1} defaultValue={year} inputMode="numeric" />
+        </div>
+        <button className="btn btn-secondary" type="submit">Ver año</button>
+      </form>
+      <p className="muted">Se editan el año en curso ({cy}) y el anterior ({cy - 1}); los demás se consultan.</p>
       {m.reason ? <p className="notice notice-info" role="note">{m.reason}</p> : null}
 
       <section className="card" aria-labelledby="sec-matriz">
@@ -90,31 +102,65 @@ export default async function FichaUsuariosPage({ params, searchParams }: { para
               <div className="form-actions"><button className="btn btn-primary" type="submit">Ver vista previa</button></div>
             </form>
           </div>
-          {year === cy ? (
-            <p>
-              <Link className="btn btn-secondary" href={`${revisar}?accion=copiar&anio=${year}`}>Copiar base de {year - 1} (solo meses sin informar)</Link>
-            </p>
-          ) : null}
+          <p>
+            <Link className="btn btn-secondary" href={`${revisar}?accion=copiar&anio=${year}&modo=SAME_MONTH`}>Copiar base de {year - 1} (mes a mes, solo meses sin informar)</Link>{" "}
+            <Link className="btn btn-secondary" href={`${revisar}?accion=copiar&anio=${year}&modo=DECEMBER`}>Copiar diciembre de {year - 1} (solo meses sin informar)</Link>
+          </p>
         </section>
       ) : null}
 
-      {isAdmin && year === HISTORIC_YEAR && m.scope.isActive ? (
-        empty ? (
-          <section className="card" aria-labelledby="sec-init">
-            <h2 id="sec-init">Inicializar el histórico {HISTORIC_YEAR}</h2>
-            <p className="muted">
-              Carga inicial única: el dato conocido de este ámbito se repite los doce meses y queda bloqueado. No es una reapertura y no se puede repetir con otro valor.
-              Este dato es solo de este {SCOPE_LABEL[type].toLowerCase()}: no se copia a otros ámbitos.
-            </p>
-            <form className="form" action={revisar} method="get">
-              <input type="hidden" name="accion" value="inicializar" />
-              <input type="hidden" name="anio" value={HISTORIC_YEAR} />
-              <div className="field"><label htmlFor="valor-i">Usuarios contratados</label><input id="valor-i" name="valor" inputMode="numeric" autoComplete="off" /></div>
-              <div className="field"><label htmlFor="proc-i">Procedencia</label><input id="proc-i" name="procedencia" defaultValue="Valor inicial indicado por el administrador" maxLength={200} /></div>
-              <div className="form-actions"><button className="btn btn-primary" type="submit">Ver vista previa</button></div>
-            </form>
-          </section>
-        ) : null
+      {isAdmin && m.editable && empty ? (
+        <section className="card" aria-labelledby="sec-init">
+          <h2 id="sec-init">Valor inicial de {year}</h2>
+          <p className="muted">
+            Repite un valor conocido los doce meses de {year} (carga inicial). Es solo de este {SCOPE_LABEL[type].toLowerCase()}: no se copia a otros ámbitos. Después se puede ajustar mes a mes.
+          </p>
+          <form className="form" action={revisar} method="get">
+            <input type="hidden" name="accion" value="inicializar" />
+            <input type="hidden" name="anio" value={year} />
+            <div className="field"><label htmlFor="valor-i">Usuarios contratados</label><input id="valor-i" name="valor" inputMode="numeric" autoComplete="off" /></div>
+            <div className="field"><label htmlFor="proc-i">Procedencia</label><input id="proc-i" name="procedencia" defaultValue="Valor inicial indicado por el administrador" maxLength={200} /></div>
+            <div className="form-actions"><button className="btn btn-primary" type="submit">Ver vista previa</button></div>
+          </form>
+        </section>
+      ) : null}
+
+      {base && base.status !== "SIN_BASE" ? (
+        <section className="card" aria-labelledby="sec-base">
+          <h2 id="sec-base">Base de usuarios 2025 del libro histórico</h2>
+          <p className="muted">
+            El dato de usuarios del libro es por fila financiera: un Grupo puede figurar en Soporte y en Administración delegada. Las filas no se suman.
+            Los años 2022–2024 se rellenan con esta base solo como «Estimado a partir de 2025» (no es un dato observado).
+          </p>
+          <div className="table-wrap">
+            <table>
+              <thead><tr><th>Categoría</th><th>Usuarios</th><th>Celda del libro</th></tr></thead>
+              <tbody>
+                {base.candidates.map((c) => (
+                  <tr key={c.category}><td>{CATEGORY_LABEL[c.category]}</td><td>{c.value}</td><td>{c.cell}{c.fromFormula ? " (fórmula; valor almacenado)" : ""}</td></tr>
+                ))}
+              </tbody>
+            </table>
+          </div>
+          {base.status === "DISCREPANCIA" ? (
+            <>
+              <p className="notice notice-error" role="note">
+                Las categorías informan valores distintos ({base.distinctValues.join(" y ")}). No se toma el máximo, la suma ni el último: mientras no se elija, el denominador de usuarios de este Grupo queda sin informar (no es cero).
+              </p>
+              {isAdmin ? (
+                base.candidates.map((c) => (
+                  <ActionForm key={c.category} action={resolveUsersBaseAction} hidden={{ groupId: id, category: c.category }}>
+                    <div className="form-actions"><SubmitButton variant="secondary">Usar {CATEGORY_LABEL[c.category]}: {c.value}</SubmitButton></div>
+                  </ActionForm>
+                ))
+              ) : null}
+            </>
+          ) : base.status === "RESUELTA" && base.resolution ? (
+            <p className="notice notice-ok">Resuelta expresamente: {base.resolution.value}{base.resolution.category ? ` (${CATEGORY_LABEL[base.resolution.category]})` : " (valor indicado)"}.</p>
+          ) : (
+            <p className="muted">Todas las categorías coinciden: {base.distinctValues[0]}.</p>
+          )}
+        </section>
       ) : null}
 
       <section className="card" aria-labelledby="sec-detalle">

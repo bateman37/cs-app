@@ -240,6 +240,7 @@ export async function getUpload(actorId: string, id: string) {
     confirmBlockedReason: confirmBlockReason(profile, batch.rowsError) ?? gate,
   });
   if (pendingRevert) actions.revert = { allowed: false, reason: "La reversión ya está en cola." };
+  if (isHistoricChild(batch.metadata)) actions.revert = { allowed: false, reason: "Este conjunto lo escribió un libro de histórico económico: se revierte desde el lote del libro (unidad de confirmación)." };
   if (pendingRederive) actions.reprocess = { allowed: false, reason: "El recálculo ya está en cola." };
   return { batch: { ...batch, sizeBytes: num(batch.sizeBytes) }, profile: profile ? { id: profile.id, label: profile.label, policy: profile.policy } : null, actions, pendingRevert, pendingRederive, sameChecksum };
 }
@@ -371,10 +372,16 @@ export async function reprocessUpload(actorId: string, id: string) {
   });
 }
 
+/** Lote hijo por año+categoría de un libro de histórico económico (HOTFIX-01 §6): su unidad de reversión es el libro. */
+function isHistoricChild(metadata: unknown): boolean {
+  return (metadata as { origen?: string } | null)?.origen === "HISTORICO_ECONOMICO";
+}
+
 export async function revertUpload(actorId: string, id: string) {
   return adminTransaction(actorId, async (tx, actor) => {
-    const b = await tx.uploadBatch.findUnique({ where: { id }, select: { status: true, profileId: true, supersededByBatchId: true } });
+    const b = await tx.uploadBatch.findUnique({ where: { id }, select: { status: true, profileId: true, supersededByBatchId: true, metadata: true } });
     if (!b) throw new DomainError("Carga no encontrada.");
+    if (isHistoricChild(b.metadata)) throw new DomainError("Este conjunto lo escribió un libro de histórico económico: revierta el lote del libro.");
     const profile = await getProfile(b.profileId);
     const act = availableActions(b.status as UploadStatusName, {
       supportsRevert: profile ? Boolean(profile.revert) : false,

@@ -1,9 +1,9 @@
 {
   "version": "0.1.0",
-  "sha": "dc6f4c4f943fcf349db38cee921e52bebc2c69bf",
-  "dirty": false,
-  "builtAt": "2026-11-03T09:14:05.997Z",
-  "node": "v24.21.0",
+  "sha": "252eae62e2ff87c5f6bf48c61e0e18568a716d40",
+  "dirty": true,
+  "builtAt": "2026-11-03T18:11:36.898Z",
+  "node": "v22.22.0",
   "migrations": [
     "20261029200318_base_acceso_y_maestros",
     "20261029220244_personal_usuarios_cargas",
@@ -13,6 +13,9 @@
     "20261102090000_pulse_calidad_configuracion",
     "20261103090000_calidad_health_cobertura",
     "20261104090000_exportaciones_conciliacion",
-    "20261105090000_operacion_latido_instalacion"
+    "20261105090000_operacion_latido_instalacion",
+    "20261106090000_hotfix01_ultima_carga",
+    "20261107090000_hotfix01_precarga_maestros",
+    "20261108090000_hotfix01_historico_usuarios"
   ]
 }

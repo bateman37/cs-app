@@ -2,10 +2,9 @@
  * Calidad (HOTFIX-02 §6 y §9): Resumen de clientes y apartados de los seis indicadores. Prefijo `.ql-` para no tocar los estilos de otras vistas.
  * Densidad: tablas ≈12 px, filas 26–30 px, números tabulares. Sin zoom, transform ni overflow oculto: lo que no cabe se desplaza dentro de su región.
  */
-/* El ancho panorámico del `main` lo resuelve el layout común; esta regla solo garantiza que Calidad no quede en la columna estrecha heredada. */
-main:has(> .ql-page) { max-width: none; padding: 0.6rem 20px 2rem; }
+/* El ancho panorámico del `main` lo da el layout común (`main-wide`). Las reglas de tabla van calificadas con `.ql-page` para prevalecer sobre las base de globals.css. */
 
-.ql-page { --ql-red-bg: #fdeaea; --ql-red: #a11d1d; --ql-yel-bg: #fbf0b3; --ql-yel: #5a4a00; --ql-grn-bg: #cdeedb; --ql-grn: #0d4a28; --ql-gry-bg: #ececf1; --ql-gry: #4a4a55; font-size: 13px; }
+.ql-page { display: block; --ql-red-bg: #fdeaea; --ql-red: #a11d1d; --ql-yel-bg: #fbf0b3; --ql-yel: #5a4a00; --ql-grn-bg: #cdeedb; --ql-grn: #0d4a28; --ql-gry-bg: #ececf1; --ql-gry: #4a4a55; font-size: 13px; }
 .ql-page h1 { font-size: 1.15rem; margin: 0; white-space: nowrap; }
 .ql-page h2 { font-size: 0.95rem; margin: 0 0 0.4rem; }
 .ql-page h3 { font-size: 0.85rem; margin: 0.9rem 0 0.35rem; color: var(--muted); text-transform: none; }
@@ -33,11 +32,11 @@ main:has(> .ql-page) { max-width: none; padding: 0.6rem 20px 2rem; }
 .ql-acc { display: grid; grid-template-rows: auto auto auto; gap: 0.1rem; padding: 0.4rem 0.6rem; background: var(--surface); border: 1px solid var(--border); border-left-width: 5px; border-radius: var(--radius); color: var(--text); text-decoration: none; min-width: 0; height: 100%; }
 .ql-acc:hover { border-color: var(--blue); }
 .ql-acc[aria-current="page"] { outline: 2px solid var(--blue); outline-offset: -1px; }
-.ql-acc-name { font-weight: 700; font-size: 0.85rem; display: flex; justify-content: space-between; gap: 0.4rem; align-items: baseline; }
+.ql-acc-name { font-weight: 700; font-size: 0.85rem; flex-wrap: wrap; min-width: 0; display: flex; justify-content: space-between; gap: 0.4rem; align-items: baseline; }
 .ql-acc-val { font-size: 1.05rem; font-weight: 700; font-variant-numeric: tabular-nums; white-space: nowrap; }
 .ql-acc-val small { font-weight: 400; color: var(--muted); font-size: 0.72rem; }
 .ql-acc-sub { font-size: 0.72rem; color: var(--muted); line-height: 1.3; }
-.ql-acc-red { border-left-color: #b42318; } .ql-acc-yellow { border-left-color: #d8c04a; } .ql-acc-green { border-left-color: #2f9e5f; } .ql-acc-uncalibrated, .ql-acc-nodata { border-left-color: #9a9aa8; }
+.ql-acc-red { border-left-color: #b42318; } .ql-acc-yellow { border-left-color: #d8c04a; } .ql-acc-green { border-left-color: #2f9e5f; } .ql-acc-uncalibrated, .ql-acc-partial, .ql-acc-nodata { border-left-color: #9a9aa8; }
 
 /* ---- Estados con color + texto + símbolo */
 .ql-st { display: inline-block; padding: 0 0.35rem; border-radius: 4px; font-size: 0.72rem; font-weight: 600; white-space: nowrap; line-height: 1.5; }
@@ -49,20 +48,21 @@ main:has(> .ql-page) { max-width: none; padding: 0.6rem 20px 2rem; }
 
 /* ---- Tablas densas */
 .ql-wrap { overflow-x: auto; border: 1px solid var(--border); border-radius: var(--radius); background: var(--surface); margin-bottom: 0.6rem; }
-.ql-table { width: 100%; border-collapse: collapse; font-size: 12px; font-variant-numeric: tabular-nums; }
-.ql-table th, .ql-table td { padding: 0.18rem 0.5rem; border-bottom: 1px solid var(--border); vertical-align: middle; height: 28px; text-align: left; line-height: 1.25; }
-.ql-table thead th { background: #f0f0f6; position: sticky; top: 0; z-index: 1; font-size: 11.5px; color: var(--text); white-space: nowrap; }
-.ql-table thead th a { color: inherit; text-decoration: none; display: inline-block; }
-.ql-table thead th a:hover, .ql-table thead th a:focus-visible { text-decoration: underline; color: var(--blue); }
-.ql-table tbody th { font-weight: 600; max-width: 22rem; overflow-wrap: anywhere; }
-.ql-table tbody tr:hover { background: #f7f7fc; }
-.ql-table td.ql-r, .ql-table th.ql-r { text-align: right; }
-.ql-table tfoot td, .ql-table tfoot th { background: #f7f7fb; font-weight: 600; }
-.ql-table .ql-k > a { display: inline-flex; align-items: baseline; gap: 0.3rem; color: inherit; text-decoration: none; flex-wrap: nowrap; white-space: nowrap; }
-.ql-table .ql-k > a:hover .ql-v, .ql-table .ql-k > a:focus-visible .ql-v { text-decoration: underline; color: var(--blue); }
+.ql-page .ql-table { width: 100%; border-collapse: collapse; font-size: 12px; font-variant-numeric: tabular-nums; }
+.ql-page .ql-table th, .ql-page .ql-table td { padding: 0.18rem 0.5rem; border-bottom: 1px solid var(--border); vertical-align: middle; height: 28px; text-align: left; line-height: 1.25; }
+.ql-page .ql-table thead th { background: #f0f0f6; position: sticky; top: 0; z-index: 1; font-size: 11.5px; color: var(--text); white-space: nowrap; }
+.ql-page .ql-table thead th a { color: inherit; text-decoration: none; display: inline-block; }
+.ql-page .ql-table thead th a:hover, .ql-page .ql-table thead th a:focus-visible { text-decoration: underline; color: var(--blue); }
+.ql-page .ql-table tbody th { font-weight: 600; max-width: 28rem; overflow-wrap: anywhere; }
+.ql-page .ql-table tbody tr:hover { background: #f7f7fc; }
+.ql-page .ql-table td.ql-r, .ql-page .ql-table th.ql-r { text-align: right; }
+.ql-page .ql-table tfoot td, .ql-page .ql-table tfoot th { background: #f7f7fb; font-weight: 600; }
+.ql-page .ql-table .ql-k > a { display: inline-flex; align-items: baseline; gap: 0.3rem; color: inherit; text-decoration: none; flex-wrap: nowrap; white-space: nowrap; }
+.ql-page .ql-table .ql-k > a:hover .ql-v, .ql-page .ql-table .ql-k > a:focus-visible .ql-v { text-decoration: underline; color: var(--blue); }
 .ql-v { font-weight: 700; }
 .ql-u { color: var(--muted); font-size: 0.85em; }
 .ql-obs { color: var(--muted); font-size: 0.85em; }
+.ql-page .ql-table th.ql-name, .ql-page .ql-table tbody th { white-space: normal; }
 .ql-name small { display: block; color: var(--muted); font-weight: 400; font-size: 0.85em; }
 .ql-name a { text-decoration: none; }
 .ql-name a:hover { text-decoration: underline; }
@@ -91,8 +91,10 @@ main:has(> .ql-page) { max-width: none; padding: 0.6rem 20px 2rem; }
   .ql-cols { grid-template-columns: minmax(0, 1fr); }
 }
 @media (max-width: 640px) {
-  main:has(> .ql-page) { padding-left: 16px; padding-right: 16px; }
   .ql-acc-grid { grid-template-columns: repeat(2, minmax(0, 1fr)); }
   .ql-page h1 { white-space: normal; }
+  .ql-page .ql-table tbody th { min-width: 9rem; }
+  .ql-acc-val { white-space: normal; }
+  .ql-acc-sub { overflow-wrap: anywhere; }
   .ql-calc dl { grid-template-columns: 1fr; }
 }

@@ -91,7 +91,7 @@ export type KpiAccess = {
   key: IndicatorKey; entities: number; green: number; yellow: number; red: number;
   /** Con dato pero sin umbral/regla confirmado: se muestran magnitudes, no color. */
   uncalibrated: number; noData: number;
-  state: "red" | "yellow" | "green" | "uncalibrated" | "nodata";
+  state: "red" | "yellow" | "green" | "uncalibrated" | "partial" | "nodata";
   /** Suma de la magnitud observada (horas o conteo) de las entidades de la selección; null si ninguna tiene magnitud. */
   observedTotal: string | null;
   /** Solo Client Health: feedback del mes de la selección. */
@@ -414,7 +414,7 @@ function accessOf(visible: Ent[], rowsMap: Map<string, QualityRow>): Record<Indi
     }
     a.observedTotal = obs === null ? null : obs.toString();
     // Verde solo si TODA la selección con dato está en verde: la ausencia de dato o de calibración nunca produce un verde.
-    a.state = a.red > 0 ? "red" : a.yellow > 0 ? "yellow" : a.uncalibrated > 0 || (a.green > 0 && a.noData > 0) ? "uncalibrated" : a.green > 0 ? "green" : "nodata";
+    a.state = a.red > 0 ? "red" : a.yellow > 0 ? "yellow" : a.uncalibrated > 0 ? "uncalibrated" : a.green > 0 && a.noData > 0 ? "partial" : a.green > 0 ? "green" : "nodata";
     out[k] = a;
   }
   return out;

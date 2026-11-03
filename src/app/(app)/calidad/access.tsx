@@ -12,6 +12,7 @@ function AccessState({ a }: { a: KpiAccess }) {
   if (a.state === "yellow") return <StateTag color="yellow" text={`${a.yellow} en amarillo`} />;
   if (a.state === "green") return <StateTag color="green" text="Todo verde" />;
   if (a.state === "uncalibrated") return <NeutralTag title="Hay valores sin umbral configurado: se muestran las magnitudes, sin color.">Sin calibrar</NeutralTag>;
+  if (a.state === "partial") return <NeutralTag partial title="Hay entidades con dato y otras sin dato: no se declara todo verde.">Datos incompletos</NeutralTag>;
   return <NeutralTag>Sin dato</NeutralTag>;
 }
 
@@ -28,7 +29,7 @@ export function KpiAccessGrid({ access, q, basePath }: { access: Record<(typeof 
         const a = access[k];
         const h = a.health;
         const unit = KPI_OBSERVED_UNIT[k];
-        const label = `${KPI_ACCESS_NAME[k]}: ${h ? `${h.positive} positivo, ${h.mixed} mixto, ${h.negative} negativo, ${h.blank} sin informar` : `${a.observedTotal === null ? "sin magnitud observada" : `${num(a.observedTotal)} ${unit}`}`}. Estado ${a.state === "red" ? "rojo" : a.state === "yellow" ? "amarillo" : a.state === "green" ? "verde" : a.state === "uncalibrated" ? "sin calibrar" : "sin dato"}. Abrir apartado`;
+        const label = `${KPI_ACCESS_NAME[k]}: ${h ? `${h.positive} positivo, ${h.mixed} mixto, ${h.negative} negativo, ${h.blank} sin informar` : `${a.observedTotal === null ? "sin magnitud observada" : `${num(a.observedTotal)} ${unit}`}`}. Estado ${a.state === "red" ? "rojo" : a.state === "yellow" ? "amarillo" : a.state === "green" ? "verde" : a.state === "uncalibrated" ? "sin calibrar" : a.state === "partial" ? "datos incompletos" : "sin dato"}. Abrir apartado`;
         return (
           <li key={k}>
             <Link className={`ql-acc ql-acc-${a.state}`} href={kpiHref({ ...q, sel: "" }, basePath, k)} aria-label={label} aria-current={q.kpi === k && !q.sel ? "page" : undefined} prefetch={false}>

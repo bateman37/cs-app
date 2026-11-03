@@ -37,7 +37,7 @@ export function QualityBar({ title, q, period, today, basePath, pending, csvHref
           <Link className={mode === "CUTOFF" ? "chip chip-on" : "chip"} aria-pressed={mode === "CUTOFF"} href={link({}, monthToDate(ym(period.year, period.month), "CUTOFF", today) ?? undefined, "CUTOFF")} prefetch={false}>A fecha de hoy</Link>
           <Link className={mode === "FULL_MONTH" ? "chip chip-on" : "chip"} aria-pressed={mode === "FULL_MONTH"} href={link({}, monthToDate(ym(period.year, period.month), "FULL_MONTH", today) ?? undefined, "FULL_MONTH")} prefetch={false}>Mes completo</Link>
         </span>
-        <Link href={link({}, lastClosedMonthEnd(today), "FULL_MONTH")} className="ql-pending" prefetch={false} style={{ textDecoration: "none" }}>Último mes cerrado</Link>
+        <Link href={link({}, lastClosedMonthEnd(today), "FULL_MONTH")} className="chip" prefetch={false}>Último mes cerrado</Link>
         {period.provisional ? <span className="ql-tag" title={`Corte efectivo ${period.cut.split("-").reverse().join("/")}: el mes no está cerrado.`}>Provisional</span> : null}
       </nav>
       <FiltrosComunes value={q.filters} hrefFor={hrefFilters} />

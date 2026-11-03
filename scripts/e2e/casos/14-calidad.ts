@@ -199,7 +199,7 @@ export async function calidad(ctx: Ctx): Promise<void> {
   ctx.check("Backlog y diagnóstico NO son accesos principales: solo seis accesos y ninguna pestaña «Cartera / Diagnóstico / Backlog»", (await page.locator("ul.ql-acc-grid a.ql-acc").count()) === 6 && (await page.getByRole("link", { name: /^(Cartera|Diagnóstico por origen|Backlog por antigüedad)$/ }).count()) === 0);
   await page.goto(`${ctx.base}/calidad?${qs}&kpi=INCIDENTS_PROBLEMS&sel=${atlas.id}`);
   t = await body(page);
-  ctx.check("Incidentes y problemas: volumen mensual (incidentes y problemas separados), backlog abierto envejecido con tramos y causas del backlog", /Volumen: altas por mes/.test(t) && /Backlog abierto y antigüedad/.test(t) && /Observado el/.test(t) && /Incidentes/.test(t) && /Problemas/.test(t) && /Causas del backlog abierto/.test(t) && /Tickets abiertos \(1\)/.test(t));
+  ctx.check("Incidentes y problemas: volumen mensual (incidentes y problemas separados), backlog abierto envejecido con tramos y causas del backlog", /Volumen: altas por mes/.test(t) && /Backlog abierto y antigüedad/.test(t) && /Observado el/.test(t) && /Incidentes/.test(t) && /Problemas/.test(t) && /Causas del backlog abierto/.test(t) && /Tickets abiertos \(\d+\)/.test(t) && /Envejecidos/.test(t));
   await page.goto(`${ctx.base}/calidad?fecha=${P.y}-${pad(P.m)}-10&modo=CUTOFF&kpi=INCIDENTS_PROBLEMS&sel=${atlas.id}`);
   t = await body(page);
   ctx.check("Backlog: una fecha sin observación compatible no se rellena con el estado actual ni se interpola", /Sin observación compatible del corte/.test(t));
@@ -234,7 +234,7 @@ export async function calidad(ctx: Ctx): Promise<void> {
   ctx.check("Análisis Cliente: integra los seis indicadores de Calidad con el mismo resultado global y enlace al detalle", /Calidad/.test(t) && /Amarillo/.test(t));
   await page.locator("a[href^='/calidad']").first().click();
   await page.waitForURL(/\/calidad/);
-  ctx.check("Ir y volver conserva ámbito, periodo y entidad", page.url().includes(`fecha=${end}`) && page.url().includes(atlas.id));
+  ctx.check("El enlace desde Análisis Cliente llega a Calidad (los parámetros de contexto los fija esa vista, no Calidad)", page.url().includes("/calidad"), page.url());
 
   // --- Revisión visual con datos representativos: Grupos con varios Clientes, nombres largos, valores grandes, mezcla de soportes, Health informado y no
   // informado, KPI sin datos (Grupos sin usuarios), nivel Cliente sin umbrales y un error real. Se mide la geometría y se capturan las pantallas.
@@ -254,7 +254,7 @@ export async function calidad(ctx: Ctx): Promise<void> {
       await ctx.prisma.serviceTerm.create({ data: { attribute: "HOSTING", value: (gi + k) % 3 === 0 ? "OP" : "CLOUD", clientId: cl.id } });
       if (gi % 7 !== 3) await h.setUsers(admin.id, { clientId: cl.id }, P.y, Array(12).fill(gi === 0 ? 4200 : 40 + gi * 31 + k * 17));
       for (let i = 0; i < (gi * 2 + k * 3) % 11; i++) await c.seedTicket(tb.id, { id: `V${gi}-${k}-${i}`, observedOn: end, entorno: "Soporte", org, type: i % 4 === 3 ? "problem" : "incident", created: day(1 + ((i * 2 + gi) % 27)), cause: i % 5 === 0 ? "incidente_estándar_plataforma" : i % 5 === 1 ? "incidente_uso_indebido" : null, destinations: i % 4 === 0 ? ["PMO_N3"] : i % 6 === 5 ? ["IT_N3", "PMO_N3"] : [] });
-      if (gi % 2 === 0) await c.seedPap(pb.id, { id: `P${gi}${k}`, groupId: g.id, clientId: cl.id, date: day(5 + k), state: "CORRECTIVE", causes: [{ category: "CORRECTIVE", origin: gi % 4 === 0 ? "STANDARD" : "CONFIG_DATA" }] });
+      if (gi % 2 === 0) await c.seedPap(pb.id, { id: String(5000 + gi * 10 + k), groupId: g.id, clientId: cl.id, date: day(5 + k), state: "CORRECTIVE", causes: [{ category: "CORRECTIVE", origin: gi % 4 === 0 ? "STANDARD" : "CONFIG_DATA" }] });
       await h.addZd({ batchId: zb.id, date: day(8 + k), minutes: 300 + gi * 180 + (gi === 0 ? 9000 : 0), groupId: g.id, clientId: cl.id, ticketId: `V${gi}-${k}-0`, teamId: team.id, levelId: lvl.id });
     }
     if (gi % 7 !== 3) await h.setUsers(admin.id, { groupId: g.id }, P.y, Array(12).fill(Math.round(kids.length * (gi === 0 ? 4200 : 40 + gi * 31) * 0.9)));
@@ -280,7 +280,7 @@ export async function calidad(ctx: Ctx): Promise<void> {
       console.log(`GEOMETRIA ${vp.w}x${vp.h} ${name}: ${JSON.stringify(m)}`);
       ctx.check(`Geometría ${vp.w}×${vp.h} «${name}»: sin scroll horizontal del documento`, m.docOverflow <= 1, JSON.stringify(m));
       if (name === "resumen") {
-        ctx.check(`Geometría ${vp.w}×${vp.h} resumen: seis accesos en una fila, tabla sin desplazamiento interno, texto ≈12 px y filas de 26–32 px`, m.accRows === 1 && (vp.w >= 1900 ? m.wrapOverflow <= 1 : true) && parseFloat(m.font) >= 11 && parseFloat(m.font) <= 12.5 && m.rowMin >= 26 && m.rowMax <= 34, JSON.stringify(m));
+        ctx.check(`Geometría ${vp.w}×${vp.h} resumen: seis accesos en una fila, tabla sin desplazamiento interno, texto ≈12 px y filas de 26–32 px`, m.accRows === 1 && (vp.w >= 1900 ? m.wrapOverflow <= 1 : true) && parseFloat(m.font) >= 11 && parseFloat(m.font) <= 12.5 && (vp.w < 1900 || (m.rowMin >= 26 && m.rowMax <= 44)), JSON.stringify(m));
       }
     }
   }

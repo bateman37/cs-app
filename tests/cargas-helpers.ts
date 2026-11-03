@@ -91,6 +91,32 @@ export function buildWorker() {
 }
 
 /** Arranca el trabajador REAL construido (proceso hijo) contra la base de test. */
+/** Procesos hijos creados por ESTA prueba (nunca se toca ningún otro proceso del equipo). */
+const ownChildren = new Set<ChildProcess>();
+
+/**
+ * Limpieza centralizada: termina con SIGTERM y, tras `graceMs`, con SIGKILL SOLO los hijos registrados por spawnWorker, y espera su salida.
+ * Se llama desde afterEach/afterAll, de modo que un fallo o timeout a mitad de una prueba no deja trabajadores vivos.
+ */
+export async function reapOwnWorkers(graceMs = 5000): Promise<number> {
+  const alive = [...ownChildren].filter((c) => c.exitCode === null && !c.signalCode);
+  await Promise.all(
+    alive.map(
+      (c) =>
+        new Promise<void>((resolve) => {
+          const t = setTimeout(() => c.kill("SIGKILL"), graceMs);
+          c.once("exit", () => {
+            clearTimeout(t);
+            resolve();
+          });
+          c.kill("SIGTERM");
+        }),
+    ),
+  );
+  ownChildren.clear();
+  return alive.length;
+}
+
 export function spawnWorker(extraEnv: Record<string, string> = {}): ChildProcess & { output: string[] } {
   buildWorker();
   const child = spawn(process.execPath, ["worker-dist/worker.mjs"], {
@@ -99,6 +125,7 @@ export function spawnWorker(extraEnv: Record<string, string> = {}): ChildProcess
     stdio: ["ignore", "pipe", "pipe"],
   }) as ChildProcess & { output: string[] };
   child.output = [];
+  ownChildren.add(child);
   child.stdout?.on("data", (d: Buffer) => child.output.push(d.toString()));
   child.stderr?.on("data", (d: Buffer) => child.output.push(d.toString()));
   return child;

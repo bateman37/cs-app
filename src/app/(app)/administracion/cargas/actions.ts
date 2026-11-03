@@ -105,3 +105,9 @@ export async function reviewFinanceImpactAction(_: S, fd: FormData): Promise<S> 
     paths: [`${BASE}/${fd.get("id")}`],
   });
 }
+
+import { declareCoverage } from "@/server/quality/coverage";
+/** Declaración/revisión de cobertura de un lote (CSAPP-08 §6): versión nueva con motivo y auditoría; no cambia filas, extracción original ni observaciones. */
+export async function declareCoverageAction(_: S, fd: FormData): Promise<S> {
+  return runAdminAction(fd, (a, raw) => declareCoverage(a, { ...raw, batchId: raw.id }), { ok: "Cobertura declarada: versión nueva guardada y auditada.", paths: [BASE, `${BASE}/${fd.get("id")}`, "/calidad"] });
+}

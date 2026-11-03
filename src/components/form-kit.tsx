@@ -153,7 +153,7 @@ export function CheckboxField({ name, label, initial, help }: { name: string; la
 export function SubmitButton({ children, pending = "Guardando…", variant = "primary" }: { children: ReactNode; pending?: string; variant?: "primary" | "secondary" | "danger" }) {
   const { pending: isPending } = useFormStatus();
   return (
-    <button type="submit" className={`btn btn-${variant}`} disabled={isPending} aria-busy={isPending}>
+    <button type="submit" className={`btn btn-${variant}`} disabled={isPending} aria-busy={isPending || undefined}>
       {isPending ? pending : children}
     </button>
   );

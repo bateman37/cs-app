@@ -14,6 +14,7 @@ import {
   type ClaimedJob,
 } from "./queue";
 import { removePart } from "./storage";
+import { setActivity } from "@/server/ops/worker-instance";
 
 type Log = (message: string) => void;
 
@@ -29,6 +30,7 @@ export async function processJob(job: ClaimedJob, shouldStop: () => boolean, log
       .catch(() => undefined);
   }, cfg.heartbeatMs);
   const rt = { job, shouldStop: () => shouldStop() || lost };
+  setActivity("upload", { kind: job.kind, jobId: job.id, batchId: job.batchId });
   try {
     log(`Trabajo ${job.kind} del lote ${job.batchId} (intento ${job.attempts}/${job.maxAttempts})`);
     if (job.kind === "PREPARE") await runPrepare(rt);
@@ -52,6 +54,7 @@ export async function processJob(job: ClaimedJob, shouldStop: () => boolean, log
     }
   } finally {
     clearInterval(timer);
+    setActivity("upload", null);
   }
 }
 

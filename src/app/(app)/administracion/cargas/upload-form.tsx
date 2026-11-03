@@ -3,14 +3,19 @@
 import { useRef, useState } from "react";
 import { useRouter } from "next/navigation";
 
-type Field = { name: string; label: string; type: "text" | "select" | "date" | "checkbox"; required: boolean; options?: { value: string; label: string }[] };
-export type Source = { id: string; label: string; description: string; formats: string[]; metadataFields: Field[] };
+type Field = { name: string; label: string; type: "text" | "select" | "date" | "checkbox" | "number"; required: boolean; options?: { value: string; label: string }[] };
+export type Source = { id: string; label: string; description: string; formats: string[]; metadataFields: Field[]; note?: string | null };
 
 function b64(obj: unknown): string {
   const bytes = new TextEncoder().encode(JSON.stringify(obj));
   let s = "";
   for (const b of bytes) s += String.fromCharCode(b);
   return btoa(s);
+}
+
+/** Año actual en Europe/Madrid como valor inicial editable (no es un límite: se puede escribir 2026, 2027, 2028 y posteriores). */
+function currentYearMadrid(): number {
+  return Number(new Intl.DateTimeFormat("en-CA", { timeZone: "Europe/Madrid", year: "numeric" }).format(new Date()));
 }
 
 const mb = (n: number) => `${(n / 1048576).toFixed(1)} MB`;
@@ -43,13 +48,12 @@ export function UploadForm({ source }: { source: Source }) {
       return o;
     };
     const perfil = clean(source.metadataFields.map((f) => f.name));
-    const declarado = clean(["extraccion", "desde", "hasta", "cobertura"]);
     const xhr = new XMLHttpRequest();
     xhr.open("POST", "/api/cargas");
     xhr.setRequestHeader("content-type", "application/octet-stream");
     xhr.setRequestHeader("x-csapp-perfil", source.id);
     xhr.setRequestHeader("x-csapp-nombre", encodeURIComponent(file.name));
-    xhr.setRequestHeader("x-csapp-metadatos", b64({ perfil, declarado }));
+    xhr.setRequestHeader("x-csapp-metadatos", b64({ perfil }));
     xhr.upload.onprogress = (ev) => {
       if (ev.lengthComputable) setSent({ loaded: ev.loaded, total: ev.total });
     };
@@ -77,6 +81,7 @@ export function UploadForm({ source }: { source: Source }) {
   return (
     <form ref={formRef} onSubmit={submit} className="form" noValidate aria-describedby={`${id}-desc`}>
       {error ? <p className="notice notice-error" role="alert">{error}</p> : null}
+      {source.note ? <p className="notice" role="note">{source.note}</p> : null}
       <div className="field">
         <label htmlFor={`${id}-archivo`}>Archivo ({source.formats.map((f) => f.toUpperCase()).join(" o ")})</label>
         <input id={`${id}-archivo`} name="archivo" type="file" accept={source.formats.map((f) => `.${f}`).join(",")} disabled={busy} />
@@ -95,21 +100,12 @@ export function UploadForm({ source }: { source: Source }) {
               {f.options?.map((o) => <option key={o.value} value={o.value}>{o.label}</option>)}
             </select>
           ) : (
-            <input id={`${id}-${f.name}`} name={f.name} type={f.type === "date" ? "date" : "text"} disabled={busy} />
+            <input id={`${id}-${f.name}`} name={f.name} type={f.type === "date" ? "date" : f.type === "number" ? "text" : "text"} inputMode={f.type === "number" ? "numeric" : undefined} maxLength={f.type === "number" ? 4 : undefined} pattern={f.type === "number" ? "[0-9]{4}" : undefined} defaultValue={f.name === "anio" ? String(currentYearMadrid()) : undefined} disabled={busy} />
           )}
         </div>
       ))}
-      <fieldset style={{ flexBasis: "100%", border: 0, padding: 0, margin: 0 }}>
-        <legend className="muted">Metadatos declarados (opcionales; no se deducen del contenido)</legend>
-        <div className="form">
-          <div className="field"><label htmlFor={`${id}-extraccion`}>Fecha de extracción</label><input id={`${id}-extraccion`} name="extraccion" type="date" disabled={busy} /></div>
-          <div className="field"><label htmlFor={`${id}-desde`}>Intervalo desde</label><input id={`${id}-desde`} name="desde" type="date" disabled={busy} /></div>
-          <div className="field"><label htmlFor={`${id}-hasta`}>Intervalo hasta</label><input id={`${id}-hasta`} name="hasta" type="date" disabled={busy} /></div>
-          <div className="field"><label htmlFor={`${id}-cobertura`}>Cobertura conocida</label><input id={`${id}-cobertura`} name="cobertura" maxLength={500} disabled={busy} /></div>
-        </div>
-      </fieldset>
       <div className="form-actions">
-        <button type="submit" className="btn btn-primary" disabled={busy} aria-busy={busy}>{busy ? "Enviando…" : "Subir y validar"}</button>
+        <button type="submit" className="btn btn-primary" disabled={busy} aria-busy={busy || undefined}>{busy ? "Enviando…" : "Subir y validar"}</button>
         {sent ? (
           <span role="status" aria-live="polite">
             <progress max={sent.total} value={sent.loaded} aria-label="Progreso del envío" /> {mb(sent.loaded)} de {mb(sent.total)} enviados

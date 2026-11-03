@@ -1,3 +1,4 @@
+import "./entorno-test";
 import { execFileSync } from "node:child_process";
 import { mkdtemp, readFile, rm, stat, writeFile } from "node:fs/promises";
 import { tmpdir } from "node:os";
@@ -56,7 +57,6 @@ async function volumen(ctx: Ctx): Promise<void> {
       await page.locator("summary", { hasText: source }).first().click();
       const form = page.locator("details[open]").first();
       await form.locator('input[type="file"]').setInputFiles(file);
-      await form.getByLabel("Fecha de extracción").fill("2026-10-01");
       const t0 = Date.now();
       await form.getByRole("button", { name: "Subir y validar" }).click();
       await page.waitForURL(/\/administracion\/cargas\/[^/]+$/, { timeout: 15 * 60_000 });

@@ -1,10 +1,10 @@
 import { createReadStream, mkdtempSync, rmSync, statSync } from "node:fs";
 import { tmpdir } from "node:os";
 import path from "node:path";
-import { afterAll, beforeAll, beforeEach, describe, expect, it } from "vitest";
+import { afterAll, afterEach, beforeAll, beforeEach, describe, expect, it } from "vitest";
 import { prisma } from "@/lib/db";
 import { confirmUpload, receiveUpload } from "@/server/uploads/batches";
-import { batch, buildWorker, freshEnvironment, killAndWait, removeUploadDir, spawnWorker, useUploadDir, waitFor } from "./cargas-helpers";
+import { batch, buildWorker, freshEnvironment, killAndWait, reapOwnWorkers, removeUploadDir, spawnWorker, useUploadDir, waitFor } from "./cargas-helpers";
 import { writeLargeCsv } from "./synthetic/data";
 import { syntheticRecords } from "./synthetic/schema";
 
@@ -30,7 +30,11 @@ beforeAll(async () => {
   await writeLargeCsv(big, ROWS);
   buildWorker();
 }, 120_000);
-afterAll(() => {
+afterEach(async () => {
+  await reapOwnWorkers(); // también tras un fallo o un timeout: no queda ningún trabajador hijo vivo
+});
+afterAll(async () => {
+  await reapOwnWorkers();
   removeUploadDir(dir);
   rmSync(tmp, { recursive: true, force: true });
 });

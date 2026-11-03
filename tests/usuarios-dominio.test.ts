@@ -3,6 +3,7 @@ import {
   computeExposure,
   currentYear,
   editability,
+  editableYears,
   emptyYear,
   parseUserCount,
   planApplyFrom,
@@ -22,10 +23,19 @@ describe("Reglas puras de usuarios contratados", () => {
     expect(currentYear(new Date("2026-06-15T10:00:00Z"))).toBe(2026);
     // 31/12 23:30 UTC ya es 2027 en Madrid
     expect(currentYear(new Date("2026-12-31T23:30:00Z"))).toBe(2027);
-    expect(editability(2026, new Date("2026-06-15T10:00:00Z")).editable).toBe(true);
-    expect(editability(2026, new Date("2027-02-01T10:00:00Z")).editable).toBe(false);
-    expect(editability(2027, new Date("2026-06-15T10:00:00Z")).editable).toBe(false);
-    expect(editability(2025, new Date("2026-06-15T10:00:00Z")).reason).toMatch(/histórico fijo/);
+    // HOTFIX-01 §7: se editan el año en curso y el anterior (antes: solo el año en curso y un 2025 «fijo»).
+    const at = (iso: string) => new Date(iso);
+    expect(editableYears(at("2026-06-15T10:00:00Z"))).toEqual([2025, 2026]);
+    expect(editability(2026, at("2026-06-15T10:00:00Z")).editable).toBe(true);
+    expect(editability(2025, at("2026-06-15T10:00:00Z")).editable).toBe(true);
+    expect(editability(2024, at("2026-06-15T10:00:00Z")).editable).toBe(false);
+    expect(editability(2027, at("2026-06-15T10:00:00Z")).editable).toBe(false);
+    expect(editability(2026, at("2027-02-01T10:00:00Z")).editable).toBe(true);
+    expect(editability(2025, at("2027-02-01T10:00:00Z")).editable).toBe(false);
+    expect(editability(2025, at("2027-02-01T10:00:00Z")).reason).toMatch(/fuera de la ventana/);
+    expect(editability(2027, at("2028-01-01T10:00:00Z")).editable).toBe(true);
+    // el cambio de año usa el calendario de Madrid: el 31/12 23:30 UTC ya es 2027 allí
+    expect(editability(2025, at("2026-12-31T23:30:00Z")).editable).toBe(false);
   });
 
   it("valores enteros no negativos", () => {

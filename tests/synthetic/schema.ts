@@ -1,5 +1,6 @@
 import { prisma } from "@/lib/db";
 import { resetRegistryCache } from "@/server/uploads/registry";
+import { assertConnectedTo, resolveTestTarget } from "@/lib/test-guard";
 
 /**
  * Esquema auxiliar del perfil sintético. Vive SOLO en la base de test (lo crea el arranque de
@@ -18,11 +19,13 @@ const STATEMENTS = [
 ];
 
 export async function setupSyntheticSchema() {
+  await assertConnectedTo(prisma, resolveTestTarget().target.name); // DDL solo en la base de pruebas aprobada
   for (const s of STATEMENTS) await prisma.$executeRawUnsafe(s);
   resetRegistryCache();
 }
 
 export async function resetSynthetic() {
+  await assertConnectedTo(prisma, resolveTestTarget().target.name);
   await prisma.$executeRawUnsafe(`TRUNCATE csapp_synthetic.record, csapp_synthetic.scoped RESTART IDENTITY`);
   await prisma.$executeRawUnsafe(`UPDATE csapp_synthetic.settings SET value = '1' WHERE key = 'rules_version'`);
 }
@@ -32,6 +35,7 @@ export async function setRulesVersion(v: string) {
 }
 
 export async function dropSyntheticSchema() {
+  await assertConnectedTo(prisma, resolveTestTarget().target.name);
   await prisma.$executeRawUnsafe(`DROP SCHEMA IF EXISTS csapp_synthetic CASCADE`);
   resetRegistryCache();
 }

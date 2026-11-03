@@ -6,7 +6,6 @@ import {
   BUG_PROFILES,
   BUG_RULES,
   VFS_HEADERS,
-  VIEW_KINDS,
   VSW_HEADERS,
   classifyState,
   isBugType,
@@ -249,25 +248,18 @@ function makeProfile(product: BugProduct): ImportProfile {
     label: LABEL[product],
     description:
       `CSV de bugs de producto ${product} (${headers.length} campos, UTF-8, coma). Se carga por separado del otro producto: el producto no se deduce ni se mezcla por coincidencia de ID. ` +
-      "Se guardan todos los Work Item Type, pero solo Bug_ cuenta como defecto. Declare qué vista contiene (abiertos, intervalo o amplia): la ausencia en otra vista no cierra ni borra un elemento.",
+      "Se guardan todos los Work Item Type, pero solo Bug_ cuenta como defecto. Se lee el listado completo suministrado (vista amplia, contrato de la fuente): la ausencia en otro export no cierra ni borra un elemento.",
     version: 1,
     formats: ["csv"],
     delimiter: ",",
     policy: "INCORPORATE",
-    metadataFields: [
-      {
-        name: "vista",
-        label: "Vista del listado",
-        type: "select",
-        required: true,
-        options: VIEW_KINDS.map((v) => ({ value: v.value, label: v.label })),
-      },
-      { name: "ambito", label: "Ámbito DevOps (proyecto/área); por defecto «principal»", type: "text", required: false },
-    ],
+    metadataFields: [],
+    // Vista amplia: contrato de la fuente autorizado por Dennis (HOTFIX-01 §3). No es una declaración por carga.
     metadataSchema: z
-      .object({ vista: z.enum(VIEW_KINDS.map((v) => v.value) as [string, ...string[]], { error: "Indique la vista del listado." }), ambito: z.string().trim().max(80).optional() })
-      .strict(),
-    scopeKey: (m) => bugScopeKey(product, m.ambito as string | undefined),
+      .object({ hoja: z.string().trim().max(120).optional() })
+      .strict()
+      .transform(() => ({ vista: "AMPLIA" })) as unknown as z.ZodType<Record<string, unknown>>,
+    scopeKey: () => bugScopeKey(product, undefined),
     blocksConfirmOnErrors: true,
     entityConflictPolicy: "conflict_all",
     matchHeaders,
@@ -295,8 +287,8 @@ async function recomputeCurrent(tx: Tx, ids: Prisma.Sql) {
     UPDATE "WorkItem" w SET "currentObservationId" = c.oid, "currentRevisionId" = c.rid, "lastObservedOn" = c.last_on, "updatedAt" = now()
     FROM (
       SELECT DISTINCT ON (o."workItemId") o."workItemId", o.id AS oid, o."revisionId" AS rid, o."observedOn" AS last_on
-      FROM "WorkItemObservation" o WHERE o."workItemId" IN (${ids})
-      ORDER BY o."workItemId", o."observedOn" DESC, o."receivedAt" DESC, o.id DESC) c
+      FROM "WorkItemObservation" o JOIN "UploadBatch" b ON b.id = o."batchId" WHERE o."workItemId" IN (${ids})
+      ORDER BY o."workItemId", b."receptionSeq" DESC NULLS LAST, o."receivedAt" DESC, o.id DESC) c
     WHERE w.id = c."workItemId"
       AND (w."currentObservationId" IS DISTINCT FROM c.oid OR w."currentRevisionId" IS DISTINCT FROM c.rid OR w."lastObservedOn" IS DISTINCT FROM c.last_on)`);
 }

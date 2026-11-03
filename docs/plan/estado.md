@@ -1,6 +1,6 @@
 # Estado de CS App
 
-Actualizado el 30 de octubre de 2026 tras ejecutar [CSAPP-DOC-00-v1](../../prompts/CSAPP-DOC-00-v1.md), [CSAPP-01-v1](../../prompts/CSAPP-01-v1.md), [CSAPP-02-v1](../../prompts/CSAPP-02-v1.md), [CSAPP-03-v1](../../prompts/CSAPP-03-v1.md) [CSAPP-04-v1](../../prompts/CSAPP-04-v1.md) y [CSAPP-05-v1](../../prompts/CSAPP-05-v1.md).
+Actualizado el 2 de noviembre de 2026 tras ejecutar [CSAPP-DOC-00-v1](../../prompts/CSAPP-DOC-00-v1.md), [CSAPP-01-v1](../../prompts/CSAPP-01-v1.md), [CSAPP-02-v1](../../prompts/CSAPP-02-v1.md), [CSAPP-03-v1](../../prompts/CSAPP-03-v1.md) [CSAPP-04-v1](../../prompts/CSAPP-04-v1.md) [CSAPP-05-v1](../../prompts/CSAPP-05-v1.md) [CSAPP-06-v1](../../prompts/CSAPP-06-v1.md) y [CSAPP-07-v1](../../prompts/CSAPP-07-v1.md) [CSAPP-08-v1](../../prompts/CSAPP-08-v1.md) [CSAPP-09-v1](../../prompts/CSAPP-09-v1.md) y [CSAPP-10-v1](../../prompts/CSAPP-10-v1.md).
 
 ## Resultado de CSAPP-DOC-00
 
@@ -77,7 +77,7 @@ Documentación: [decisiones técnicas](../arquitectura/wrike-pap-bugs-csapp04.md
 | Dato | Valor |
 | --- | --- |
 | Rama / base | claude/new-session-omvsmd (designada; el prompt proponía feature/CSAPP-05-finanzas-motor-economico). Base: main 24d365813ab2ba2703fa911f4e0dacd31fb781fb (merge de la PR 5, **fusionada según Git**: integración, no aceptación manual de Dennis). Push normal, sin force |
-| PR | https://github.com/bateman37/cs-app/pull/6 (base main, sin fusionar) |
+| PR | https://github.com/bateman37/cs-app/pull/6 (**fusionada** en main, merge f71b5b7283ab1081802cc6256899a02f70460a74, según Git; corregido al preparar CSAPP-06: integración, no aceptación) |
 | Migración | `20261031090000_finanzas_motor_economico` |
 | Implementado | Tres perfiles financieros (nueve operativos en total) con sustitución atómica por año/categoría, revisión del impacto y de la versión del conjunto vigente, decisiones, conciliación, reversión y reproceso; motor económico común (periodos, prorrateo, CUM, usuarios, ratios, servicio, cobertura, lectura consistente); comprobación económica, configuración económica y asignaciones de servicio en Administración; equivalencias Wrike/PAP a Grupo (el atajo BC ya no atribuye); vía histórica < 2025 (simulación por defecto) |
 | Probado | Linux (Node 22.22, PostgreSQL 16): `npm test` 23 archivos/338 pruebas, trabajador real, volumen y recorrido de navegador 193/193. Ver [validación](../validacion/csapp-05.md) |
@@ -86,6 +86,96 @@ Documentación: [decisiones técnicas](../arquitectura/wrike-pap-bugs-csapp04.md
 | Pendiente de Dennis | Revisar la PR, ejecutar la [guía de CSAPP-05](guia-powershell-csapp05.md), cargar 2025/2026 por categoría, repetir, sustituir, revertir y comprobar 12000 → 500 a 15/30; validar las propuestas pendientes (ver [tabla](../arquitectura/finanzas-motor-csapp05.md#10-reglas-propuestas-pendientes-o-heredadas-estado-explícito)) |
 
 Documentación: [finanzas y motor económico](../arquitectura/finanzas-motor-csapp05.md), [facturación](../importaciones/facturacion.md), [catálogo CAL 17-30](../calculos/catalogo.md).
+
+## Resultado de CSAPP-06 (Comparativa y Análisis Cliente)
+
+| Dato | Valor |
+| --- | --- |
+| Rama / base | claude/new-session-omvsmd (designada; el prompt proponía feature/CSAPP-06-comparativa-analisis-cliente), reiniciada con `checkout -B` desde main f71b5b7 (PR 6 fusionada); push normal, sin force |
+| PR | https://github.com/bateman37/cs-app/pull/7 (base main, **sin fusionar**) |
+| Migración | **Ninguna** |
+| Implementado | `/comparativa` y `/analisis-cliente` sobre el motor `eco-v2` corregido; contrato de consulta compartido; ficha con cinco secciones, gráficos y detalle que concilia; CSV de cartera y de la ficha; lectura coherente con sello de datos |
+| Probado | Linux: `npm test` 392 pruebas, trabajador real 300 000 filas (260 s), recorrido de navegador 238 comprobaciones, volumen 1 500 grupos/250 000 tiempos. Ver [validación](../validacion/csapp-06.md) |
+| No probado | Windows/PowerShell; aceptación de Dennis; archivos reales |
+| Precarga | No realizada |
+| Pendiente de Dennis | Revisar la PR, ejecutar la [guía](guia-powershell-csapp06.md), cargar sus fuentes y recorrer las pantallas; aceptar o ajustar ECO 08, ZDT 11-13, ZTM 06-08, lista de origen PAP y estados de bugs; decidir la limpieza de dos cuentas sintéticas en la base `cs_app` del contenedor |
+
+Documentación: [analítica](../arquitectura/analitica-csapp06.md), [Comparativa](../producto/comparativa.md), [Análisis Cliente](../producto/analisis-cliente.md), [catálogo CAL 31-36](../calculos/catalogo.md).
+
+## Resultado de CSAPP-07 (Pulse Rent y configuración)
+
+| Dato | Valor |
+| --- | --- |
+| Rama / base | `feature/CSAPP-07-pulse-rent-configuracion`, **apilada sobre la cabeza de la PR 7** (`8c92ab8`, CSAPP-06, sin fusionar; `main` f71b5b7 incluye CSAPP-05, merge de la PR 6, pero no 06). La rama designada por la sesión (`claude/new-session-omvsmd`) estaba ocupada por la PR 7 y no se contaminó; push normal, sin force |
+| PR | [PR 8](https://github.com/bateman37/cs-app/pull/8), apilada contra `claude/new-session-omvsmd`; **integrada en la rama de la PR 7** (cabeza `e0f17e4`, que contiene 06 y 07), **no en `main`** (`f71b5b7`). Integración en Git no es aceptación de Dennis |
+| Migración | `20261102090000_pulse_calidad_configuracion` (`ConfigRevision`, `ConfigDraft`) |
+| Implementado | Guard central de pruebas (prevención, no limpieza); `/pulse-rent` con 38 métricas (M01-M38), referencias explícitas, normalización, percentiles, cinco bandas, explicación, detalle y CSV; Administración › Configuración con secciones Economía / Pulse Rent / Calidad (borrador, simulación, activación, vuelta atrás, revisiones inmutables); pesos exactos de Calidad y simulador |
+| Probado | Linux: `npm test` 475 pruebas / 33 archivos, trabajador 300 000 filas, recorrido 291 comprobaciones, volumen 1 500 grupos. Ver [validación](../validacion/csapp-07.md) |
+| No probado | Windows/PowerShell; aceptación de Dennis; archivos reales; lector de pantalla |
+| Confirmado / propuesto / activado | **Confirmado:** pesos iguales 1/6 y la regla de redistribución sin Health; **propuestas desactivadas** (no aceptadas): umbrales, mínimos de muestra, composición «peor señal», mapeo de Client Health, plantilla del global; **activado por el Administrador:** nada (todo parte inicial/sin calibrar) |
+| Incidente de CSAPP-06 | Prevención implementada y probada. **Residuo pendiente de decisión de Dennis:** 2 cuentas sintéticas en la base `cs_app` del contenedor (no tocadas) |
+| Pendiente de Dennis | Revisar la PR, ejecutar la [guía](guia-powershell-csapp07.md), cargar fuentes, decidir sobre el residuo, aceptar o ajustar ECO 08, ZDT 11-13, ZTM 06-08, lista PAP, estados de bugs y los parámetros de Calidad |
+
+Documentación: [arquitectura](../arquitectura/pulse-configuracion-csapp07.md), [Pulse Rent](../producto/pulse-rent.md), [guía de configuración](guia-configuracion-csapp07.md), [catálogo CAL 37-44](../calculos/catalogo.md).
+
+## Resultado de CSAPP-08 (Calidad, Client Health, diagnóstico y backlog observado)
+
+| Dato | Valor |
+| --- | --- |
+| Rama / base | `feature/CSAPP-08-calidad-client-health`, creada desde la cabeza de la PR 7 (`e0f17e4c8e1a47ad08d10b8eeaf2e5f407c66bb5`, que ya contiene 06 y 07 tras integrar la PR 8); `main` (`f71b5b7`) no los contiene. La rama de la sesión (`claude/new-session-omvsmd`) es la de la PR 7 y no se contaminó; push normal, sin force |
+| PR | [PR 9](https://github.com/bateman37/cs-app/pull/9), apilada contra `claude/new-session-omvsmd`, sin fusionar ni desplegar. Cuando 06/07 entren en `main`, ajustar la base conservando historia |
+| Migración | `20261103090000_calidad_health_cobertura` (`HealthFeedback`, `HealthFeedbackEvent`, `QualityNote`, `UploadCoverageDeclaration`, índices y restricciones); las seis anteriores y la `ConfigRevision` v1 intactas |
+| Implementado | `/calidad` (cartera, Client Health editable, diagnóstico por origen, backlog por antigüedad, detalle explicado, evolución, CSV) con el motor común por conjuntos y evaluador puro; `quality-config-v2` con adaptador de v1; contrato de cobertura declarada en Cargas, compartido con Pulse; simulación del borrador sobre datos; integración en Análisis Cliente; correcciones de §2 con contraejemplos |
+| Probado | Linux con datos sintéticos: ver [validación](../validacion/csapp-08.md). Windows sin probar; sin lector de pantalla |
+| Confirmado / propuesto / activado | **Confirmados:** pesos iguales 1/6 y redistribución solo sin Health. **Propuestas desactivadas:** mapeo de Health, perfiles de Dedicación, umbrales/referencias/mínimos, «peor señal», plantilla del global, política de fotografía anterior. Nada se ha activado para que haya colores |
+| Pendiente de Dennis | Revisar la PR; ejecutar la [guía](guia-powershell-csapp08.md); declarar la cobertura de sus lotes reales; calibrar y activar sus reglas; decidir sobre las dos cuentas sintéticas de `cs_app`; aceptar o ajustar ECO 08, ZDT 11–13, ZTM 06–08, lista PAP, estados de bugs y signo de «Diferencia» (siguen pendientes) |
+
+Documentación: [arquitectura](../arquitectura/calidad-csapp08.md), [Calidad](../producto/calidad.md), [backlog](../producto/backlog-antiguedad.md), [diagnóstico](../producto/diagnostico-origen.md), [catálogo CAL 45–52](../calculos/catalogo.md), [guía breve](guia-calidad-csapp08.md).
+
+## Resultado de CSAPP-09 (conciliación, rendimiento, exportaciones y recuperación)
+
+| Dato | Valor |
+| --- | --- |
+| Rama / base | `feature/CSAPP-09-conciliacion-exportaciones-rendimiento`, creada desde la cabeza de la PR 7 (`claude/new-session-omvsmd` = `31009c99398af314a87fe3eedef5b457ede31559`, que contiene 06, 07 y 08 con el mismo contenido que la cabeza de la PR 9 `d7bc52b`). `main` (`f71b5b7283ab1081802cc6256899a02f70460a74`) **no** contiene 06–08. PR apilada **contra la rama de la PR 7**, con un diff exclusivo de 09; push normal, sin force, sin tocar la historia publicada |
+| PR | [PR 10](https://github.com/bateman37/cs-app/pull/10), apilada contra `claude/new-session-omvsmd`, sin fusionar ni desplegar. Cuando 06–08 entren en `main`, ajustar la base conservando la historia |
+| Migración | `20261104090000_exportaciones_conciliacion` (`ExportJob`, `ExportFile`, `ExportRow`, `ReconRun`); incremental, sin reset; las siete anteriores y las `ConfigRevision` intactas |
+| Implementado | **Evolución de Calidad recalculada por mes** con cohorte, usuarios, cobertura, reglas y percentiles de cada mes (seis indicadores, serie identificada por revisión y referencia); **conciliación** en Administración (tres niveles, IDs `REC-*`, ejecución registrada con manifiesto, informe CSV y JSON); **exportaciones completas en segundo plano** (materialización coherente, bloques con contrapresión, lease/fencing, cancelar, reintentar, caducar, partición determinista, manifiesto) integradas en las cuatro vistas y supervisadas en Administración; **sello de datos** con las omisiones demostradas corregidas; CSV de Health desde una lectura coherente; documentación de Pulse/cobertura corregida; fallo de paginación de la exportación hallado y corregido por la prueba de volumen |
+| Probado | Linux con datos sintéticos: ver [validación de CSAPP-09](../validacion/csapp-09.md) (suite rápida, trabajador real con SIGKILL, volúmenes, recorrido de navegador, benchmark comparado con 08). Windows y lector de pantalla **sin probar** |
+| Confirmado / propuesto / activado | **Confirmados** (sin cambio): pesos iguales 1/6 y redistribución solo sin Health. **Propuestas desactivadas y sin aceptar**: mapeo de Health, perfiles de Dedicación, umbrales/referencias/mínimos, «peor señal», plantilla del global, política de fotografía, límites iniciales de exportación. **Activado**: nada en la base de trabajo |
+| Conciliación real | **Pendiente de ejecución por Dennis** (finanzas 2025 y 2026 completas, bugs VFS/VSW separados): no se cargó ningún archivo real y no hay resultados de ese tipo |
+| Pendiente de Dennis | Revisar la PR; ejecutar la [guía](guia-powershell-csapp09.md) (Windows sin probar); cargar sus fuentes y recorrer el [recorrido breve](guia-powershell-csapp09.md#recorrido-breve-para-dennis-con-tus-archivos-reales-por-tu-cuenta); decidir sobre las dos cuentas sintéticas de `cs_app` (no se tocaron); aceptar o ajustar ECO 08, ZDT 11–13, ZTM 06–08, lista PAP, estados de bugs y signo de «Diferencia» (siguen pendientes) |
+
+Documentación: [exportaciones](../arquitectura/exportaciones-csapp09.md), [conciliación](../validacion/conciliacion-contrato.md), [validación](../validacion/csapp-09.md), [guía PowerShell](guia-powershell-csapp09.md).
+
+## Resultado de CSAPP-10 (cierre técnico, instalación, recuperación y aceptación)
+
+| Dato | Valor |
+| --- | --- |
+| Rama / base | `feature/CSAPP-10-instalacion-recuperacion-cierre`, desde `676df60` (cabeza de la rama de la PR 7 tras fusionar en ella la PR 10 de CSAPP-09). `main` (`f71b5b7`) **no** contiene 06–09. PR **apilada contra `claude/new-session-omvsmd`**, sin fusionar ni desplegar; sin force-push |
+| PR | [PR 11](https://github.com/bateman37/cs-app/pull/11), apilada contra `claude/new-session-omvsmd`, sin fusionar ni desplegar |
+| Migración | `20261105090000_operacion_latido_instalacion` (`WorkerInstance`, `InstallationMeta`); solo añade; las ocho anteriores intactas |
+| Implementado | Latido por trabajador (reposo y procesando) y salud (CLI, Administración › Operación, `/api/salud` mínima); identidad de instalación y almacenes; supervisor `start:todo`/`stop:todo` y `ops` (verificar, preparar, salud, diagnóstico); modo operativo estricto; copia/verificación/restauración con parada controlada; evolución de Calidad por conjuntos (−60 % a −84 %, 189 → 23 sentencias, salida idéntica); puente de conciliación `REC-N4-*`; recorridos de cargas y descargas grandes por navegador; ensayos de instalación, actualización y restauración; documentación vigente única |
+| Probado | Linux: suite rápida 685, recorrido de navegador 359/359, grandes 21/21, ensayos 27/27, 17/17 y 89/89. Ver [validación](../validacion/csapp-10.md) |
+| No probado | **Windows/PowerShell**, lector de pantalla, proxy de producción, PostgreSQL remoto |
+| Datos y aceptación funcional | **Pendiente de Dennis** ([registro](../validacion/registro-aceptacion.md), todos los casos «pendiente») |
+| Producción | **Preparación completa, despliegue pendiente** (faltan destino, autorización, TLS/proxy, supervisor y política de copias de IT) |
+| Pendiente de Dennis/IT | Ver [pendientes](../decisiones/pendientes.md#pendientes-y-propuestas-tras-csapp-10) |
+
+Documentación vigente: [instalación y operación](../operacion/instalacion-operacion.md), [variables](../operacion/variables-entorno.md), [copia y restauración](../operacion/copia-restauracion.md), [actualización y despliegue](../operacion/actualizacion-despliegue-it.md), [guía de Dennis](guia-dennis.md), [arquitectura](../arquitectura/operacion-csapp10.md).
+
+## Resultado de CSAPP-HOTFIX-01 (cargas sencillas, última carga y precargas; fuera de las diez entregas)
+
+| Dato | Valor |
+| --- | --- |
+| Rama / base | `feature/CSAPP-HOTFIX-01-cargas-sencillas-precarga`, desde la cabeza de CSAPP-10 (`dc6f4c4`); PR única apilada, sin fusionar ni desplegar; sin force. HOTFIX-01-v1 no estaba en el repositorio: marcada como sustituida |
+| Migraciones | `20261106090000_hotfix01_ultima_carga`, `20261107090000_hotfix01_precarga_maestros`, `20261108090000_hotfix01_historico_usuarios` |
+| Implementado | Formularios solo archivo (+ año libre en finanzas); estado final de botones y sondeo; lo último cargado manda (secuencia de recepción); instantánea activa de tiempos por fuente; PAP con identidad única y «Petición cliente»; vista amplia de bugs; histórico económico 2022–2025 con usuarios 2025 y ventana de edición año actual y anterior; precarga de maestros (Clientes, Personal, PMO) |
+| Probado | Linux: suite rápida 743, recorrido de navegador 359/359, migraciones con datos, ensayo con los dos libros reales en bases aisladas. Ver [validación](../validacion/hotfix-01.md) |
+| No probado | Windows/PowerShell; la base local de Dennis; volúmenes y ensayos de operación de CSAPP-10 con este código |
+| Precarga real | **Pendiente de Dennis**: los dos libros solo se ensayaron en bases aisladas; él los carga y confirma en su instalación |
+| Pendiente de Dennis | Ejecutar la [guía de actualización](guia-powershell-hotfix01.md), cargar sus dos archivos, resolver las revisiones (alias ambiguos, soportes discrepantes, 4 denominadores de usuarios) y validar las propuestas de [precarga de maestros](../importaciones/precarga-maestros.md) |
+
+Documentación: [arquitectura](../arquitectura/hotfix01-ultima-carga.md), [proceso común IMP 08–12](../importaciones/proceso-comun.md), [PAP](../importaciones/pap.md), [histórico económico](../importaciones/historico-economico.md), [precarga de maestros](../importaciones/precarga-maestros.md).
 
 ## Estado por trabajo
 
@@ -98,11 +188,16 @@ Niveles: diseñado, documentado, implementado, probado, aceptado. Un criterio de
 | CSAPP-02 | Sí | Sí | Sí (PR 3 fusionada) | Sí en Linux con perfil sintético; Windows sin probar | No |
 | CSAPP-03 | Sí | Sí | Sí (PR 4 fusionada) | Sí en Linux con XLSX sintéticos; Windows sin probar | No |
 | CSAPP-04 | Sí | Sí | Sí (PR 5 fusionada según Git) | Sí en Linux con datos sintéticos; Windows sin probar | No |
-| CSAPP-05 | Sí | Sí | Sí (PR 6 sin fusionar) | Sí en Linux con datos sintéticos; Windows sin probar | No |
-| CSAPP-06 a CSAPP-10 | Sí, en [roadmap](roadmap.md) y contratos | Sí | No | No | No |
+| CSAPP-05 | Sí | Sí | Sí (PR 6 fusionada según Git) | Sí en Linux con datos sintéticos; Windows sin probar | No |
+| CSAPP-06 | Sí | Sí | Sí (PR sin fusionar) | Sí en Linux con datos sintéticos; Windows sin probar | No |
+| CSAPP-07 | Sí | Sí | Sí (PR 8, integrada en la rama de la PR 7, no en `main`) | Sí en Linux con datos sintéticos; Windows sin probar | No |
+| CSAPP-08 | Sí | Sí | Sí (PR apilada sin fusionar) | Sí en Linux con datos sintéticos; Windows sin probar | No |
+| CSAPP-09 | Sí | Sí | Sí (PR apilada sin fusionar) | Sí en Linux con datos sintéticos; Windows y conciliación real sin ejecutar | No |
+| CSAPP-10 | Sí | Sí | Sí (PR apilada sin fusionar) | Sí en Linux con datos sintéticos; Windows, proxy y datos reales sin ejecutar | No |
+| CSAPP-HOTFIX-01 | Sí | Sí | Sí (PR apilada sin fusionar) | Sí en Linux con datos sintéticos y ensayo con los libros reales en bases aisladas; Windows y datos de Dennis sin probar | No |
 | Cargas reales | — | Política en [precarga y pruebas](precarga-y-pruebas.md) | No | No | No; las probará Dennis |
 
-CSAPP-06 a CSAPP-10 siguen sin iniciar y sin prompt redactado. La próxima acción es revisar la PR 6 de CSAPP-05, que Dennis cargue 2025 y 2026 de cada categoría y repita para validar la sustitución, y enviar el prompt de CSAPP-06.
+Las diez entregas están implementadas. Siguen pendientes, y **no** están cerradas por este trabajo: la aceptación funcional con los archivos reales de Dennis, la prueba en Windows, las decisiones listadas en [pendientes](../decisiones/pendientes.md) y el despliegue en un destino autorizado por IT. No existe CSAPP-11.
 
 ## Vigente
 

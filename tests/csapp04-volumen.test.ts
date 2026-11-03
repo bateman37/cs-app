@@ -141,7 +141,7 @@ describe("Volumen del circuito Wrike, PAP y bugs", () => {
 
     const pp = path.join(tmp, "pap.xlsx");
     await writeXlsx(pp, { sheets: [{ name: "CARGA PAP", rows: volumePap(PAP_N, { tickets: TICKETS_N }) }] });
-    const p = await run(PAP, pp, "pap.xlsx", PAP_N, { metadata: { lista: "pap-volumen" } });
+    const p = await run(PAP, pp, "pap.xlsx", PAP_N, { metadata: {} });
     const ps = await papSummary(admin.id, p.id);
     expect(ps).toMatchObject({ rowsWithError: 0, distinctPap: PAP_N, newPap: PAP_N });
     expect(await prisma.papItem.count()).toBe(PAP_N);
@@ -161,7 +161,7 @@ describe("Volumen del circuito Wrike, PAP y bugs", () => {
 
     // Repetir los cuatro archivos no duplica entidades, revisiones ni imputaciones.
     const before = { wr: await prisma.wrikeTimeEntry.count(), pap: await prisma.papRevision.count(), wi: await prisma.workItemRevision.count() };
-    for (const [profileId, f, n, meta] of [[WRIKE, wr, WRIKE_N, {}], [PAP, pp, PAP_N, { lista: "pap-volumen" }], [BUGS_VSW, vw, VSW_N, BUG_META]] as const) {
+    for (const [profileId, f, n, meta] of [[WRIKE, wr, WRIKE_N, {}], [PAP, pp, PAP_N, {}], [BUGS_VSW, vw, VSW_N, BUG_META]] as const) {
       const again = await run(profileId, f, path.basename(f), n, { metadata: meta });
       expect((await batch(again.id)).rowsDuplicate).toBeGreaterThan(0);
     }

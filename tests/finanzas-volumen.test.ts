@@ -72,7 +72,7 @@ describe("volumen de CSAPP-05", () => {
     try {
       const run = async (file: string, label: string) => {
         const t0 = Date.now();
-        const up = await receiveUpload(admin.id, { profileId: "facturacion-soporte", originalName: label, metadata: { anio: 2026, conjuntoCompleto: "si" }, declared: {}, contentLength: statSync(file).size, body: createReadStream(file) });
+        const up = await receiveUpload(admin.id, { profileId: "facturacion-soporte", originalName: label, metadata: { anio: 2026 }, declared: {}, contentLength: statSync(file).size, body: createReadStream(file) });
         const tUp = Date.now();
         await waitFor(async () => ((await batch(up.id)).status === "READY" ? true : null), 600_000, 200);
         const tPrep = Date.now();

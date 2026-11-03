@@ -204,7 +204,7 @@ export async function getTicketDetail(actorId: string, ticketId: string) {
     prisma.zdTicketObservation.findMany({ where: { ticketId }, orderBy: [{ observedOn: "desc" }, { id: "desc" }] }),
     prisma.$queryRaw<{ bucket: string; rows: bigint; hours: string }[]>(Prisma.sql`
       SELECT "drvBucket" AS bucket, count(*) AS rows, trim_scale(round(sum(minutes) / 60, 4))::text AS hours
-      FROM "ZdTimeEntry" WHERE "ticketId" = ${ticketId} GROUP BY 1 ORDER BY 1`),
+      FROM "ActiveZdTimeEntry" WHERE "ticketId" = ${ticketId} GROUP BY 1 ORDER BY 1`),
   ]);
   return { ticket, revisions, observations, times: times.map((t) => ({ bucket: t.bucket, rows: n(t.rows), hours: t.hours })) };
 }

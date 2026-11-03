@@ -14,6 +14,11 @@ import { StatusPoller } from "./poller";
 import { ZendeskPanels } from "./zendesk-panels";
 import { Csapp04Panels } from "./csapp04-panels";
 import { FinancePanel } from "./finance-panel";
+import { HistoricChildPanel, HistoricPanel } from "./historic-panel";
+import { CoveragePanel } from "./coverage-panel";
+import { MaestrosPanel } from "./maestros-panel";
+import { listDeclarations } from "@/server/quality/coverage";
+import { snapshotImpact } from "@/server/uploads/snapshot";
 
 export const metadata: Metadata = { title: "Ficha de carga" };
 const BASE = "/administracion/cargas";
@@ -42,6 +47,7 @@ export default async function CargaPage({ params, searchParams }: { params: Prom
   const target = first(sp.target);
   const tf = { ticket: first(sp.tf_ticket) || undefined, person: first(sp.tf_person) || undefined, from: first(sp.tf_from) || undefined, to: first(sp.tf_to) || undefined, text: first(sp.tf_text) || undefined };
   const showRows = ["READY", "ACTIVATION_QUEUED", "ACTIVATING", "COMPLETED", "REVERTED", "FAILED"].includes(st) && b.rowsReceived > 0;
+  const impact = ["READY", "ACTIVATION_QUEUED"].includes(st) ? await snapshotImpact(user.id, id) : null;
   const [rows, history] = await Promise.all([
     showRows ? listStagedRows(user.id, id, { page: pp, pageSize: 20, classification: cls, onlyWarnings }) : null,
     listUploadHistory(user.id, id, { page: hp }),
@@ -96,6 +102,17 @@ export default async function CargaPage({ params, searchParams }: { params: Prom
         <ActionButtons id={b.id} version={b.version} actions={actions} completed={st === "COMPLETED"} />
       </section>
 
+      {impact && st !== "COMPLETED" && st !== "REVERTED" ? (
+        <section className="card" aria-labelledby="sec-impacto">
+          <h2 id="sec-impacto">Impacto de la activación</h2>
+          <p>
+            Al confirmar, este export completo pasa a ser el conjunto activo de tiempos de la fuente ({impact.incomingRows.toLocaleString("es-ES")} filas válidas distintas).
+            Sustituye {impact.activeKind === "legacy" ? "la base heredada (cargas anteriores a este cambio)" : <>la instantánea del lote <Link href={`${BASE}/${impact.activeBatchId}`}>{impact.activeBatchId}</Link></>}
+            {" "}({impact.activeRecords.toLocaleString("es-ES")} registros activos, {(Number(impact.activeMinutes) / 60).toLocaleString("es-ES", { maximumFractionDigits: 2 })} h). Las cargas anteriores se conservan para el historial y se pueden restaurar revirtiendo este lote.
+          </p>
+        </section>
+      ) : null}
+
       <section className="card" aria-labelledby="sec-datos">
         <h2 id="sec-datos">Datos del lote</h2>
         <dl className="kv">
@@ -116,6 +133,8 @@ export default async function CargaPage({ params, searchParams }: { params: Prom
           <a href={`/api/cargas/${b.id}/archivo`}>Descargar el archivo original</a> (solo Administrador).
         </p>
       </section>
+
+      <CoveragePanel batchId={b.id} profileId={b.profileId} status={st} history={await listDeclarations(user.id, b.id)} declaredExtraction={b.declaredExtractionDate ? b.declaredExtractionDate.toISOString().slice(0, 10) : null} />
 
       <section className="card" aria-labelledby="sec-contadores">
         <h2 id="sec-contadores">Resumen de filas</h2>
@@ -167,9 +186,14 @@ export default async function CargaPage({ params, searchParams }: { params: Prom
         </>
       ) : null}
 
-      {prepared && !["REJECTED", "CANCELLED"].includes(st) ? (
+      {prepared && !["REJECTED", "CANCELLED"].includes(st) ? <HistoricPanel batch={{ id: b.id, profileId: b.profileId, status: st, metadata: b.metadata }} base={`${BASE}/${b.id}`} /> : null}
+      <HistoricChildPanel batch={{ id: b.id, status: st, metadata: b.metadata }} base={`${BASE}/${b.id}`} />
+
+      {prepared && !["REJECTED", "CANCELLED"].includes(st) && (b.metadata as { origen?: string } | null)?.origen !== "HISTORICO_ECONOMICO" ? (
         <FinancePanel batch={{ id: b.id, profileId: b.profileId, status: st, version: b.version, supersedesBatchId: b.supersedesBatchId, supersededByBatchId: b.supersededByBatchId, declaredExtractionDate: b.declaredExtractionDate, createdAt: b.createdAt }} base={`${BASE}/${b.id}`} />
       ) : null}
+
+      {prepared && !["REJECTED", "CANCELLED"].includes(st) ? <MaestrosPanel userId={user.id} batch={{ id: b.id, profileId: b.profileId, status: st }} /> : null}
 
       {rows ? (
         <section className="card" aria-labelledby="sec-previsualizacion">

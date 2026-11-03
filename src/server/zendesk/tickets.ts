@@ -130,8 +130,9 @@ async function recomputeCurrent(tx: Tx, ids: Prisma.Sql) {
     UPDATE "ZdTicket" t SET "currentObservationId" = c.oid, "currentRevisionId" = c.rid, "updatedAt" = now()
     FROM (
       SELECT DISTINCT ON (o."ticketId") o."ticketId", o.id AS oid, o."revisionId" AS rid
-      FROM "ZdTicketObservation" o WHERE o."ticketId" IN (${ids})
-      ORDER BY o."ticketId", o."observedOn" DESC, o."receivedAt" DESC, o.id DESC) c
+      FROM "ZdTicketObservation" o JOIN "UploadBatch" b ON b.id = o."batchId" WHERE o."ticketId" IN (${ids})
+      -- Lo último cargado manda (HOTFIX-01 §4): la secuencia de recepción del lote, no la fecha del dato ni la del navegador.
+      ORDER BY o."ticketId", b."receptionSeq" DESC NULLS LAST, o."receivedAt" DESC, o.id DESC) c
     WHERE t."ticketId" = c."ticketId"
       AND (t."currentObservationId" IS DISTINCT FROM c.oid OR t."currentRevisionId" IS DISTINCT FROM c.rid)`);
 }
@@ -226,7 +227,7 @@ export const zendeskTickets: ImportProfile = {
   version: 1,
   formats: ["xlsx"],
   policy: "INCORPORATE",
-  metadataFields: [{ name: "hoja", label: "Hoja del libro (solo si hay varias hojas compatibles)", type: "text", required: false }],
+  metadataFields: [],
   metadataSchema: z.object({ hoja: z.string().trim().max(120).optional() }).strict(),
   selectsSheet: true,
   blocksConfirmOnErrors: true,

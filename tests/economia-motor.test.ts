@@ -75,7 +75,7 @@ describe("periodos", () => {
     await addZd({ batchId: bid, date: "2026-06-10", minutes: 120, groupId: g.id, ticketId: "S" });
     await addZd({ batchId: bid, date: "2026-06-16", minutes: 600, groupId: g.id, ticketId: "S" }); // posterior al corte 15
     await addZd({ batchId: bid, date: "2026-05-01", minutes: 60, groupId: g.id, ticketId: "S" });
-    const r = await run([g.id], { date: "2026-06-15" });
+    const r = await run([g.id], { date: "2026-06-15", detailFor: g.id });
     expect(r.entities[0].periods.month.hours.inPerimeter).toBe("2");
     expect(r.entities[0].periods.cum.hours.inPerimeter).toBe("3");
     expect(r.entities[0].periods.prevMonth.hours.inPerimeter).toBe("1");
@@ -296,7 +296,7 @@ describe("consistencia, configuración y autorización", () => {
     const r = await run([g.id], { date: "2026-01-31", mode: "FULL_MONTH" });
     expect(r.settings).toMatchObject({ revisionNo: 1, targetEurosPerDay: "550", dayHours: "8" });
     expect(r.reference.finance.filter((f) => f.batchId)).toHaveLength(1);
-    expect(r.reference.engineVersion).toBe("eco-v1");
+    expect(r.reference.engineVersion).toBe("eco-v2");
     expect(r.entities[0].eco08).toBe(true);
     expect(r.entities[0].periods.month.perDay.reason).toMatch(/ECO 08/);
     expect(r.entities[0].periods.cum.perDay.reason ?? "").not.toMatch(/ECO 08/);

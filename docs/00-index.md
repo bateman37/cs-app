@@ -11,21 +11,21 @@ Estado de la regla: **Confirmado** = decidido por Dennis; **Propuesto** = parám
 | Funcional sencillo para negocio | [Resumen](producto/funcional-resumen.md) | enlaza, no define | Confirmado |
 | Cuatro vistas, Administración, ámbitos | [Alcance](producto/alcance.md) | — | Confirmado |
 | Grupo Cliente, Cliente, personal, usuarios | [Maestros](producto/maestros.md) | MST 01-08, USR 01-05 | Mixto (aprobar reapertura de años en USR 03; exclusión por arranque en MST 04 pendiente) |
-| Administración, pesos y configuración | [Administración](producto/administracion.md) | ADM 01-11 | Mixto (umbrales de Calidad y backlog propuestos) |
-| Comparativa | [Contrato de vista](producto/comparativa.md) | ECO 01-08 | Mixto (Silver en ECO 08 propuesto) |
-| Análisis Cliente | [Contrato de vista](producto/analisis-cliente.md) | — | Confirmado |
-| Pulse Rent | [Contrato de vista](producto/pulse-rent.md) | PUL 01-05 | Confirmado (bandas del Excel) |
-| Seis indicadores de Calidad | [Calidad](producto/calidad.md) | QLT 01-10, QHL 01 | Mixto (color de Incidentes y problemas propuesto) |
+| Administración, pesos y configuración | [Administración](producto/administracion.md) | ADM 01-15 | Mixto (umbrales de Calidad y backlog propuestos; pesos iguales confirmados; configuración implementada en CSAPP-07) |
+| Comparativa | [Contrato de vista](producto/comparativa.md) | ECO 01-08 | Mixto (Silver en ECO 08 propuesto); implementada en CSAPP-06 |
+| Análisis Cliente | [Contrato de vista](producto/analisis-cliente.md) | — | Confirmado; implementado en CSAPP-06 |
+| Pulse Rent | [Contrato de vista](producto/pulse-rent.md) | PUL 01-05 | Confirmado (bandas del Excel); implementado en CSAPP-07 |
+| Seis indicadores de Calidad | [Calidad](producto/calidad.md) | QLT 01-19, QHL 01-03 | Mixto (color de Incidentes y problemas, mapeo de Health y global: propuestas hasta elección del Administrador) |
 | Stock y antigüedad | [Backlog](producto/backlog-antiguedad.md) | BACK 01-12 | Mixto (BACK 07-08 propuesta a calibrar) |
 | Origen y actuación | [Diagnóstico](producto/diagnostico-origen.md) | DIA 01-07 | Confirmado; catálogo de causas configurable |
-| Fórmulas y denominadores | [Catálogo](calculos/catalogo.md) | CAL 01-30 | Confirmado; implementado en CSAPP-05 el motor económico (CAL 17-30); tolerancias de conciliación propuestas (CAL 08) |
-| Importación común y avisos | [Proceso común](importaciones/proceso-comun.md) | IMP 01-07 | Confirmado |
+| Fórmulas y denominadores | [Catálogo](calculos/catalogo.md) | CAL 01-44 | Confirmado; implementado en CSAPP-05 el motor económico (CAL 17-30) y corregido en CSAPP-06 (CAL 31-36, eco-v2); tolerancias de conciliación propuestas (CAL 08) |
+| Importación común y avisos | [Proceso común](importaciones/proceso-comun.md) | IMP 01-12 (08-12 de HOTFIX-01: última carga, instantánea de tiempos, vista amplia, controles) | Confirmado |
 | Tickets: único perfil de ocho campos | [Tickets](importaciones/zendesk-tickets.md) | ZDT 01-10 (11-13 implementación) | Confirmado; ZDT 11-13 interpretaciones implementadas pendientes de aceptación |
 | Bugs VFS y VSW separados | [Bugs de producto](importaciones/bugs-producto.md) | BUG 01-08 | Confirmado; implementado en CSAPP-04 |
 | Dedicación Zendesk | [Tiempos](importaciones/zendesk-tiempo.md) | ZTM 01-05 (06-08 implementación) | Confirmado; ZTM 06-08 interpretaciones implementadas pendientes de aceptación |
 | Dedicación PMO | [Wrike](importaciones/wrike.md) | WRK 01-07 | Confirmado; implementado en CSAPP-04 |
 | Tres categorías anuales | [Facturación](importaciones/facturacion.md) | FAC 01-14 | Confirmado; implementado en CSAPP-05; vacío monetario como cero (FAC 07) propuesto |
-| Pases a producción | [PAP](importaciones/pap.md) | PAP 01-05 | Confirmado; implementado en CSAPP-04 |
+| Pases a producción | [PAP](importaciones/pap.md) | PAP 01-06 (01 modificado y 06 nuevo en HOTFIX-01) | Confirmado; implementado en CSAPP-04 y HOTFIX-01 |
 | Arquitectura | [Web y PostgreSQL](arquitectura/propuesta.md) | ARC 01-05 | Propuesto (stack acordado; versiones y rendimiento a verificar) |
 | Entidades, sin esquema implementado | [Modelo lógico](arquitectura/modelo.md) | — | Propuesto |
 | Implementado en CSAPP-01: versiones, setup, acceso | [Base web y setup](arquitectura/base-web-y-setup.md) | — | Implementado |
@@ -50,6 +50,31 @@ Estado de la regla: **Confirmado** = decidido por Dennis; **Propuesto** = parám
 | Implementado en CSAPP-05: finanzas, motor económico, esquema y bloqueos | [Decisiones técnicas](arquitectura/finanzas-motor-csapp05.md) | FAC 09-14, CAL 17-30 | Implementado; probado en Linux |
 | Guía PowerShell de CSAPP-05 | [Guía](plan/guia-powershell-csapp05.md) | — | Sin probar en Windows |
 | Resultados de validación de CSAPP-05 | [Validación](validacion/csapp-05.md) | — | Registro |
+| Implementado en CSAPP-06: servicios analíticos, sello de datos, CSV y permisos | [Analítica](arquitectura/analitica-csapp06.md) | CAL 31-36 | Implementado; probado en Linux |
+| Guía PowerShell de CSAPP-06 | [Guía](plan/guia-powershell-csapp06.md) | — | Sin probar en Windows |
+| Resultados de validación de CSAPP-06 | [Validación](validacion/csapp-06.md) | — | Registro |
+| Implementado en CSAPP-07: Pulse Rent, configuración versionada, guard de pruebas | [Decisiones técnicas](arquitectura/pulse-configuracion-csapp07.md) | CAL 37-44, ADM 12-15 | Implementado; probado en Linux |
+| Guías de CSAPP-07: PowerShell y configuración | [PowerShell](plan/guia-powershell-csapp07.md) · [Configuración](plan/guia-configuracion-csapp07.md) | — | Sin probar en Windows |
+| Resultados de validación de CSAPP-07 | [Validación](validacion/csapp-07.md) | — | Registro |
+| Arquitectura de Calidad (CSAPP-08): esquema, compatibilidad v1→v2, fotografías, cobertura | [Calidad CSAPP-08](arquitectura/calidad-csapp08.md) | CAL 45-52 | Implementado, sin aceptación |
+| HOTFIX-01: última carga, instantáneas de tiempos, PAP único, formularios sencillos | [Arquitectura](arquitectura/hotfix01-ultima-carga.md) | IMP 08-12, PAP 01/06 | Implementado; probado en Linux |
+| HOTFIX-01: histórico económico 2022-2025 y usuarios 2025 | [Histórico económico](importaciones/historico-economico.md) | FAC, USR 02-03 | Implementado; ensayado con el libro real en base aislada |
+| HOTFIX-01: precarga de maestros (Clientes, Personal, PMO) | [Precarga de maestros](importaciones/precarga-maestros.md) | MST 03/05 | Implementado; ensayado con el libro real en base aislada |
+| Guía de actualización de HOTFIX-01 para Windows | [Guía](plan/guia-powershell-hotfix01.md) | — | Escrita, sin probar en Windows |
+| Guía PowerShell y recorrido de CSAPP-08 | [Guía PowerShell](plan/guia-powershell-csapp08.md) | — | Escrita, sin probar en Windows |
+| Guía breve de Calidad | [Guía de Calidad](plan/guia-calidad-csapp08.md) | — | Referencia |
+| Resultados de validación de CSAPP-08 | [Validación](validacion/csapp-08.md) | — | Registro |
+| Exportaciones completas en segundo plano, instantáneas, recuperación y límites (CSAPP-09) | [Exportaciones](arquitectura/exportaciones-csapp09.md) | — | Implementado; probado en Linux con datos sintéticos; sin aceptación |
+| Conciliación en cuatro niveles con IDs estables (tres de CSAPP-09 y el puente de CSAPP-10) | [Contrato de conciliación](validacion/conciliacion-contrato.md) | REC-N1…N4 | Implementado; la conciliación real la ejecuta Dennis |
+| Guía PowerShell y recorrido de CSAPP-09 | [Guía PowerShell](plan/guia-powershell-csapp09.md) | — | Escrita, sin probar en Windows |
+| Resultados de validación de CSAPP-09 | [Validación](validacion/csapp-09.md) | — | Registro |
+| Operación, salud, instalación y supervisor (CSAPP-10) | [Operación CSAPP-10](arquitectura/operacion-csapp10.md) | — | Implementado; probado en Linux; Windows sin probar |
+| Instalación y operación vigentes | [Instalación y operación](operacion/instalacion-operacion.md) · [Variables](operacion/variables-entorno.md) | — | Vigente; ensayada en Linux |
+| Copia y restauración | [Copia y restauración](operacion/copia-restauracion.md) | — | Ensayada en Linux |
+| Actualización, vuelta atrás y requisitos para IT | [Actualización y despliegue](operacion/actualizacion-despliegue-it.md) | — | Ensayada en Linux; despliegue pendiente |
+| Puesta en marcha de datos para Dennis | [Guía de Dennis](plan/guia-dennis.md) | — | Vigente |
+| Registro de aceptación (Dennis/IT), separado de las pruebas sintéticas | [Registro](validacion/registro-aceptacion.md) | — | Todo pendiente |
+| Resultados de validación de CSAPP-10 | [Validación](validacion/csapp-10.md) | — | Registro |
 | DOC-00 y diez entregas | [Roadmap](plan/roadmap.md) | — | Confirmado |
 | Precarga futura y pruebas de Dennis | [Política](plan/precarga-y-pruebas.md) | — | Confirmado |
 | Progreso real | [Estado](plan/estado.md) | — | Registro vivo |
@@ -69,4 +94,4 @@ Estado de la regla: **Confirmado** = decidido por Dennis; **Propuesto** = parám
 
 ## Prompts
 
-[Índice de prompts](../prompts/README.md), [plantilla](../prompts/_plantilla.md), [CSAPP-DOC-00-v1](../prompts/CSAPP-DOC-00-v1.md), [CSAPP-01-v1](../prompts/CSAPP-01-v1.md), [CSAPP-02-v1](../prompts/CSAPP-02-v1.md), [CSAPP-03-v1](../prompts/CSAPP-03-v1.md) y [CSAPP-04-v1](../prompts/CSAPP-04-v1.md).
+[Índice de prompts](../prompts/README.md), [plantilla](../prompts/_plantilla.md), [CSAPP-DOC-00-v1](../prompts/CSAPP-DOC-00-v1.md), [CSAPP-01-v1](../prompts/CSAPP-01-v1.md), [CSAPP-02-v1](../prompts/CSAPP-02-v1.md), [CSAPP-03-v1](../prompts/CSAPP-03-v1.md) y [CSAPP-04-v1](../prompts/CSAPP-04-v1.md), [CSAPP-05-v1](../prompts/CSAPP-05-v1.md) y [CSAPP-06-v1](../prompts/CSAPP-06-v1.md).

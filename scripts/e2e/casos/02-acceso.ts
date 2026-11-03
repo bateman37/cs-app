@@ -47,18 +47,12 @@ export async function acceso(ctx: Ctx): Promise<void> {
   const dbSession = await ctx.prisma.session.count({ where: { user: { email: ctx.accounts.adminEmail } } });
   ctx.check("El login crea una sesión en la base de datos", dbSession === 1, String(dbSession));
 
-  // Las cuatro vistas son pendientes honestas: sin tablas ni cifras.
-  const views: [string, string][] = [
-    ["/comparativa", "Comparativa"],
-    ["/analisis-cliente", "Análisis Cliente"],
-    ["/pulse-rent", "Pulse Rent"],
-    ["/calidad", "Calidad"],
-  ];
-  for (const [route, v] of views) {
+  // Las cuatro vistas (Calidad desde CSAPP-08) con la base vacía: estado vacío explicado, sin tabla ni cifras inventadas.
+  for (const [route, v, msg] of [["/comparativa", "Comparativa", /Aún no hay Grupos Cliente/], ["/analisis-cliente", "Análisis Cliente", /Todavía no hay Grupos Cliente/], ["/pulse-rent", "Pulse Rent", /Aún no hay Grupos Cliente/], ["/calidad", "Calidad", /No hay entidades/]] as const) {
     await ok.page.goto(`${ctx.base}${route}`);
     const text = await ok.page.locator("main").innerText();
-    const noData = (await ok.page.locator("main table, main canvas, main svg").count()) === 0 && !/\d/.test(text);
-    ctx.check(`Vista ${v}: pendiente, sin cifras ni tablas`, /Todavía no disponible/.test(text) && noData);
+    const tables = await ok.page.locator("main table, main svg").count();
+    ctx.check(`Vista ${v}: base vacía → estado vacío explicado, sin tabla ni gráfico de muestra`, msg.test(text) && !/Todavía no disponible/.test(text) && tables === 0, text.slice(0, 120));
   }
   await ok.context.close();
 }

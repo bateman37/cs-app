@@ -200,7 +200,7 @@ const PAP_FILTER_LABEL: Record<string, string> = {
   "bug-ambiguous": "Nº de BUG con producto sin determinar",
 };
 const SCOPE_LABEL: Record<string, string> = { CLIENT: "Cliente", IMPLEMENTATION: "Implantación", GROUP_ONLY: "Solo Grupo Cliente (sin reparto entre Clientes)", NO_PROJECT: "Sin proyecto", UNMAPPED: "Proyecto sin equivalencia" };
-const CAUSE_LABEL: Record<string, string> = { CORRECTIVE: "Correctivo", EVOLUTIVE: "Evolutivo", MAINTENANCE: "Mantenimiento", OTHER: "Otras etiquetas (sin clasificar)" };
+const CAUSE_LABEL: Record<string, string> = { CORRECTIVE: "Correctivo", EVOLUTIVE: "Evolutivo", MAINTENANCE: "Mantenimiento", CLIENT_REQUEST: "Petición cliente", OTHER: "Otras etiquetas (sin clasificar)" };
 const ORIGIN_LABEL: Record<string, string> = {
   STANDARD: "Estándar", CUSTOMIZATION: "Personalización", CONFIG_DATA: "Configuración/datos", PROCESSES: "Procesos", INFRASTRUCTURE: "Infraestructura", CLIENT_ORIGIN: "Origen cliente", OTHER_CORRECTIVE: "Otro correctivo",
 };
@@ -224,7 +224,7 @@ async function PapPanel({ userId, batch, base, det, dp, keep }: PanelProps) {
         {!s.freshnessKnown ? (
           <p className="notice notice-info" role="note">No se declaró la fecha de extracción: la observación se registra con la fecha de recepción ({formatDate(s.observedOn)}) y la frescura es desconocida.</p>
         ) : <p className="muted">Fecha de observación: extracción declarada {formatDate(s.observedOn)}.</p>}
-        {s.olderThanCurrent > 0 ? <p className="notice notice-info" role="note">{f(s.olderThanCurrent)} PAP tienen una observación vigente más reciente de otro lote: esta se conserva como histórico y no la sobrescribe.</p> : null}
+        {s.olderThanCurrent > 0 ? <p className="notice notice-info" role="note">{f(s.olderThanCurrent)} PAP tienen una observación vigente con fecha posterior: por la política de última carga, al activarse este lote su contenido pasa a ser el vigente (las fechas originales se conservan).</p> : null}
         {s.sameDayObservations > 0 ? <p className="notice notice-info" role="note">{f(s.sameDayObservations)} PAP tienen otra observación con la misma fecha: se resuelve por la recepción del lote (criterio explícito; el orden es incierto).</p> : null}
         <div className="table-wrap">
           <table>
@@ -371,7 +371,7 @@ async function BugsPanel({ userId, batch, base, det, dp, keep }: PanelProps) {
         {!s.freshnessKnown ? (
           <p className="notice notice-info" role="note">No se declaró la fecha de extracción: la observación se registra con la fecha de recepción ({formatDate(s.observedOn)}) y la frescura de la fotografía es desconocida.</p>
         ) : <p className="muted">Fecha de observación: extracción declarada {formatDate(s.observedOn)}.</p>}
-        {s.olderThanCurrent > 0 ? <p className="notice notice-info" role="note">{f(s.olderThanCurrent)} elementos tienen una observación vigente más reciente de otro lote: esta se conserva como histórico y no la sobrescribe.</p> : null}
+        {s.olderThanCurrent > 0 ? <p className="notice notice-info" role="note">{f(s.olderThanCurrent)} elementos tienen una observación vigente con fecha posterior: por la política de última carga, al activarse este lote su contenido pasa a ser el vigente (las fechas originales se conservan).</p> : null}
         <p className="notice notice-info" role="note" data-testid="bug-no-observados">
           La ausencia en esta vista no cierra, borra ni resuelve ningún Work Item: {f(s.notObservedInThisView.items)} elemento(s) de este producto y ámbito conocidos no están en esta fotografía
           {s.notObservedInThisView.items > 0 && s.notObservedInThisView.lastObservedFrom

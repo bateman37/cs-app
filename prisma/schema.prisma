@@ -34,8 +34,10 @@ model User {
   accounts          Account[]
   audits            AuditEvent[]
   matrixMonths      UserMatrixMonth[]
-  uploadsCreated    UploadBatch[]              @relation("UploadCreatedBy")
+  uploadsCreated    UploadBatch[]               @relation("UploadCreatedBy")
   uploadJobs        UploadJob[]
+  exportJobs        ExportJob[]
+  reconRuns         ReconRun[]
   zdDecisions       ZdTimeDecision[]
   zdCorrections     ZdTimeCorrection[]
   wrikeDecisions    WrikeTimeDecision[]
@@ -43,6 +45,12 @@ model User {
   workItemLinks     WorkItemLink[]
   financeDecisions  FinanceDecision[]
   settingsRevisions EconomicSettingsRevision[]
+  configRevisions   ConfigRevision[]            @relation("ConfigRevisionActivatedBy")
+  configDrafts      ConfigDraft[]               @relation("ConfigDraftUpdatedBy")
+  healthUpdates     HealthFeedback[]            @relation("HealthUpdatedBy")
+  healthEvents      HealthFeedbackEvent[]       @relation("HealthEventBy")
+  qualityNotes      QualityNote[]               @relation("QualityNoteAuthor")
+  coverageDecls     UploadCoverageDeclaration[] @relation("CoverageDeclaredBy")
 }
 
 model Session {
@@ -155,6 +163,8 @@ model ClientGroup {
   terms        ServiceTerm[]
   milestones   Milestone[]
   userMatrices UserMatrix[]
+  healthCells  HealthFeedback[]
+  qualityNotes QualityNote[]
 }
 
 /// Identidad operativa (organización Zendesk). groupId nulo = grupo no asignado.
@@ -174,6 +184,8 @@ model Client {
   terms           ServiceTerm[]
   milestones      Milestone[]
   userMatrices    UserMatrix[]
+  healthCells     HealthFeedback[]
+  qualityNotes    QualityNote[]
 
   @@index([groupId])
 }
@@ -413,7 +425,7 @@ model PersonTerm {
 // ---------------------------------------------------------------- CSAPP-02: usuarios contratados
 
 enum UserValueKind {
-  /// Carga inicial del histórico (2025): bloqueada tras la inicialización.
+  /// Carga inicial del histórico (base 2025). Ya no se bloquea por fila: edita la ventana año actual + anterior (HOTFIX-01 §7).
   INITIAL
   /// Base copiada del mismo mes del año anterior.
   COPIED
@@ -421,6 +433,8 @@ enum UserValueKind {
   PROPAGATED
   /// Ajuste explícito de un mes concreto.
   ADJUSTED
+  /// HOTFIX-01 §7: valor estimado a partir de la base 2025 en años anteriores («Estimado a partir de 2025»); no es un dato observado.
+  ESTIMATED
 }
 
 /// Matriz anual de usuarios que pagan de un ámbito (grupo, cliente o implantación).
@@ -538,6 +552,10 @@ model UploadBatch {
   rowsImported        Int     @default(0)
   summary             Json?
   rulesSnapshot       String?
+  /// Secuencia de recepción aceptada (HOTFIX-01 §4): la asigna el servidor al encolar el archivo completo. Entre lotes completados gana la mayor.
+  receptionSeq        BigInt?
+  /// Lote anterior al hotfix: sus tiempos forman la base heredada, que la primera instantánea completa nueva sustituye.
+  legacyBase          Boolean @default(false)
   /// Para políticas de sustitución: lote al que sustituye y lote que lo sustituyó después.
   supersedesBatchId   String?
   supersededByBatchId String?
@@ -566,6 +584,7 @@ model UploadBatch {
   zdStamp         ZdPreviewStamp?
   zdTicketPreview ZdTicketPreview[]
   zdTimePreview   ZdTimePreview[]
+  coverageDecls   UploadCoverageDeclaration[]
 
   wrikeEntries     WrikeTimeEntry[]
   wrikeCorrections WrikeTimeCorrection[]
@@ -585,6 +604,7 @@ model UploadBatch {
   @@index([profileId, status])
   @@index([profileId, scopeKey])
   @@index([checksum])
+  @@index([profileId, status, receptionSeq])
 }
 
 /// Cola de trabajos en PostgreSQL. Reclamación atómica, lease con latido y token de fencing.
@@ -714,6 +734,7 @@ model ZdTicketRevision {
   @@unique([ticketId, revisionNo])
   @@index([batchId])
   @@index([organizationId])
+  @@index([createdOn])
 }
 
 /// Observación: un lote vio este ticket con este contenido en una fecha de extracción declarada
@@ -736,6 +757,7 @@ model ZdTicketObservation {
   @@unique([batchId, ticketId])
   @@index([ticketId, observedOn])
   @@index([revisionId])
+  @@index([observedOn, batchId])
 }
 
 /// Registro de tiempo materializado (uno por fila fuente distinta). Las columnas drv* son derivadas y se
@@ -1329,4 +1351,356 @@ model ServiceAssignment {
   updatedAt   DateTime  @updatedAt
 
   @@index([matchKind, searchValue])
+}
+
+/// Revisión inmutable de una familia de configuración tipada (CSAPP-07): PULSE (Pulse Rent) o QUALITY (Calidad). La economía conserva su tabla.
+/// `payload` es un contrato versionado y validado en servidor (zod), no un documento de fórmulas. Volver a una anterior crea una NUEVA revisión
+/// (kind ROLLBACK, restoredFromRevisionNo). Un disparador impide UPDATE y DELETE.
+model ConfigRevision {
+  id                     BigInt   @id @default(autoincrement())
+  family                 String
+  revisionNo             Int
+  payload                Json
+  reason                 String?
+  kind                   String
+  restoredFromRevisionNo Int?
+  activatedAt            DateTime @default(now())
+  activatedById          String?
+
+  activatedBy User? @relation("ConfigRevisionActivatedBy", fields: [activatedById], references: [id], onDelete: Restrict)
+
+  @@unique([family, revisionNo])
+}
+
+/// Borrador único por familia: editable, simulable y NO activo. `baseRevisionNo` y `version` detectan ediciones obsoletas.
+model ConfigDraft {
+  id             BigInt   @id @default(autoincrement())
+  family         String   @unique
+  payload        Json
+  baseRevisionNo Int
+  version        Int      @default(1)
+  note           String?
+  createdAt      DateTime @default(now())
+  updatedAt      DateTime @updatedAt
+  updatedById    String?
+
+  updatedBy User? @relation("ConfigDraftUpdatedBy", fields: [updatedById], references: [id], onDelete: Restrict)
+}
+
+// ---------------------------------------------------------------- CSAPP-08: Calidad, Client Health y cobertura declarada
+
+/// Feedback mensual de Client Health de UN ámbito (Grupo Cliente o Cliente) y UN mes. Sin fila = sin feedback; `state = 'NONE'` = celda limpiada
+/// (el historial se conserva y equivale a «sin feedback», nunca a puntuación cero). No hay arrastre mensual ni propagación entre ámbitos.
+/// state: POSITIVE | NEGATIVE | MIXED | NONE. «Mixto» es una elección explícita, no un sentimiento deducido del comentario.
+model HealthFeedback {
+  id          BigInt    @id @default(autoincrement())
+  groupId     String?
+  clientId    String?
+  year        Int
+  month       Int
+  state       String
+  comment     String?
+  /// Fecha concreta del feedback si se conoce. Nula = «fecha dentro del mes no informada» (uso mensual/provisional). No es la fecha de guardado.
+  feedbackOn  DateTime? @db.Date
+  version     Int       @default(1)
+  createdAt   DateTime  @default(now())
+  updatedAt   DateTime  @updatedAt
+  updatedById String
+
+  group     ClientGroup?          @relation(fields: [groupId], references: [id], onDelete: Restrict)
+  client    Client?               @relation(fields: [clientId], references: [id], onDelete: Restrict)
+  updatedBy User                  @relation("HealthUpdatedBy", fields: [updatedById], references: [id], onDelete: Restrict)
+  history   HealthFeedbackEvent[]
+
+  @@unique([groupId, year, month])
+  @@unique([clientId, year, month])
+  @@index([year, month])
+  @@index([updatedById])
+}
+
+/// Historial inmutable de cada cambio de una celda de Client Health (antes/después como columnas; la auditoría general añade el JSON).
+model HealthFeedbackEvent {
+  id             BigInt    @id @default(autoincrement())
+  feedbackId     BigInt
+  version        Int
+  action         String
+  state          String
+  comment        String?
+  feedbackOn     DateTime? @db.Date
+  prevState      String?
+  prevComment    String?
+  prevFeedbackOn DateTime? @db.Date
+  at             DateTime  @default(now())
+  byId           String
+
+  feedback HealthFeedback @relation(fields: [feedbackId], references: [id], onDelete: Restrict)
+  by       User           @relation("HealthEventBy", fields: [byId], references: [id], onDelete: Restrict)
+
+  @@unique([feedbackId, version])
+  @@index([byId])
+}
+
+/// Nota sencilla de revisión de QA sobre un ámbito/periodo/evidencia (DIA 04). No es un gestor de tareas ni de planes de pruebas.
+model QualityNote {
+  id        BigInt   @id @default(autoincrement())
+  groupId   String?
+  clientId  String?
+  year      Int
+  month     Int
+  /// Familia de diagnóstico o indicador al que se refiere la nota (texto libre controlado en servidor).
+  topic     String
+  /// Evidencia vinculada (identificadores de ticket, PAP…); texto, no clave foránea.
+  evidence  String?
+  text      String
+  authorId  String
+  createdAt DateTime @default(now())
+
+  group  ClientGroup? @relation(fields: [groupId], references: [id], onDelete: Restrict)
+  client Client?      @relation(fields: [clientId], references: [id], onDelete: Restrict)
+  author User         @relation("QualityNoteAuthor", fields: [authorId], references: [id], onDelete: Restrict)
+
+  @@index([groupId, year, month])
+  @@index([clientId, year, month])
+  @@index([authorId])
+}
+
+/// Declaración tipada de cobertura/fotografía de un lote (Administración › Cargas). Versionada y de solo añadir: la vigente es la de mayor versión.
+/// No cambia filas, extracción original, observaciones ni estados históricos del lote. Los lotes sin declaración permanecen «desconocidos».
+/// population: ALL_CLIENTS | PARTIAL | UNKNOWN. statusScope: ALL_STATUSES | UNRESOLVED_ONLY | NOT_APPLICABLE | UNKNOWN.
+model UploadCoverageDeclaration {
+  id           BigInt    @id @default(autoincrement())
+  batchId      String
+  version      Int
+  population   String
+  statusScope  String
+  /// Alcance temporal declarado: fecha de creación (tickets), de trabajo (tiempos) o de producción (PAP) cubierta, ambas inclusivas.
+  coveredFrom  DateTime? @db.Date
+  coveredTo    DateTime? @db.Date
+  /// Fecha de extracción revisada por el Administrador (no sustituye la original del lote ni las observaciones).
+  extractedOn  DateTime? @db.Date
+  reason       String
+  declaredById String
+  declaredAt   DateTime  @default(now())
+
+  batch      UploadBatch @relation(fields: [batchId], references: [id], onDelete: Restrict)
+  declaredBy User        @relation("CoverageDeclaredBy", fields: [declaredById], references: [id], onDelete: Restrict)
+
+  @@unique([batchId, version])
+  @@index([declaredById])
+}
+
+// ---------------------------------------------------------------- CSAPP-09: exportaciones completas y conciliación
+
+enum ExportStatus {
+  QUEUED
+  PREPARING
+  GENERATING
+  READY
+  FAILED
+  CANCELLED
+  EXPIRED
+}
+
+/// Trabajo persistente de exportación completa (cola en PostgreSQL con lease y fencing, sin Redis). La consulta validada, el solicitante, las versiones,
+/// las revisiones de configuración y el sello pedido se guardan al crearlo; al prepararse se MATERIALIZA en una lectura coherente (ExportRow) y el archivo
+/// se genera por bloques desde esa materialización inmutable. Cada intento escribe un temporal propio y publica con rename atómico.
+model ExportJob {
+  id               String       @id @default(uuid())
+  ownerId          String
+  dataset          String
+  query            Json
+  status           ExportStatus @default(QUEUED)
+  phase            String?
+  progressDone     BigInt       @default(0)
+  progressTotal    BigInt?
+  cancelRequested  Boolean      @default(false)
+  formatVersion    String
+  engineVersion    String
+  configRevisions  Json
+  requestedStamp   String
+  requestedReadAt  DateTime
+  requestedTotals  Json
+  /// Materialización: lectura coherente que fija registros, contexto y totales. Nula hasta completarse.
+  materializedAt   DateTime?
+  materialStamp    String?
+  materialContext  Json?
+  rowCount         BigInt?
+  laterThanScreen  Boolean      @default(false)
+  attempts         Int          @default(0)
+  maxAttempts      Int          @default(3)
+  leaseOwner       String?
+  leaseExpiresAt   DateTime?
+  heartbeatAt      DateTime?
+  fence            Int          @default(0)
+  runAfter         DateTime     @default(now())
+  lastError        String?
+  createdAt        DateTime     @default(now())
+  startedAt        DateTime?
+  finishedAt       DateTime?
+  expiresAt        DateTime?
+
+  owner User         @relation(fields: [ownerId], references: [id], onDelete: Restrict)
+  files ExportFile[]
+
+  @@index([ownerId, createdAt])
+  @@index([status, runAfter])
+  @@index([status, expiresAt])
+}
+
+/// Archivo terminado y validado de un trabajo (UUID interno de almacenamiento; nunca ruta ni nombre del navegador).
+model ExportFile {
+  id        String   @id @default(uuid())
+  jobId     String
+  fileKey   String
+  part      Int      @default(1)
+  kind      String
+  name      String
+  rows      BigInt
+  bytes     BigInt
+  checksum  String
+  additive  Boolean  @default(true)
+  storageId String   @unique
+  createdAt DateTime @default(now())
+
+  job ExportJob @relation(fields: [jobId], references: [id], onDelete: Cascade)
+
+  @@unique([jobId, fileKey, part])
+}
+
+/// Materialización inmutable de una exportación: una fila por registro del archivo, con orden estable (seq). Se borra al caducar el trabajo.
+model ExportRow {
+  jobId   String
+  fileKey String
+  seq     BigInt
+  cells   Json
+
+  @@id([jobId, fileKey, seq])
+}
+
+/// Ejecución registrada de una comprobación de conciliación (Administración): parámetros, resultados y manifiesto de lo leído. No modifica fuentes.
+model ReconRun {
+  id          String   @id @default(uuid())
+  actorId     String
+  params      Json
+  stamp       String
+  readAt      DateTime
+  results     Json
+  manifest    Json
+  summary     Json
+  createdAt   DateTime @default(now())
+
+  actor User @relation(fields: [actorId], references: [id], onDelete: Restrict)
+
+  @@index([createdAt])
+}
+
+// ---------------------------------------------------------------- CSAPP-10: operación (latido por trabajador, identidad de instalación)
+
+enum WorkerState {
+  IDLE
+  BUSY
+  STOPPING
+  STOPPED
+}
+
+/// Latido por trabajador, en reposo o procesando (CSAPP-10 §4). La ausencia de trabajos recientes ya no se toma como prueba de que esté caído.
+model WorkerInstance {
+  id              String      @id
+  pid             Int
+  host            String
+  version         String
+  sha             String
+  state           WorkerState @default(IDLE)
+  /// Trabajo en curso (tipo `upload:PREPARE`, `export:GENERATING`…) e identificador; nulo en reposo.
+  currentKind     String?
+  currentJobId    String?
+  currentBatchId  String?
+  /// Último avance observable del trabajo en curso (cada bloque); permite distinguir «presente pero sin avanzar».
+  progressAt      DateTime?
+  startedAt       DateTime    @default(now())
+  lastSeenAt      DateTime    @default(now())
+  stoppedAt       DateTime?
+  /// Petición de cierre ordenado (multiplataforma: no depende de señales POSIX).
+  stopRequestedAt DateTime?
+
+  @@index([lastSeenAt])
+}
+
+/// Metadatos clave/valor de la instalación (identificador estable que enlaza base y almacenes privados).
+model InstallationMeta {
+  key       String   @id
+  value     String
+  updatedAt DateTime @default(now())
+}
+
+// ================================================================ CSAPP-HOTFIX-01: precarga de maestros (bloque propio, al final) ====
+
+/// Decisión del administrador sobre una revisión de la precarga de maestros. Ligada al checksum del archivo y a una clave de CONTENIDO
+/// (nunca al número de fila). Sin relaciones a propósito (ver la migración): no altera UploadBatch ni User.
+model MasterLoadDecision {
+  id             String   @id @default(cuid())
+  batchId        String
+  checksum       String
+  reviewKey      String
+  kind           String
+  decision       String
+  payload        Json     @default("{}")
+  reason         String
+  decidedById    String
+  decidedByEmail String
+  decidedAt      DateTime @default(now())
+
+  @@unique([batchId, reviewKey])
+  @@index([checksum, reviewKey])
+}
+
+// ======================================================================================================================
+// HOTFIX-01 §6-§7 (bloque propio; migración 20261108090000_hotfix01_historico_usuarios). Sin claves foráneas a tablas existentes
+// para no tocar sus modelos: los identificadores son los del maestro y se validan en servidor.
+// ======================================================================================================================
+
+/// Grupo Cliente creado por la precarga del histórico económico porque no estaba en el maestro (sin Cliente, IDs, implantaciones ni usuarios inventados).
+/// Su estado comercial actual NO se deduce de su ausencia en CLIENTES.
+model HistoricGroupOrigin {
+  groupId       String   @id
+  /// Lote de carga (libro) que lo originó.
+  sourceBatchId String
+  originalLabel String
+  note          String
+  createdAt     DateTime @default(now())
+
+  @@index([sourceBatchId])
+}
+
+/// Valor de usuarios de 2025 (columna H) por Grupo y categoría, tal como figura en el libro. Dos categorías con valores distintos son una discrepancia
+/// que no se resuelve por máximo, suma ni último: exige elección explícita (HistoricUserResolution).
+model HistoricUserBase {
+  groupId     String
+  year        Int
+  category    String
+  value       Int
+  sourceRow   Int
+  sourceCell  String
+  /// El valor procede de una fórmula aritmética con resultado almacenado (nunca se ejecuta).
+  fromFormula Boolean  @default(false)
+  batchId     String
+  createdAt   DateTime @default(now())
+  updatedAt   DateTime @default(now()) @updatedAt
+
+  @@id([groupId, year, category])
+  @@index([batchId])
+}
+
+/// Elección explícita del Administrador entre los valores en discrepancia (o valor indicado) de un Grupo y año base.
+model HistoricUserResolution {
+  groupId     String
+  year        Int
+  /// Categoría elegida; nulo si el valor se escribió expresamente.
+  category    String?
+  value       Int
+  reason      String?
+  decidedById String
+  decidedAt   DateTime @default(now())
+
+  @@id([groupId, year])
 }

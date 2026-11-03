@@ -244,6 +244,40 @@ describe("repetición, partición y reversión", () => {
   });
 });
 
+describe("instantánea activa por fuente (HOTFIX-01 §4)", () => {
+  const act = async (source: string) => (await prisma.$queryRaw<{ n: bigint; h: string | null }[]>`SELECT count(*) AS n, (sum(minutes) / 60)::text AS h FROM "TimeActivity" WHERE source = ${source}`)[0];
+
+  it("dos imputaciones distintas del mismo usuario, tarea y día sobreviven; una duración corregida en la instantánea posterior no suma antigua+nueva", async () => {
+    const rows = [wrikeRow({ tarea: "Soporte", horas: "1" }), wrikeRow({ tarea: "Soporte", horas: "2" })];
+    await importWrike(admin.id, wrikeCsv(rows));
+    expect(Number((await act("WRIKE")).n)).toBe(2);
+    expect(Number((await act("WRIKE")).h)).toBeCloseTo(3, 12);
+    // El export completo posterior corrige una duración (2 h → 2,5 h) y repite la otra.
+    const b = await importWrike(admin.id, wrikeCsv([wrikeRow({ tarea: "Soporte", horas: "1" }), wrikeRow({ tarea: "Soporte", horas: "2,5" })]));
+    expect(b.status).toBe("COMPLETED");
+    expect(Number((await act("WRIKE")).n)).toBe(2);
+    expect(Number((await act("WRIKE")).h)).toBeCloseTo(3.5, 12);
+    expect(await count("WrikeTimeEntry")).toBe(3); // la entrada anterior se conserva para historial
+    // Repetir exactamente el último archivo no duplica.
+    await importWrike(admin.id, wrikeCsv([wrikeRow({ tarea: "Soporte", horas: "1" }), wrikeRow({ tarea: "Soporte", horas: "2,5" })]));
+    expect(await count("WrikeTimeEntry")).toBe(3);
+    expect(Number((await act("WRIKE")).h)).toBeCloseTo(3.5, 12);
+  });
+
+  it("revertir la última instantánea restaura la anterior; Zendesk y Wrike tienen punteros independientes", async () => {
+    await importZd(admin.id, TIEMPO, await timesBuffer([timeRow({ id: "1", logged_hours: 4, logged_minutes: 0 })]));
+    const a = await importWrike(admin.id, wrikeCsv([wrikeRow({ tarea: "a", horas: "1" })]));
+    const b = await importWrike(admin.id, wrikeCsv([wrikeRow({ tarea: "b", horas: "2" })]));
+    expect(Number((await act("WRIKE")).h)).toBeCloseTo(2, 12);
+    expect(Number((await act("ZENDESK")).h)).toBeCloseTo(4, 12); // la instantánea de Wrike no toca a Zendesk
+    await revertUpload(admin.id, b.id);
+    await drain();
+    expect(Number((await act("WRIKE")).h)).toBeCloseTo(1, 12);
+    expect(Number((await act("ZENDESK")).h)).toBeCloseTo(4, 12);
+    expect(a.status).toBe("COMPLETED");
+  });
+});
+
 describe("corrección explícita sin ID (Wrike y Zendesk)", () => {
   const decide = (batchId: string, fingerprint: string, targetEntryId: string, rev: number, extra = {}) =>
     decideTimeCorrection(admin.id, batchId, { fingerprint, decision: "CORRECTION", targetEntryId, expectedEntryRevision: rev, confirmReplace: true, ...extra });

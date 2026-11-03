@@ -23,3 +23,21 @@ export function formatDecimalEs(text: string | null | undefined, digits = 2): st
   const zero = /^0*$/.test(ip + fp);
   return `${sign && !zero ? "-" : ""}${groupThousands(ip)}${fp ? `,${fp}` : ""}`;
 }
+
+/**
+ * Fracción exacta → porcentaje presentado («0.25» → «25 %», «-0.4545» → «-45,5 %»). El porcentaje se calcula sobre el texto decimal
+ * (×100 exacto) antes de redondear a `digits` decimales como máximo; se omiten los ceros finales (25 %, no 25,0 %). No cambia el signo
+ * confirmado. Solo para mostrar.
+ */
+export function formatPercentEs(fraction: string | null | undefined, digits = 1): string {
+  if (fraction === null || fraction === undefined || fraction === "") return "—";
+  const m = /^(-?)(\d+)(?:\.(\d+))?$/.exec(fraction);
+  if (!m) return fraction;
+  const [, sign, i, f = ""] = m;
+  const padded = f.padEnd(2, "0");
+  const whole = (BigInt(i) * 100n + BigInt(padded.slice(0, 2))).toString();
+  const rest = padded.slice(2);
+  const pct = `${sign}${whole}${rest ? `.${rest}` : ""}`;
+  const shown = formatDecimalEs(pct, digits).replace(/,?0+$/, (t) => (t.startsWith(",") ? "" : t));
+  return `${shown} %`;
+}

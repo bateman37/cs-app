@@ -14,3 +14,10 @@ fuentes-privadas/
 .DS_Store
 worker-dist/
 almacen-cargas/
+almacen-exportaciones/
+estado-runtime/
+build-info.json
+respaldos/
+
+# Endpoints CSV de la aplicación (no son datos): se versionan aunque *.csv esté ignorado
+!src/app/api/analitica/**

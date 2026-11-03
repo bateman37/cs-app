@@ -6,6 +6,7 @@ import { tmpdir } from "node:os";
 import path from "node:path";
 import { chromium, type Browser } from "playwright";
 import { databaseNameOf } from "../../src/lib/env";
+import { activateTestTarget, assertSameDatabase, guardedTruncateAll, resolveTestTarget, type ApprovedTarget } from "../../src/lib/test-guard";
 
 /**
  * Núcleo del recorrido de navegador: protección de base, preparación de datos sintéticos,
@@ -18,15 +19,9 @@ const ROOT = path.resolve(import.meta.dirname, "../..");
 
 export type Result = { label: string; ok: boolean; detail?: string };
 
+/** Destino de pruebas aprobado (guard central, CSAPP-07 §3). Lanza antes de modificar nada si no es seguro. */
 export function testDatabaseUrl(): string {
-  const url = process.env.TEST_DATABASE_URL;
-  if (!url) throw new Error("Falta TEST_DATABASE_URL (base aislada, nombre acabado en _test).");
-  const name = databaseNameOf(url);
-  if (!/^cs_app(_[a-z0-9]+)*_test$/.test(name)) throw new Error(`TEST_DATABASE_URL debe acabar en _test. Recibido: ${name || "(vacío)"}.`);
-  if (process.env.DATABASE_URL && databaseNameOf(process.env.DATABASE_URL) === name) {
-    throw new Error("TEST_DATABASE_URL no puede ser la misma base que DATABASE_URL.");
-  }
-  return url;
+  return resolveTestTarget().url;
 }
 
 export type Accounts = { adminEmail: string; adminPassword: string; readerEmail: string; readerPassword: string };
@@ -42,6 +37,8 @@ export type Ctx = {
   restartServer(): Promise<void>;
   /** Directorio temporal de subida de Cargas (privado, borrado al terminar). */
   uploadDir: string;
+  /** Almacén temporal de exportaciones (CSAPP-09), separado del de originales. */
+  exportDir: string;
   /** Arranca/detiene el trabajador de cargas construido (`npm run worker:build`) contra la base de test. */
   startWorker(): Promise<void>;
   stopWorker(): Promise<void>;
@@ -49,9 +46,12 @@ export type Ctx = {
 
 let server: ChildProcess | null = null;
 let worker: ChildProcess | null = null;
+/** PID de los procesos propios (web compilada y trabajador compilado) para medir su memoria durante todo un intervalo. */
+export const ownPids = () => ({ web: server?.pid ?? null, worker: worker?.pid ?? null });
 
 async function startWorkerProcess(dbUrl: string): Promise<void> {
   if (worker) return;
+  assertSameDatabase(dbUrl, resolveTestTarget().url, "El trabajador de cargas"); // web, trabajador y preparación comparten el destino aprobado
   const bundle = path.join(ROOT, "worker-dist/worker.mjs");
   worker = spawn(process.execPath, [bundle], {
     cwd: ROOT,
@@ -100,6 +100,7 @@ async function waitReady(): Promise<void> {
 }
 
 export async function startServer(dbUrl: string): Promise<void> {
+  assertSameDatabase(dbUrl, resolveTestTarget().url, "El proceso web");
   const nextBin = path.join(ROOT, "node_modules/next/dist/bin/next");
   server = spawn(process.execPath, [nextBin, "start", "-p", String(PORT)], { cwd: ROOT, env: serverEnv(dbUrl), stdio: "ignore" });
   await waitReady();
@@ -119,33 +120,40 @@ export async function stopServer(): Promise<void> {
   });
 }
 
-/** Aplica migraciones a la base de test (nunca a otra) y la vacía. */
-export async function prepareDatabase(dbUrl: string, prisma: Ctx["prisma"]): Promise<void> {
-  // testDatabaseUrl() ya comprobó el nombre y que difiere de DATABASE_URL; aquí se reafirma antes de vaciar.
-  if (!/^cs_app(_[a-z0-9]+)*_test$/.test(databaseNameOf(dbUrl))) throw new Error("Destino no es una base de test.");
+/**
+ * Aplica migraciones a la base de test (nunca a otra) y la vacía. ANTES de cualquier migración o TRUNCATE comprueba, en la conexión efectiva
+ * que ejecutará la operación, que `current_database()` es el destino aprobado; si no coincide no se modifica nada.
+ */
+export async function prepareDatabase(approved: ApprovedTarget | string, prisma: Ctx["prisma"]): Promise<void> {
+  const target = typeof approved === "string" ? resolveTestTarget({ ...process.env, TEST_DATABASE_URL: approved }) : approved;
+  const { assertConnectedTo } = await import("../../src/lib/test-guard");
+  await assertConnectedTo(prisma, target.target.name); // falla antes de migrar o vaciar
   execFileSync(process.execPath, [path.join(ROOT, "node_modules/prisma/build/index.js"), "migrate", "deploy"], {
     cwd: ROOT,
-    env: { ...process.env, DATABASE_URL: dbUrl, SHADOW_DATABASE_URL: "" },
+    env: { ...process.env, DATABASE_URL: target.url, SHADOW_DATABASE_URL: "" },
     stdio: "pipe",
   });
-  const tables = await prisma.$queryRaw<{ tablename: string }[]>`
-    SELECT tablename FROM pg_tables WHERE schemaname = 'public' AND tablename <> '_prisma_migrations'`;
-  const list = tables.map((t) => `"${t.tablename}"`).join(", ");
-  await prisma.$executeRawUnsafe(`TRUNCATE ${list} RESTART IDENTITY CASCADE`);
+  await guardedTruncateAll(prisma, target);
 }
 
 export async function runAll(casos: ((ctx: Ctx) => Promise<void>)[]): Promise<number> {
-  const dbUrl = testDatabaseUrl();
-  process.env.DATABASE_URL = dbUrl;
+  // El entorno de pruebas se fija ANTES de importar ningún singleton; un cliente ya conectado a otra base hace fallar aquí, sin mutar nada.
+  const approved = activateTestTarget();
+  const dbUrl = approved.url;
   process.env.BETTER_AUTH_URL = BASE;
   process.env.BETTER_AUTH_SECRET ||= randomBytes(24).toString("hex");
   const { prisma } = await import("../../src/lib/db");
   const { provisionAccount } = await import("../../src/server/accounts");
-  await prepareDatabase(dbUrl, prisma);
+  assertSameDatabase(process.env.DATABASE_URL ?? "", dbUrl, "El cliente de preparación");
+  await prepareDatabase(approved, prisma);
   // Cargas: almacén temporal propio y perfiles sintéticos, SOLO porque este destino es una base de test
   // comprobada (las tres condiciones del registro: variable = nombre de la base, sufijo _test, esquema marcador).
   const uploadDir = await mkdtemp(path.join(tmpdir(), "csapp-e2e-cargas-"));
   process.env.CSAPP_UPLOAD_DIR = uploadDir;
+  // Exportaciones (CSAPP-09): almacén temporal PROPIO y separado del de originales, compartido por web y trabajador; limpieza restringida a este directorio.
+  const exportDir = await mkdtemp(path.join(tmpdir(), "csapp-e2e-exportaciones-"));
+  process.env.CSAPP_EXPORT_DIR = exportDir;
+  process.env.CSAPP_EXPORT_PAGE_ROWS = "500";
   process.env.CSAPP_ENABLE_SYNTHETIC_PROFILES = databaseNameOf(dbUrl);
   const { setupSyntheticSchema, resetSynthetic } = await import("../../tests/synthetic/schema");
   await setupSyntheticSchema();
@@ -178,6 +186,7 @@ export async function runAll(casos: ((ctx: Ctx) => Promise<void>)[]): Promise<nu
       await startServer(dbUrl);
     },
     uploadDir,
+    exportDir,
     startWorker: () => startWorkerProcess(dbUrl),
     stopWorker: stopWorkerProcess,
   };
@@ -190,7 +199,7 @@ export async function runAll(casos: ((ctx: Ctx) => Promise<void>)[]): Promise<nu
       try {
         await caso(ctx);
       } catch (e) {
-        ctx.check(`El caso ${caso.name || "(anónimo)"} terminó sin error inesperado`, false, e instanceof Error ? e.message.split("\n")[0] : "error");
+        ctx.check(`El caso ${caso.name || "(anónimo)"} terminó sin error inesperado`, false, e instanceof Error ? (e.message.split("\n").map((l) => l.trim()).filter(Boolean).slice(-2).join(" · ") || e.name) : "error");
       }
     }
   } finally {
@@ -198,6 +207,7 @@ export async function runAll(casos: ((ctx: Ctx) => Promise<void>)[]): Promise<nu
     await stopWorkerProcess();
     await stopServer();
     await rm(uploadDir, { recursive: true, force: true });
+    await rm(exportDir, { recursive: true, force: true });
     await prisma.$disconnect();
   }
   const failed = results.filter((r) => !r.ok).length;

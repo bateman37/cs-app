@@ -10,14 +10,14 @@ Todas las entregas parten de las lecturas comunes (AGENTS, CLAUDE, [índice](../
 | CSAPP-02 | Personal unificado, matriz mensual de usuarios y motor común de cargas | Alias/roles, 65 a 68 desde junio sin alterar meses anteriores, progreso y activación recuperable |
 | CSAPP-03 | Tickets canónicos con tags/creación/type/status y tiempos Zendesk | Revisiones/deduplicación, tickets sin horas, estado observado y corte PMO; Dennis prueba ambos XLSX |
 | CSAPP-04 | Wrike, PAP y cargas separadas bugs VFS/VSW | CSV sin pérdida, horas correctas, PAP multicausa único, vínculos explícitos, reimportación sin duplicar ni cerrar por ausencia; Dennis carga |
-| CSAPP-05 | Tres importaciones financieras y motor económico (implementado; PR sin fusionar) | Sustitución atómica año/categoría, prorrateo y CUM; históricos permitidos; Dennis carga 2025/2026 y repite |
-| CSAPP-06 | Comparativa y Análisis Cliente | Tabla/ficha/curvas coherentes, mes anterior y año anterior completo/comparable, detalle integrado |
-| CSAPP-07 | Pulse Rent y configuración de Administración | Catálogo, media/mediana/percentiles y bandas, pesos exactos 100, umbrales/referencias versionados |
-| CSAPP-08 | Calidad, Client Health, diagnóstico, afectación estándar y backlog/antigüedad | Seis indicadores explicables en ambos ámbitos; stocks/flujo separados, sin historia inventada; configuración visible |
+| CSAPP-05 | Tres importaciones financieras y motor económico (implementado; PR 6 fusionada según Git) | Sustitución atómica año/categoría, prorrateo y CUM; históricos permitidos; Dennis carga 2025/2026 y repite |
+| CSAPP-06 | Comparativa y Análisis Cliente | Tabla/ficha/curvas coherentes, mes anterior y año anterior completo/comparable, detalle integrado. **Ejecutada** (PR sin fusionar; ver [estado](estado.md)) |
+| CSAPP-07 | Pulse Rent y configuración de Administración | Catálogo, media/mediana/percentiles y bandas, pesos exactos 100, umbrales/referencias versionados. **Ejecutada** (PR apilada sobre la de CSAPP-06, sin fusionar; ver [estado](estado.md)) |
+| CSAPP-08 | Calidad, Client Health, diagnóstico, afectación estándar y backlog/antigüedad | Seis indicadores explicables en ambos ámbitos; stocks/flujo separados, sin historia inventada; configuración visible. **Ejecutada** (PR apilada sobre la cabeza de la PR 7, sin fusionar; ver [estado](estado.md)) |
 | CSAPP-09 | Conciliación, fiabilidad, rendimiento, exportaciones y recuperación | Reimportación/reversión, volumen medido, permisos y cifras conciliadas con cargas reales de Dennis |
 | CSAPP-10 | Aceptación, guías y preparación/ejecución del despliegue autorizado | Instalación y copia recuperable, guía Windows/IT, aceptación registrada y despliegue solo en entorno autorizado |
 
-Estado de las diez entregas: ver [estado](estado.md). CSAPP-01 y CSAPP-02 implementadas y fusionadas; CSAPP-03 implementada y en PR sin fusionar; el resto no ha empezado.
+Estado de las diez entregas: ver [estado](estado.md). CSAPP-01 a CSAPP-05 implementadas y fusionadas según Git (integración, no aceptación de Dennis); CSAPP-06 implementada en la PR 7 sin fusionar; CSAPP-07 implementada (PR 8, integrada en la rama de la PR 7, no en `main`); CSAPP-08 implementada en la PR 9, integrada en la rama de la PR 7 (cabeza `31009c9`, no `main`); CSAPP-09 implementada en una PR apilada contra esa rama, sin fusionar; CSAPP-10 implementada en una PR apilada sin fusionar (cierre técnico; aceptación y despliegue pendientes).
 
 ## CSAPP-DOC-00 Arranque documental, fuera del roadmap
 
@@ -118,6 +118,8 @@ Una rama y PR solo con Markdown: incorporar el paquete v0.4 revisado, archivar e
 **Dependencias.** CSAPP-02 (usuarios) y CSAPP-03 a 05 (datos); CSAPP-06 comparte motor.
 
 **Aceptación.** Percentiles conocidos, usuarios variables y nulos, total exacto de pesos, rechazo de 99 o 101 por ciento y cinco pesos efectivos de 20 si falta Health. Las propuestas de umbrales se identifican como tales antes de activarlas.
+
+**Estado.** Ejecutada en la rama `feature/CSAPP-07-pulse-rent-configuracion`, apilada sobre la cabeza de la PR 7 (CSAPP-06). Detalle en [estado](estado.md), [arquitectura](../arquitectura/pulse-configuracion-csapp07.md) y [validación](../validacion/csapp-07.md). Sin Windows, sin aceptación de Dennis y sin archivos reales.
 
 **Prueba manual de Dennis.** Intentar guardar pesos que sumen 99 y 101, guardar 20+20+15+15+15+15, comprobar que quedan versionados y revisar bandas y referencia en Pulse Rent.
 

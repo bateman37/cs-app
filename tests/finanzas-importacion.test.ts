@@ -73,18 +73,37 @@ describe("tres perfiles, año y filtros", () => {
     const extra = [{ name: "Otra", rows: [["Grupo cliente", "Vta Potencial", "Diferencia"], ["Z", 9, 0]] }];
     const amb = await prepareFin(admin.id, "SOPORTE", 2026, [{ grupo: "A", vta: 10 }], { total: { vta: 10 }, extraSheets: extra });
     expect(amb.status).toBe("REJECTED");
-    const ok = await prepareFin(admin.id, "SOPORTE", 2026, [{ grupo: "A", vta: 10 }], { total: { vta: 10 }, extraSheets: extra, metadata: { anio: 2026, conjuntoCompleto: "si", hoja: "Otra" } });
+    const ok = await prepareFin(admin.id, "SOPORTE", 2026, [{ grupo: "A", vta: 10 }], { total: { vta: 10 }, extraSheets: extra, metadata: { anio: 2026, hoja: "Otra" } });
     expect(ok.status).toBe("READY");
     expect((await cfg(ok.id)).sums.unique).toBe("9");
   });
-  it("sin año, sin declaración de conjunto completo o con año fuera de rango no se acepta (validado en servidor)", async () => {
+  it("el año se escribe a mano: cuatro dígitos entre 1900 y 9999 (2026, 2027, 2028 y posteriores); vacío, decimal, texto o fuera de rango se rechaza sin truncar (validado en servidor)", async () => {
     const { uploadText } = await import("./cargas-helpers");
     const { financeXlsx } = await import("./generators/finance");
     const f = await financeXlsx([{ grupo: "A", vta: 1 }], { total: { vta: 1 } });
-    for (const metadata of [{}, { anio: 2026 }, { conjuntoCompleto: "si" }, { anio: 1999, conjuntoCompleto: "si" }, { anio: 2026, conjuntoCompleto: "no" }]) {
+    for (const metadata of [{}, { anio: "" }, { anio: "2026.5" }, { anio: 2026.5 }, { anio: "abc" }, { anio: "26" }, { anio: 1899 }, { anio: 10000 }, { anio: "20260" }, { anio: " " }]) {
       await expect(uploadText(admin.id, f, { profileId: "facturacion-soporte", name: "f.xlsx", metadata })).rejects.toBeInstanceOf(DomainError);
     }
-    await expect(uploadText(reader.id, f, { profileId: "facturacion-soporte", name: "f.xlsx", metadata: { anio: 2026, conjuntoCompleto: "si" } })).rejects.toThrow();
+    for (const anio of ["2026", 2027, "2028", 2035, 1900, 9999]) {
+      const u = await uploadText(admin.id, f, { profileId: "facturacion-soporte", name: "f.xlsx", metadata: { anio } });
+      expect((await prisma.uploadBatch.findUniqueOrThrow({ where: { id: u.id } })).scopeKey).toBe(String(anio));
+    }
+    await expect(uploadText(reader.id, f, { profileId: "facturacion-soporte", name: "f.xlsx", metadata: { anio: 2026 } })).rejects.toThrow();
+  });
+  it("una carga recibida antes que la activa del ámbito no la sustituye aunque se active más tarde", async () => {
+    const g = await prisma.clientGroup.create({ data: { name: "G a" } });
+    await prisma.externalIdentity.create({ data: { system: "BC", kind: "GROUP_KEY", rawValue: "a", searchValue: "a", groupId: g.id } });
+    const a = await prepareFin(admin.id, "SOPORTE", 2026, [{ grupo: "A", vta: 10 }], { total: { vta: 10 } });
+    const b = await prepareFin(admin.id, "SOPORTE", 2026, [{ grupo: "A", vta: 20 }], { total: { vta: 20 } });
+    await reviewFinanceImpact(admin.id, b.id);
+    await confirmUpload(admin.id, b.id, { expectedVersion: (await batch(b.id)).version });
+    await drain();
+    expect(await activeTotal("SOPORTE", 2026)).toBe("20");
+    await reviewFinanceImpact(admin.id, a.id).catch(() => undefined);
+    await confirmUpload(admin.id, a.id, { expectedVersion: (await batch(a.id)).version }).catch(() => undefined);
+    await drain();
+    expect(await activeTotal("SOPORTE", 2026)).toBe("20");
+    expect((await batch(a.id)).status).not.toBe("COMPLETED");
   });
 });
 

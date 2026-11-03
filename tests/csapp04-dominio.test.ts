@@ -71,6 +71,18 @@ describe("PAP: identidad, causas y referencias", () => {
     expect(correctiveState(a)).toBe("CORRECTIVE");
     expect(a.find((c) => c.category === "CORRECTIVE")?.origin).toBe("STANDARD");
     expect(correctiveState(parseCauses("Evolutivo;#Mantenimiento"))).toBe("NON_CORRECTIVE");
+    // Petición cliente (HOTFIX-01 §5): categoría propia con variantes de tildes, caja y espacios; no es correctivo ni «sin clasificar» por sí sola.
+    for (const raw of ["Petición cliente", "peticion cliente", "  PETICIÓN   CLIENTE ", "Petición del cliente"]) {
+      const [c] = parseCauses(raw);
+      expect(c.category, raw).toBe("CLIENT_REQUEST");
+      expect(c.origin).toBeNull();
+      expect(correctiveState([c])).toBe("NON_CORRECTIVE");
+    }
+    expect(parseCauses("Petición cliente")[0].raw).toBe("Petición cliente");
+    // Con una causa correctiva sigue siendo UN PAP correctivo; con una etiqueta desconocida el estado no se afirma.
+    expect(correctiveState(parseCauses("Petición cliente;#Correctivo (Estándar)"))).toBe("CORRECTIVE");
+    expect(correctiveState(parseCauses("Petición cliente;#Etiqueta nueva"))).toBe("UNKNOWN");
+    expect(classifyCause("correctivo (origen cliente)").category).toBe("CORRECTIVE");
     expect(correctiveState(parseCauses(""))).toBe("UNKNOWN");
     expect(correctiveState(parseCauses("Etiqueta nueva"))).toBe("UNKNOWN");
     expect(classifyCause("correctivo (nuevo tipo futuro)").category).toBe("CORRECTIVE");

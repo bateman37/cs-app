@@ -38,3 +38,15 @@ La pestaña Calidad de la ficha permite leer el feedback del mes, ver tendencias
 ## Diagnóstico y afectación del producto
 
 La ficha usa Grupo Cliente y Cliente existentes y abre el diagnóstico de causas sin eliminar Sistemas del Cliente o Uso indebido. Mostrar problemas e incidentes por separado, lista de bugs vinculados y problemas por causa estándar como métricas distintas. Los vínculos parciales no representan todos los clientes afectados. La sección detallada sigue dentro de las cuatro vistas, sin crear otro módulo.
+
+## Implementación (CSAPP-06)
+
+Ruta `/analisis-cliente` (selector con búsqueda en servidor por Grupo / Cliente / implantación, paginada; ficha con `ambito`+`id`). Cinco secciones de carga diferida:
+
+1. **Resumen y evolución:** cinco tarjetas de periodo (horas, ingreso imputado, €/jornada, desviaciones, horas objetivo, desviación de horas, tarifa, usuarios) y cinco gráficos con tabla equivalente: rentabilidad mensual (objetivo, huecos reales, provisional hueco), horas CUM comparables, ingreso CUM comparable, dedicación mensual por perfil con **PAP en panel aparte**, y real frente a objetivo. El año anterior comparable usa datos propios (último mes cortado según el modo). Hitos con fecha y ámbito.
+2. **Dedicación:** perfiles CS N1, CS N2, PMO ANA/DEV, IT N3, Plataforma N4 y sin identificar (otras dimensiones se conservan), resueltos a la fecha del trabajo; clases de causa (incidente Vincle confirmado, otro soporte, sin clasificar) que reconcilian el total; causas exactas con Sistemas del Cliente y Uso Indebido.
+3. **PAP:** totales únicos por lista+ID, correctivos (estándar, proyecto, origen cliente), evolutivos (sin evidencia de facturación en la fuente: no se afirma «no facturable»), sin clasificar, resultado distinto de OK, sin fecha de producción; tabla de pertenencias **no aditiva** marcada.
+4. **Tickets y bugs vinculados:** creados por periodo (incident / problem / otros), escalados (N3 unión una vez; N4 no prueba un bug), estados observados con fecha, y bugs únicos con problemas e incidentes afectados como conteos aparte («bugs vinculados a tickets creados en el periodo»). Rechazados, pendientes e internos fuera del conteo confirmado.
+5. **Datos y cobertura:** referencia de cálculo, fuentes financieras, últimas cargas completadas, limitaciones.
+
+Grupo: todas las métricas del motor. Cliente/implantación: horas, usuarios y hechos **de su ámbito**; «ingreso agrupado en Grupo Cliente» con enlace; el panel «del grupo» no se suma. Cada cifra abre su detalle (ingreso, horas incluidas/excluidas/pendientes/sin clasificar/otro servicio, PAP, tickets, bugs, explicación de ratio con numerador, denominador, operandos, fórmula, referencia y estado). Límites: sin los seis indicadores de Calidad, Client Health, backlog ni semáforos (CSAPP-08); las implantaciones no identifican tickets.

@@ -6,7 +6,7 @@ export const SCOPE_SLUG: Record<ScopeRef["type"], string> = { group: "grupo", cl
 export const SLUG_SCOPE: Record<string, ScopeRef["type"]> = { grupo: "group", cliente: "client", implantacion: "implementation" };
 export const SCOPE_LABEL: Record<ScopeRef["type"], string> = { group: "Grupo Cliente", client: "Cliente", implementation: "Implantación" };
 
-export const KIND_MARK: Record<ValueKind, string> = { INITIAL: "H", COPIED: "C", PROPAGATED: "P", ADJUSTED: "A" };
+export const KIND_MARK: Record<ValueKind, string> = { INITIAL: "B", COPIED: "C", PROPAGATED: "P", ADJUSTED: "A", ESTIMATED: "E" };
 
 export function fichaHref(type: ScopeRef["type"], id: string, year: number, extra = "") {
   return `${BASE}/${SCOPE_SLUG[type]}/${id}?anio=${year}${extra}`;
@@ -42,8 +42,8 @@ export function Cell({ value, kind, locked }: { value: number | null; kind: Valu
 export function Legend() {
   return (
     <p className="muted" style={{ fontSize: "0.85rem" }}>
-      «—» = sin informar (no es cero). «0» = cero confirmado. Marca: <sup>H</sup> carga inicial histórica (bloqueada), <sup>C</sup> base copiada,{" "}
-      <sup>P</sup> propagado, <sup>A</sup> ajuste explícito.
+      «—» = sin informar (no es cero). «0» = cero confirmado. Marca: <sup>B</sup> base inicial (2025), <sup>C</sup> base copiada,{" "}
+      <sup>P</sup> propagado, <sup>A</sup> ajuste explícito, <sup>E</sup> estimado a partir de 2025 (no es un dato observado ese año).
     </p>
   );
 }

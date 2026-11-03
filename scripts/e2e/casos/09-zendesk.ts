@@ -66,7 +66,7 @@ export async function zendesk(ctx: Ctx): Promise<void> {
       await page.locator("summary", { hasText: source }).first().click();
       const form = page.locator("details[open]").first();
       await form.locator('input[type="file"]').setInputFiles(f);
-      if (extraccion) await form.getByLabel("Fecha de extracción").fill(extraccion);
+      void extraccion; // HOTFIX-01: el formulario ya no pide extracción; la fecha de recepción es la observación operativa.
       if (hoja) await form.getByLabel(/Hoja del libro/).fill(hoja);
       await form.getByRole("button", { name: "Subir y validar" }).click();
       await page.waitForURL(/\/administracion\/cargas\/[^/]+$/, { timeout: 30000 });
@@ -96,7 +96,7 @@ export async function zendesk(ctx: Ctx): Promise<void> {
     ctx.check("Zendesk tickets: el resumen diferencia filas, duplicados exactos y tickets distintos (9 filas, 1 duplicado, 8 tickets)", /Filas recibidas 9/.test(await sumT("Filas recibidas")) && /Duplicados exactos en el archivo 1/.test(await sumT("Duplicados exactos")) && /Tickets distintos 8/.test(await sumT("Tickets distintos")));
     ctx.check("Zendesk tickets: nuevos 8, organizaciones pendientes, Cliente sin grupo, internos y clasificación incompleta", /Nuevos 8/.test(await sumT("Nuevos")) && /Sin organización informada 1/.test(await sumT("Sin organización informada")) && /Organización sin Cliente equivalente 1/.test(await sumT("Organización sin Cliente equivalente")) && /Cliente sin Grupo BC 1/.test(await sumT("Cliente sin Grupo BC")) && /Internos 1/.test(await sumT("Internos")) && /Clasificación incompleta 2/.test(await sumT("Clasificación incompleta")), await sumT("Clasificación incompleta"));
     ctx.check("Zendesk tickets: escalados por tag exacto con unión N3 sin doble conteo (PMO 1, IT 1, unión 1)", /PMO N3 1/.test(await sumT("PMO N3")) && /IT N3 1/.test(await sumT("IT N3")) && /Unión N3[^0-9]*1$/.test(await sumT("Unión N3")), await sumT("Unión N3"));
-    ctx.check("Zendesk tickets: la ficha enseña extracción declarada y la observación (frescura conocida)", /Fecha de observación: extracción declarada 10\/01\/2026/.test(await body(page)));
+    ctx.check("Zendesk tickets: la ficha enseña la fecha de observación (recepción, sin extracción declarada)", /Fecha de observación|se registra con la fecha de recepción/.test(await body(page)));
     await page.getByTestId("zd-detalle").getByLabel("Filtro").selectOption("org_none");
     await filtrar(page).click();
     await page.waitForLoadState("networkidle");
@@ -120,7 +120,7 @@ export async function zendesk(ctx: Ctx): Promise<void> {
       ticket({ ticket_id: "1", organization_id: "9001", tags: '["team_n3_pmo","team_it"]', status: "solved", causa: "incidente_estándar_plataforma" }),
       ticket({ ticket_id: "2", organization_id: "9001", status: "solved", tags: '["team_n2"]' }),
     ]);
-    const tb = await upload("Zendesk · tickets", file("tickets-b.xlsx"), "2026-02-10");
+    await upload("Zendesk · tickets", file("tickets-b.xlsx"), "2026-02-10");
     ctx.check("Zendesk tickets: la segunda extracción distingue 1 revisado y 1 sin cambios", (await waitStatus(page, "Listo para revisar")) && /Revisados 1/.test(await sumT("Revisados")) && /Sin cambios \(solo observación\) 1/.test(await sumT("Sin cambios")));
     await page.getByRole("button", { name: "Confirmar y activar" }).click();
     await waitStatus(page, "Completado");
@@ -173,25 +173,23 @@ export async function zendesk(ctx: Ctx): Promise<void> {
     await page.goto(`${B}/${xa}`);
     await page.getByRole("button", { name: "Confirmar y activar" }).click();
     ctx.check("Zendesk tiempos: confirmar activa el lote (Completado)", await waitStatus(page, "Completado"));
+    const confirmBtn = page.getByRole("button", { name: "Confirmar y activar" });
+    ctx.check("Estado final: con el lote Completado el botón Confirmar está deshabilitado, sin cursor de espera ni aria-busy (HOTFIX-01 §3)", (await confirmBtn.isDisabled()) && (await confirmBtn.evaluate((el) => getComputedStyle(el).cursor)) !== "wait" && (await confirmBtn.getAttribute("aria-busy")) === null);
+    ctx.check("Estado final: la ficha no mantiene «Enviando…» ni «Aplicando» sin trabajo", !/Enviando…|Aplicando/.test(await body(page)));
     ctx.check("Zendesk tiempos: se materializan 6 registros (el duplicado cuenta una vez) incluida la fila PMO excluida como trazabilidad", (await n(ctx, 'SELECT count(*) n FROM "ZdTimeEntry"')) === 6 && (await n(ctx, `SELECT count(*) n FROM "ZdTimeEntry" WHERE "drvBucket" = 'EXCLUDED_PMO'`)) === 1);
     ctx.check("Zendesk tiempos: tras activar la ficha muestra las cifras de los registros y siguen reconciliando", /Cifras de los registros materializados/.test(await body(page)) && /Reconcilia con las filas y horas válidas/.test(await body(page)));
 
-    // Corrección explícita.
+    // Instantánea completa posterior (HOTFIX-01 §4): sustituye lo activo de la fuente; no hay «posible corrección» ni suma.
     await writeTimes(file("tiempos-b.xlsx"), [timeRow({ id: "88", ticket_id: "1", user_id: "5002", user_name: "Ivan", logged_hours: 2, logged_minutes: 0, hour: hourAt(8, 25), date: day("2024-12-15") })]);
-    const xb = await upload("Zendesk · tiempos", file("tiempos-b.xlsx"), "2026-02-13");
+    await upload("Zendesk · tiempos", file("tiempos-b.xlsx"));
     await waitStatus(page, "Listo para revisar");
-    ctx.check("Zendesk tiempos: la posible corrección (mismo id y contexto, otra duración) se advierte con antes y después y queda sin decidir", (await page.getByTestId("zd-correcciones").count()) === 1 && /1,5 h → 2 h/.test(await page.getByTestId("zd-correcciones").innerText()) && /Sin decidir/.test(await page.getByTestId("zd-correcciones").innerText()));
-    await page.getByRole("link", { name: /Comparar con el registro de 1,5 h/ }).click();
-    await page.getByTestId("comparacion").waitFor();
-    ctx.check("Zendesk tiempos: la comparación muestra ambos registros y los minutos antes/después", /Antes: 1,5 h · después: 2 h/.test(await page.getByTestId("minutos-antes-despues").innerText()));
-    await page.getByLabel(/Confirmo que esta fila sustituye/).check();
-    await page.getByRole("button", { name: "Confirmar sustitución" }).click();
-    await waitDb(async () => (await n(ctx, `SELECT count(*) n FROM "ZdTimeDecision" WHERE "batchId" = '${xb}'`)) === 1);
-    await page.goto(`${B}/${xb}`);
-    ctx.check("Zendesk tiempos: la decisión explícita queda registrada y auditada", /Corrige el registro seleccionado/.test(await page.getByTestId("zd-correcciones").innerText()) && (await n(ctx, `SELECT count(*) n FROM "AuditEvent" WHERE "entityType" = 'TimeDecision' AND "batchId" = '${xb}'`)) === 1);
+    ctx.check("Zendesk tiempos: el export completo posterior muestra el impacto (sustituye los tiempos activos) y no ofrece correcciones por parecido", (await page.getByRole("heading", { name: "Impacto de la activación" }).count()) === 1 && (await page.getByTestId("zd-correcciones").count()) === 0 && /conjunto activo de tiempos de la fuente/.test(await body(page)));
     await page.getByRole("button", { name: "Confirmar y activar" }).click();
     await waitStatus(page, "Completado");
-    ctx.check("Zendesk tiempos: la corrección sustituye 1,5 h por 2 h sin sumarlas y conserva el contenido anterior", (await n(ctx, 'SELECT count(*) n FROM "ZdTimeEntry"')) === 6 && (await n(ctx, `SELECT count(*) n FROM "ZdTimeEntry" WHERE "sourceId" = '88' AND minutes = 120`)) === 1 && (await n(ctx, 'SELECT count(*) n FROM "ZdTimeCorrection"')) === 1);
+    const activeZd = async () => n(ctx, `SELECT count(*) n FROM "TimeActivity" WHERE source = 'ZENDESK'`);
+    ctx.check("Zendesk tiempos: tras el segundo export solo cuenta la actividad del último (1 registro de 2 h); la anterior se conserva sin sumarse", (await activeZd()) === 1 && (await n(ctx, 'SELECT count(*) n FROM "ZdTimeEntry"')) === 7 && (await n(ctx, `SELECT count(*) n FROM "TimeActivity" WHERE source = 'ZENDESK' AND minutes = 120`)) === 1);
+    await page.getByRole("button", { name: "Revertir" }).click();
+    ctx.check("Zendesk tiempos: revertir la última instantánea restaura la anterior (6 registros activos, 6 en total)", (await waitStatus(page, "Revertido")) && (await waitDb(async () => (await activeZd()) === 6)) && (await n(ctx, 'SELECT count(*) n FROM "ZdTimeEntry"')) === 6);
 
     // Reprocesar (lote listo): vuelve a validar el archivo guardado.
     await writeTimes(file("tiempos-c.xlsx"), [
@@ -234,13 +232,6 @@ export async function zendesk(ctx: Ctx): Promise<void> {
     const after = await n(ctx, `SELECT count(*) n FROM "ZdTimeEntry" WHERE "ticketId" = '99' AND "drvBucket" = 'NO_PERSON'`);
     ctx.check("Zendesk tiempos: Reprocesar con el maestro completado resuelve a la persona sin editar el XLSX ni duplicar horas", before - after === 1 && (await n(ctx, 'SELECT count(*) n FROM "ZdTimeEntry"')) === 8, `${before}→${after}`);
 
-    // Revertir el lote de la corrección: solo su aportación.
-    await page.goto(`${B}/${xb}`);
-    await page.getByRole("button", { name: "Revertir" }).click();
-    const revertedB = await waitStatus(page, "Revertido");
-    const back90 = await n(ctx, `SELECT count(*) n FROM "ZdTimeEntry" WHERE "sourceId" = '88' AND minutes = 90`);
-    const totalB = await n(ctx, 'SELECT count(*) n FROM "ZdTimeEntry"');
-    ctx.check("Zendesk tiempos: Revertir el lote que corrigió restituye el registro anterior (1,5 h) sin borrar datos de otros lotes", revertedB && back90 === 1 && totalB === 8, `estado=${revertedB} 90min=${back90} total=${totalB}`);
     await page.goto(`${B}/${xc}`);
     await page.getByRole("button", { name: "Revertir" }).click();
     ctx.check("Zendesk tiempos: Revertir un lote retira solo sus registros (6 quedan de otros lotes)", (await waitStatus(page, "Revertido")) && (await n(ctx, 'SELECT count(*) n FROM "ZdTimeEntry"')) === 6);

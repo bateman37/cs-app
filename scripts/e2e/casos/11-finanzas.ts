@@ -60,9 +60,8 @@ export async function finanzas(ctx: Ctx): Promise<void> {
       await page.locator("summary", { hasText: source }).first().click();
       const form = page.locator("details[open]").first();
       await form.locator('input[type="file"]').setInputFiles(f);
-      await form.getByLabel(/Año del conjunto/).selectOption(anio);
-      await form.getByLabel(/Declaro que el archivo contiene el conjunto anual completo/).check();
-      await form.getByLabel("Fecha de extracción").fill(extraccion);
+      await form.getByLabel(/^Año/).fill(anio);
+      void extraccion; // HOTFIX-01: sin casilla de conjunto completo ni extracción en el formulario.
       await form.getByRole("button", { name: "Subir y validar" }).click();
       await page.waitForURL(/\/administracion\/cargas\/[^/]+$/, { timeout: 30000 });
       return page.url().split("/").pop() as string;
@@ -160,7 +159,7 @@ export async function finanzas(ctx: Ctx): Promise<void> {
     await page.getByRole("button", { name: "Calcular" }).click();
     await page.waitForLoadState("networkidle");
     const eco = await body(page);
-    ctx.check("Comprobación económica: anual 12.000 €, corte 15 de un mes de 30 días → 500,00 € del mes (motor de producción)", /Mes seleccionado[\s\S]{0,200}500,00 €/.test(eco) && /eco-v1/.test(eco));
+    ctx.check("Comprobación económica: anual 12.000 €, corte 15 de un mes de 30 días → 500,00 € del mes (motor de producción)", /Mes seleccionado[\s\S]{0,200}500,00 €/.test(eco) && /eco-v2/.test(eco));
     ctx.check("Comprobación económica: muestra periodos, referencia de configuración y lotes vigentes con enlaces", /CUM actual/.test(eco) && /Año anterior completo/.test(eco) && /CUM anterior comparable/.test(eco) && /revisión 1: objetivo 550,00 €\/jornada/.test(eco) && (await page.locator('a[href*="/administracion/cargas/"]').count()) > 0);
     ctx.check("Comprobación económica: sin horas sin servicio, un ingreso conocido y cero horas no inventa un ratio (no calculable, nunca infinito)", /cero horas|Sin horas/.test(eco));
     await page.getByLabel("Modo").selectOption("FULL_MONTH");

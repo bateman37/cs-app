@@ -21,7 +21,7 @@ type Out = { source: string; svc: string; origins: string | null; minutes: strin
 async function services(): Promise<Out[]> {
   return prisma.$queryRaw<Out[]>(Prisma.sql`
     WITH a0 AS (SELECT * FROM "TimeActivity")
-    SELECT a.source, ${SERVICE_OF_SQL} AS svc, (SELECT string_agg(ev.origin, ',' ORDER BY ev.origin) FROM (${SERVICE_EVIDENCE_SQL}) ev) AS origins, a.minutes::text AS minutes
+    SELECT a.source, ${SERVICE_OF_SQL} AS svc, (SELECT string_agg(ev.origin, ',' ORDER BY ev.origin) FROM (${SERVICE_EVIDENCE_SQL}) ev) AS origins, trim_scale(a.minutes)::text AS minutes
     FROM a0 a ORDER BY a."workDate", a.minutes`);
 }
 const by = (rows: Out[], minutes: string) => rows.find((r) => r.minutes === minutes)!;
@@ -63,26 +63,26 @@ describe("clasificación del servicio sin ServiceAssignment manual (regla servic
     const c = await addClient("C", g.id);
     await addWrike({ batchId: bid, date: "2026-02-10", minutes: 60, groupId: g.id, project: "PROY", bucket: "GROUP_ONLY" }); // solo Grupo, sin ticket
     await addWrike({ batchId: bid, date: "2026-02-11", minutes: 120, groupId: g.id, clientId: c.id, project: "PROY", bucket: "CLIENT" });
-    await addWrike({ batchId: bid, date: "2026-02-12", minutes: 30, project: "DESCONOCIDO", bucket: "NO_SCOPE" }); // proyecto no reconocido
-    await addWrike({ batchId: bid, date: "2026-02-13", minutes: 15, groupId: g.id, project: "PROY", bucket: "GROUP_ONLY", eligibility: "NOT_PMO" }); // persona no PMO
-    await addWrike({ batchId: bid, date: "2024-12-20", minutes: 10, groupId: g.id, project: "PROY", bucket: "BEFORE_CUTOFF", eligibility: "BEFORE_CUTOFF" }); // antes del corte: Zendesk
+    await addWrike({ batchId: bid, date: "2026-02-12", minutes: 180, project: "DESCONOCIDO", bucket: "NO_SCOPE" }); // proyecto no reconocido
+    await addWrike({ batchId: bid, date: "2026-02-13", minutes: 240, groupId: g.id, project: "PROY", bucket: "GROUP_ONLY", eligibility: "NOT_PMO" }); // persona no PMO
+    await addWrike({ batchId: bid, date: "2024-12-20", minutes: 300, groupId: g.id, project: "PROY", bucket: "BEFORE_CUTOFF", eligibility: "BEFORE_CUTOFF" }); // antes del corte: Zendesk
     const rows = await services();
     expect([by(rows, "60").svc, by(rows, "60").origins]).toEqual(["SOPORTE", "WRIKE_MANTENIMIENTO_N3"]);
     expect(by(rows, "120").svc).toBe("SOPORTE");
-    expect(by(rows, "30").svc).toBe("SIN_CLASIFICAR");
-    expect(by(rows, "15").svc).toBe("SIN_CLASIFICAR");
-    expect(by(rows, "10").svc).toBe("SIN_CLASIFICAR");
+    expect(by(rows, "180").svc).toBe("SIN_CLASIFICAR");
+    expect(by(rows, "240").svc).toBe("SIN_CLASIFICAR");
+    expect(by(rows, "300").svc).toBe("SIN_CLASIFICAR");
   });
 
   it("Wrike con proyecto asignado explícitamente a OTROS o con ticket de Administración Delegada conserva ese servicio (el relleno no aplica)", async () => {
     const g = await addGroup("G");
     await serviceAssignment({ matchKind: "WRIKE_PROJECT", matchValue: "PROYECTO OTROS", service: "OTROS" });
     await addTicket(bid, { ticketId: "deleg", entorno: "Delegada", adminDelegada: true });
-    await addWrike({ batchId: bid, date: "2026-02-10", minutes: 50, groupId: g.id, project: "Proyecto Otros", bucket: "GROUP_ONLY" });
-    await addWrike({ batchId: bid, date: "2026-02-11", minutes: 70, groupId: g.id, project: "PROY", bucket: "GROUP_ONLY", ticketId: "deleg" });
+    await addWrike({ batchId: bid, date: "2026-02-10", minutes: 600, groupId: g.id, project: "Proyecto Otros", bucket: "GROUP_ONLY" });
+    await addWrike({ batchId: bid, date: "2026-02-11", minutes: 660, groupId: g.id, project: "PROY", bucket: "GROUP_ONLY", ticketId: "deleg" });
     const rows = await services();
-    expect([by(rows, "50").svc, by(rows, "50").origins]).toEqual(["OTROS", "WRIKE_PROJECT"]);
-    expect(by(rows, "70").svc).toBe("ADMIN_DELEGADA");
+    expect([by(rows, "600").svc, by(rows, "600").origins]).toEqual(["OTROS", "WRIKE_PROJECT"]);
+    expect(by(rows, "660").svc).toBe("ADMIN_DELEGADA");
   });
 
   it("el motor económico suma las horas de soporte ordinario SIN catalogar entornos, y separa la Administración Delegada y lo no clasificado", async () => {

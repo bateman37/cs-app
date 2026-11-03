@@ -311,7 +311,7 @@ describe("detalle que concilia", () => {
   it("las horas incluidas concilian exactamente con la cifra; excluidas, pendientes y sin clasificar se consultan aparte; los totales no dependen de la página", async () => {
     const w = await world();
     await tk(w, { ticketId: "T1", org: "9001" });
-    await addTicket(w.tb.id, { ticketId: "SIN", entorno: "Otro entorno", org: "9001" });
+    await addTicket(w.tb.id, { ticketId: "SIN", entorno: null, org: "9001" }); // sin Entorno informado: sin evidencia (servicio-v2)
     for (let i = 1; i <= 7; i++) await addZd({ batchId: bid, date: `2026-06-0${i}`, minutes: 20 * i, groupId: w.A.id, clientId: w.A1.id, ticketId: "T1" });
     await addZd({ batchId: bid, date: "2026-06-09", minutes: 45, groupId: w.A.id, clientId: w.A1.id, ticketId: "SIN" }); // sin servicio
     await addZd({ batchId: bid, date: "2026-06-10", minutes: 15, groupId: w.A.id, ticketId: "T1", eligibility: "EXCLUDED_PMO" });

@@ -53,11 +53,16 @@ describe.skipIf(!enabled)("ensayo HOTFIX-02: maestro real + operativos sintétic
 
     // ---- Esperados INDEPENDIENTES (lectura directa del XML)
     const orgGroup = new Map<string, string | null>(); // ID Zendesk → clave del Grupo (F)
-    const orgName = new Map<string, string>();
+    const variants = new Map<string, Set<string>>();
     for (const r of rows) {
       orgGroup.set(r.C as string, r.F ? key(r.F) : null);
-      orgName.set(r.C as string, r.D as string);
+      const v = variants.get(r.C as string) ?? new Set<string>();
+      v.add(`${key(r.D ?? "")}|${r.F ? key(r.F) : ""}`);
+      variants.set(r.C as string, v);
     }
+    // Un ID con nombres o Grupos distintos entre filas es un conflicto concreto: no se crea el Cliente y sus tickets quedan sin asignar (esperado: sin Grupo).
+    const conflictIds = new Set([...variants].filter(([, v]) => v.size > 1).map(([id]) => id));
+    for (const id of conflictIds) orgGroup.set(id, null);
     const wrikeGroups = new Map<string, { raw: string; groups: Set<string> }>();
     for (const r of rows) if (r.A) {
       const k = key(r.A);
@@ -76,7 +81,8 @@ describe.skipIf(!enabled)("ensayo HOTFIX-02: maestro real + operativos sintétic
     const bcGroups = new Map<string, string>();
     for (const r of rows) for (const g of [r.B, r.F, r.J]) if (g) bcGroups.set(key(g), g);
     const orgIds = [...orgGroup.keys()];
-    const externalOrgs = orgIds.filter((id) => orgGroup.get(id) !== null);
+    const okIds = orgIds.filter((id) => !conflictIds.has(id));
+    const externalOrgs = okIds.filter((id) => orgGroup.get(id) !== null);
 
     // ---- Operativos SINTÉTICOS con esas claves
     await seedPersonal();
@@ -92,10 +98,10 @@ describe.skipIf(!enabled)("ensayo HOTFIX-02: maestro real + operativos sintétic
       wr.push(wrikeRow({ usuario: "pmo.uno", proyecto: e.raw, tarea: `solo:${k}`, fecha: "03/02/2025", horas: "1" }));
       wrExpect.set(`solo:${k}`, e.groups.size === 1 ? [...e.groups][0] : null);
       if (e.groups.size > 1) {
-        const cand = rows.find((r) => r.A && key(r.A) === k && r.F && e.groups.has(key(r.F))) as Row; // organización de uno de los candidatos
+        const cand = rows.find((r) => r.A && key(r.A) === k && r.F && e.groups.has(key(r.F)) && !conflictIds.has(r.C as string)) as Row; // organización de uno de los candidatos
         wr.push(wrikeRow({ usuario: "pmo.uno", proyecto: e.raw, tarea: `ok:${k}`, ticket: ticketOfOrg.get(cand.C as string), fecha: "04/02/2025", horas: "1" }));
         wrExpect.set(`ok:${k}`, key(cand.F as string));
-        const other = rows.find((r) => r.F && !e.groups.has(key(r.F))) as Row; // organización de un Grupo que NO es candidato
+        const other = rows.find((r) => r.F && !e.groups.has(key(r.F)) && !conflictIds.has(r.C as string)) as Row; // organización de un Grupo que NO es candidato
         wr.push(wrikeRow({ usuario: "pmo.uno", proyecto: e.raw, tarea: `no:${k}`, ticket: ticketOfOrg.get(other.C as string), fecha: "05/02/2025", horas: "1" }));
         wrExpect.set(`no:${k}`, "CONFLICT");
       }
@@ -109,7 +115,8 @@ describe.skipIf(!enabled)("ensayo HOTFIX-02: maestro real + operativos sintétic
       pp.push(papRow({ Title: `ID ${700000 + n}: solo`, Proyecto: e.raw }));
       papExpect.set(String(700000 + n), e.groups.size === 1 ? [...e.groups][0] : null);
       if (e.groups.size > 1) {
-        const cand = rows.find((r) => r.I && key(r.I) === k && r.F && e.groups.has(key(r.F))) as Row;
+        const cand = rows.find((r) => r.I && key(r.I) === k && r.F && e.groups.has(key(r.F)) && !conflictIds.has(r.C as string)) as Row | undefined;
+        if (!cand) continue; // todos sus candidatos son organizaciones en conflicto: no hay evidencia de ticket que fabricar
         n++;
         pp.push(papRow({ Title: `ID ${700000 + n}: con ticket`, Proyecto: e.raw, "Tickets asociados": ticketOfOrg.get(cand.C as string) as string }));
         papExpect.set(String(700000 + n), key(cand.F as string));
@@ -130,7 +137,7 @@ describe.skipIf(!enabled)("ensayo HOTFIX-02: maestro real + operativos sintétic
     await drain();
     const prepared = await batch(id);
     expect(prepared.status, prepared.statusDetail ?? "").toBe("READY");
-    expect(prepared.rowsError).toBe(0);
+    expect(prepared.rowsError).toBe(0); // un ID contradictorio ya no convierte sus filas en error
     expect(prepared.rowsReceived).toBe(rows.length); // las filas útiles que cuenta la lectura independiente
     await confirmUpload(admin.id, id);
     await drain();
@@ -180,11 +187,11 @@ describe.skipIf(!enabled)("ensayo HOTFIX-02: maestro real + operativos sintétic
     expect(Number((await prisma.$queryRaw<{ s: string }[]>`SELECT COALESCE(sum(minutes),0)::text AS s FROM "WrikeTimeEntry"`)[0].s)).toBe(wrBefore);
 
     // Maestros: conteos independientes.
-    const supportPending = orgIds.filter((id) => {
+    const supportPending = okIds.filter((id) => {
       const vals = new Set(rows.filter((r) => r.C === id).flatMap((r) => [r.E, r.H]).filter((v): v is string => !!v).map(key));
       return !(vals.size === 1 && SUPPORTS.has([...vals][0]));
     }).length;
-    const internal = orgIds.filter((id) => orgGroup.get(id) === null).length;
+    const internal = okIds.filter((id) => orgGroup.get(id) === null).length;
     const counts = {
       gruposBc: await prisma.externalIdentity.count({ where: { system: "BC", kind: "GROUP_KEY" } }),
       clientes: await prisma.client.count(), internos: await prisma.client.count({ where: { isInternal: true } }),
@@ -192,10 +199,10 @@ describe.skipIf(!enabled)("ensayo HOTFIX-02: maestro real + operativos sintétic
       candidatosWrike: await prisma.aliasCandidate.count({ where: { system: "WRIKE" } }),
       aliasPap: await prisma.externalIdentity.count({ where: { system: "PAP", kind: "PROJECT_NAME" } }),
       candidatosPap: await prisma.aliasCandidate.count({ where: { system: "PAP" } }),
-      soportePendiente: orgIds.length - (await prisma.serviceTerm.count({ where: { attribute: "SUPPORT" } })),
+      soportePendiente: okIds.length - (await prisma.serviceTerm.count({ where: { attribute: "SUPPORT" } })),
     };
     expect(counts.gruposBc).toBe(bcGroups.size);
-    expect(counts.clientes).toBe(orgIds.length);
+    expect(counts.clientes).toBe(okIds.length);
     expect(counts.internos).toBe(internal);
     expect(counts.aliasWrike).toBe([...wrikeGroups.values()].filter((e) => e.groups.size === 1).length);
     expect(counts.aliasPap).toBe([...papGroups.values()].filter((e) => e.groups.size === 1).length); // implantación (1 Cliente) o Grupo (varios Clientes del mismo Grupo)
@@ -220,6 +227,7 @@ describe.skipIf(!enabled)("ensayo HOTFIX-02: maestro real + operativos sintétic
       lecturaIndependiente: { gruposBc: bcGroups.size, organizacionesZendesk: orgIds.length, internas: internal, wrike: wrikeGroups.size, wrikeVariosGrupos: [...wrikeGroups.values()].filter((e) => e.groups.size > 1).length, pap: papGroups.size, papVariosGrupos: [...papGroups.values()].filter((e) => e.groups.size > 1).length, soportePendiente: supportPending },
       maestros: counts,
       operativosSinteticos: { tickets: tickets.length, tiemposZendesk: orgIds.length, filasWrike: wr.length, filasPap: pp.length, filasFinanzas: finRows.length },
+      idsZendeskConflicto: conflictIds.size,
       resultado: { zendeskAtribuidos: zd.filter((r) => r.grp !== null).length, wrikeFilas: wk.length, papItems: pa.length, discrepancias: { zd: zdWrong, wrike: wkWrong, pap: paWrong } },
       actualizacion: { generacion: status.completedGeneration, actualizadas: status.lastReport?.updated, clasificacion: status.lastReport?.classification },
     };

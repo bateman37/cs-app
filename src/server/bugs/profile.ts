@@ -288,8 +288,8 @@ async function recomputeCurrent(tx: Tx, ids: Prisma.Sql) {
     UPDATE "WorkItem" w SET "currentObservationId" = c.oid, "currentRevisionId" = c.rid, "lastObservedOn" = c.last_on, "updatedAt" = now()
     FROM (
       SELECT DISTINCT ON (o."workItemId") o."workItemId", o.id AS oid, o."revisionId" AS rid, o."observedOn" AS last_on
-      FROM "WorkItemObservation" o WHERE o."workItemId" IN (${ids})
-      ORDER BY o."workItemId", o."observedOn" DESC, o."receivedAt" DESC, o.id DESC) c
+      FROM "WorkItemObservation" o JOIN "UploadBatch" b ON b.id = o."batchId" WHERE o."workItemId" IN (${ids})
+      ORDER BY o."workItemId", b."receptionSeq" DESC NULLS LAST, o."receivedAt" DESC, o.id DESC) c
     WHERE w.id = c."workItemId"
       AND (w."currentObservationId" IS DISTINCT FROM c.oid OR w."currentRevisionId" IS DISTINCT FROM c.rid OR w."lastObservedOn" IS DISTINCT FROM c.last_on)`);
 }

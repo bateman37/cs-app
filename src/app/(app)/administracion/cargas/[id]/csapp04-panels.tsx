@@ -200,7 +200,7 @@ const PAP_FILTER_LABEL: Record<string, string> = {
   "bug-ambiguous": "Nº de BUG con producto sin determinar",
 };
 const SCOPE_LABEL: Record<string, string> = { CLIENT: "Cliente", IMPLEMENTATION: "Implantación", GROUP_ONLY: "Solo Grupo Cliente (sin reparto entre Clientes)", NO_PROJECT: "Sin proyecto", UNMAPPED: "Proyecto sin equivalencia" };
-const CAUSE_LABEL: Record<string, string> = { CORRECTIVE: "Correctivo", EVOLUTIVE: "Evolutivo", MAINTENANCE: "Mantenimiento", OTHER: "Otras etiquetas (sin clasificar)" };
+const CAUSE_LABEL: Record<string, string> = { CORRECTIVE: "Correctivo", EVOLUTIVE: "Evolutivo", MAINTENANCE: "Mantenimiento", CLIENT_REQUEST: "Petición cliente", OTHER: "Otras etiquetas (sin clasificar)" };
 const ORIGIN_LABEL: Record<string, string> = {
   STANDARD: "Estándar", CUSTOMIZATION: "Personalización", CONFIG_DATA: "Configuración/datos", PROCESSES: "Procesos", INFRASTRUCTURE: "Infraestructura", CLIENT_ORIGIN: "Origen cliente", OTHER_CORRECTIVE: "Otro correctivo",
 };

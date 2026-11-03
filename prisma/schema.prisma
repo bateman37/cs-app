@@ -550,6 +550,10 @@ model UploadBatch {
   rowsImported        Int     @default(0)
   summary             Json?
   rulesSnapshot       String?
+  /// Secuencia de recepción aceptada (HOTFIX-01 §4): la asigna el servidor al encolar el archivo completo. Entre lotes completados gana la mayor.
+  receptionSeq        BigInt?
+  /// Lote anterior al hotfix: sus tiempos forman la base heredada, que la primera instantánea completa nueva sustituye.
+  legacyBase          Boolean @default(false)
   /// Para políticas de sustitución: lote al que sustituye y lote que lo sustituyó después.
   supersedesBatchId   String?
   supersededByBatchId String?
@@ -598,6 +602,7 @@ model UploadBatch {
   @@index([profileId, status])
   @@index([profileId, scopeKey])
   @@index([checksum])
+  @@index([profileId, status, receptionSeq])
 }
 
 /// Cola de trabajos en PostgreSQL. Reclamación atómica, lease con latido y token de fencing.

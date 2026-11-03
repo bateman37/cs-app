@@ -6,7 +6,7 @@ import { cleanText } from "./normalize";
 import type { UnparsedRef } from "./refs";
 
 export const PAP_PROFILE = "pap";
-export const PAP_RULES = "pap-v1";
+export const PAP_RULES = "pap-v2"; // v2 (HOTFIX-01): identidad única por ID y categoría «Petición cliente»
 
 /** Las 29 cabeceras A–AC, por contenido y en cualquier orden. */
 export const PAP_HEADERS = [
@@ -52,7 +52,7 @@ export function parsePapTitle(title: string): { id: string; rest: string } | nul
   return { id, rest: cleanText(t.slice(m[0].length)) };
 }
 
-export type CauseCategory = "CORRECTIVE" | "EVOLUTIVE" | "MAINTENANCE" | "OTHER";
+export type CauseCategory = "CORRECTIVE" | "EVOLUTIVE" | "MAINTENANCE" | "CLIENT_REQUEST" | "OTHER";
 export type CorrectiveOrigin = "STANDARD" | "CUSTOMIZATION" | "CONFIG_DATA" | "PROCESSES" | "INFRASTRUCTURE" | "CLIENT_ORIGIN" | "OTHER_CORRECTIVE";
 
 export type Cause = { raw: string; normalized: string; category: CauseCategory; origin: CorrectiveOrigin | null };
@@ -74,6 +74,9 @@ export function classifyCause(normalized: string): { category: CauseCategory; or
     else if (/infraestructura/.test(normalized)) origin = "INFRASTRUCTURE";
     return { category: "CORRECTIVE", origin };
   }
+  // «Petición cliente» (HOTFIX-01 §5): categoría propia, con variantes de tildes, caja y espacios. No equivale a Correctivo origen cliente
+  // ni a Evolutivo no facturable, y no se interpreta su facturabilidad.
+  if (/^peticion(?:es)?\s+(?:de(?:l)?\s+)?cliente\b/.test(normalized.normalize("NFD").replace(/[\u0300-\u036f]/g, ""))) return { category: "CLIENT_REQUEST", origin: null };
   if (/\bevolutiv/.test(normalized)) return { category: "EVOLUTIVE", origin: null };
   if (/\bmantenimiento/.test(normalized)) return { category: "MAINTENANCE", origin: null };
   return { category: "OTHER", origin: null };

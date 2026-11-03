@@ -99,9 +99,9 @@ export async function fichaCsv(actorId: string, query: AnalysisQuery, ref: Entit
       for (const p of d.profiles) rows.push([...base(), pname, p.profile, n(p.hours), n(p.incident), n(p.other), n(p.unclassified)]);
     }
   } else if (table === "pap") {
-    header = [...head, "periodo", "pap_unicos", "correctivos", "correctivo_estandar", "correctivo_proyecto_personalizacion_config_procesos_infra", "origen_cliente", "evolutivos_sin_evidencia_de_facturacion", "sin_clasificar", "resultado_no_ok", "tabla_aditiva"];
-    for (const [pk, p] of Object.entries(v.pap?.periods ?? {})) rows.push([...base(), pk in PERIOD_NAME ? PERIOD_NAME[pk as PeriodKey] : pk, String(p.total), String(p.corrective), String(p.standard), String(p.project), String(p.clientOrigin), String(p.evolutive), String(p.unclassified), String(p.nonOk), p.additive ? "sí" : "no (un PAP en varias categorías)"]);
-    rows.push([...base(), "SIN_FECHA_DE_PRODUCCION", String(v.pap?.withoutProductionDate ?? 0), "", "", "", "", "", "", "", ""]);
+    header = [...head, "periodo", "pap_unicos", "correctivos", "correctivo_estandar", "correctivo_proyecto_personalizacion_config_procesos_infra", "origen_cliente", "evolutivos_sin_evidencia_de_facturacion", "peticion_cliente", "sin_clasificar", "resultado_no_ok", "tabla_aditiva"];
+    for (const [pk, p] of Object.entries(v.pap?.periods ?? {})) rows.push([...base(), pk in PERIOD_NAME ? PERIOD_NAME[pk as PeriodKey] : pk, String(p.total), String(p.corrective), String(p.standard), String(p.project), String(p.clientOrigin), String(p.evolutive), String(p.clientRequest), String(p.unclassified), String(p.nonOk), p.additive ? "sí" : "no (un PAP en varias categorías)"]);
+    rows.push([...base(), "SIN_FECHA_DE_PRODUCCION", String(v.pap?.withoutProductionDate ?? 0), "", "", "", "", "", "", "", "", ""]);
   } else {
     header = [...head, "periodo", "tickets_creados", "incident", "problem", "otros_tipos", "escalados_n2", "escalados_n3_union", "n3_pmo", "n3_it", "n4_union", "n4_vfs", "n4_arq", "n4_vsw", "nota"];
     if (!v.tickets?.supported) rows.push([...base(), "(no disponible)", "", "", "", "", "", "", "", "", "", "", "", "", "Las implantaciones no identifican tickets: solo Grupo y Cliente."]);

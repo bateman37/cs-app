@@ -2,7 +2,6 @@ import { afterAll, beforeAll, beforeEach, describe, expect, it } from "vitest";
 import { prisma } from "@/lib/db";
 import { confirmUpload, reprocessUpload, revertUpload } from "@/server/uploads/batches";
 import { runOnce } from "@/server/uploads/worker";
-import { decideTimeCorrection } from "@/server/zendesk/corrections";
 import { listBatchTimes, listCorrectionCandidates, timesSummary } from "@/server/zendesk/summary";
 import { batch, drain, freshEnvironment, removeUploadDir, useUploadDir } from "./cargas-helpers";
 import { excelSerial, ticket, ticketsBuffer, timeRow, timesBuffer, type TimeRow } from "./generators/zendesk";
@@ -17,6 +16,8 @@ beforeEach(async () => { ({ admin } = await freshEnvironment()); });
 const day = (iso: string) => ({ date: excelSerial(iso) });
 const T = (rows: TimeRow[], o = {}) => timesBuffer(rows, o);
 const hourAt = (h: number, m: number) => ({ date: (h * 60 + m) / 1440 });
+const activeHours = async () => Number((await prisma.$queryRaw<{ h: string | null }[]>`SELECT (sum(minutes) / 60)::text AS h FROM "TimeActivity" WHERE source = 'ZENDESK'`)[0].h ?? 0);
+const activeEntriesCount = async () => Number((await prisma.$queryRaw<{ n: bigint }[]>`SELECT count(*) AS n FROM "TimeActivity" WHERE source = 'ZENDESK'`)[0].n);
 const bucketsOf = async (batchId: string) => Object.fromEntries((await timesSummary(admin.id, batchId))!.buckets.filter((b) => b.rows > 0).map((b) => [b.bucket, b.rows]));
 
 describe("duración y estructura (ZTM 01)", () => {
@@ -128,89 +129,58 @@ describe("identidad, duplicados y correcciones (ZTM 05, IMP 04-05)", () => {
     expect(await count("ZdTimeEntry")).toBe(10);
   });
 
-  it("una posible corrección (mismo id y contexto, duración distinta) se advierte y no se aplica ni suma por defecto", async () => {
-    await importZd(admin.id, TIEMPO, await T([timeRow({ id: "88", logged_hours: 1, logged_minutes: 0 }), timeRow({ id: "89", ticket_id: "2", logged_hours: 2, logged_minutes: 0 })]));
-    const b = await prepareZd(admin.id, TIEMPO, await T([timeRow({ id: "88", logged_hours: 2, logged_minutes: 0 }), timeRow({ id: "90", ticket_id: "3", logged_hours: 4, logged_minutes: 0 })]));
-    expect(await bucketsOf(b.id)).toMatchObject({ PENDING_DECISION: 1 });
-    const cands = await listCorrectionCandidates(admin.id, b.id);
-    expect(cands).toHaveLength(1);
-    expect(cands[0]).toMatchObject({ source_id: "88", new_hours: "2" });
-    expect(cands[0].matches.map((m) => m.hours)).toEqual(["1"]);
-    // Se confirma sin decidir: el resto válido se activa, la fila pendiente conserva su bruto y no añade actividad.
-    await confirmUpload(admin.id, b.id);
-    await drain();
-    expect((await batch(b.id)).status).toBe("COMPLETED");
-    expect(await sumHours()).toBeCloseTo(1 + 2 + 4, 12);
-    expect(await count("ZdTimeEntry", `"sourceId" = '88'`)).toBe(1);
-    const staged = await prisma.uploadStagedRow.findFirstOrThrow({ where: { batchId: b.id, disposition: "PENDING_DECISION" } });
-    expect(staged.raw).toBeTruthy();
-    // La fila pendiente no cuenta como importada ni como fuente aportada.
-    expect(await prisma.uploadRecordSource.count({ where: { batchId: b.id, fingerprint: staged.fingerprint ?? "" } })).toBe(0);
+  it("instantánea completa posterior: sustituye la actividad activa sin sumar la antigua; la duración corregida cuenta una vez y lo anterior se conserva (HOTFIX-01 §4)", async () => {
+    const a = await importZd(admin.id, TIEMPO, await T([timeRow({ id: "88", logged_hours: 1, logged_minutes: 0 }), timeRow({ id: "89", ticket_id: "2", logged_hours: 2, logged_minutes: 0 })]));
+    expect(await activeHours()).toBeCloseTo(3, 12);
+    const b = await importZd(admin.id, TIEMPO, await T([timeRow({ id: "88", logged_hours: 2, logged_minutes: 0 }), timeRow({ id: "90", ticket_id: "3", logged_hours: 4, logged_minutes: 0 })]));
+    expect(b.status).toBe("COMPLETED");
+    // Activo = solo lo del último export completo: 2 h + 4 h (la antigua de 1 h y la de 2 h no cuentan).
+    expect(await activeHours()).toBeCloseTo(6, 12);
+    // Nada se borra: el bruto y las entradas anteriores se conservan para historial y reversión.
+    expect(await count("ZdTimeEntry")).toBe(4);
+    expect(await count("UploadRecordSource", `"batchId" = '${a.id}'`)).toBe(2);
+    expect(await activeEntriesCount()).toBe(2);
   });
 
-  it("corrección explícita: sustituye la duración, conserva el contenido anterior como revisión y no suma ambas", async () => {
-    await importZd(admin.id, TIEMPO, await T([timeRow({ id: "88", logged_hours: 1, logged_minutes: 0 })]));
-    const b = await prepareZd(admin.id, TIEMPO, await T([timeRow({ id: "88", logged_hours: 2, logged_minutes: 0 })]));
-    const [cand] = await listCorrectionCandidates(admin.id, b.id);
-    await decideCorrection(admin.id, b.id, cand.fingerprint, cand.matches[0].id);
-    expect((await timesSummary(admin.id, b.id))?.pendingCorrections).toBe(0);
-    await confirmUpload(admin.id, b.id);
-    await drain();
-    expect(await count("ZdTimeEntry")).toBe(1);
-    expect(await sumHours()).toBeCloseTo(2, 12);
-    const c = await prisma.zdTimeCorrection.findFirstOrThrow();
-    expect([Number(c.minutesBefore), Number(c.minutesAfter), c.batchId]).toEqual([60, 120, b.id]);
-    expect((c.previous as { loggedHours: string }).loggedHours).toBe("1");
-    const audit = await prisma.auditEvent.findFirst({ where: { batchId: b.id, entityType: "TimeDecision" } });
-    expect(audit?.summary).toMatch(/1 h → 2 h/);
-    // Cargar de nuevo el contenido antiguo no lo restituye ni lo duplica.
-    await importZd(admin.id, TIEMPO, await T([timeRow({ id: "88", logged_hours: 1, logged_minutes: 0 })]));
-    expect(await sumHours()).toBeCloseTo(2, 12);
+  it("repetir exactamente el archivo no duplica; dos imputaciones distintas del mismo técnico, ticket y día sobreviven", async () => {
+    const rows = [
+      timeRow({ id: null, hour: hourAt(9, 0), logged_hours: 1, logged_minutes: 0 }),
+      timeRow({ id: null, hour: hourAt(11, 0), logged_hours: 0, logged_minutes: 30 }),
+    ];
+    await importZd(admin.id, TIEMPO, await T(rows));
+    await importZd(admin.id, TIEMPO, await T(rows));
+    expect(await count("ZdTimeEntry")).toBe(2);
+    expect(await activeEntriesCount()).toBe(2);
+    expect(await activeHours()).toBeCloseTo(1.5, 12);
   });
 
-  it("«es otro trabajo» materializa la fila como distinta; sin id no hay revisión automática por parecido", async () => {
-    await importZd(admin.id, TIEMPO, await T([timeRow({ id: "88", logged_hours: 1, logged_minutes: 0 }), timeRow({ id: null, logged_hours: 0, logged_minutes: 20, hour: hourAt(7, 0) })]));
-    const b = await prepareZd(admin.id, TIEMPO, await T([timeRow({ id: "88", logged_hours: 2, logged_minutes: 0 }), timeRow({ id: null, logged_hours: 0, logged_minutes: 40, hour: hourAt(7, 0) })]));
-    expect(await bucketsOf(b.id)).toMatchObject({ PENDING_DECISION: 1 });
-    const [cand] = await listCorrectionCandidates(admin.id, b.id);
-    await decideTimeCorrection(admin.id, b.id, { fingerprint: cand.fingerprint, decision: "DIFFERENT" });
-    await confirmUpload(admin.id, b.id);
-    await drain();
-    expect(await sumHours()).toBeCloseTo(1 + 2 + 20 / 60 + 40 / 60, 12);
-    expect(await count("ZdTimeCorrection")).toBe(0);
-  });
-
-  it("una decisión solo vale en un lote listo, con objetivo activo de la misma fuente, revisión vista y confirmación expresa", async () => {
-    await importZd(admin.id, TIEMPO, await T([timeRow({ id: "88" }), timeRow({ id: "91", ticket_id: "9" })]));
-    const b = await prepareZd(admin.id, TIEMPO, await T([timeRow({ id: "88", logged_hours: 2 })]));
-    const [cand] = await listCorrectionCandidates(admin.id, b.id);
-    const target = cand.matches[0].id;
-    const rev = (await prisma.zdTimeEntry.findUniqueOrThrow({ where: { id: target } })).revision;
-    await expect(decideTimeCorrection(admin.id, b.id, { fingerprint: cand.fingerprint, decision: "CORRECTION" })).rejects.toThrow(/Seleccione el registro/);
-    await expect(decideTimeCorrection(admin.id, b.id, { fingerprint: cand.fingerprint, decision: "CORRECTION", targetEntryId: target, expectedEntryRevision: rev })).rejects.toThrow(/Confirme expresamente/);
-    await expect(decideTimeCorrection(admin.id, b.id, { fingerprint: cand.fingerprint, decision: "CORRECTION", targetEntryId: target, confirmReplace: true })).rejects.toThrow(/revisión/);
-    await expect(decideTimeCorrection(admin.id, b.id, { fingerprint: cand.fingerprint, decision: "CORRECTION", targetEntryId: target, expectedEntryRevision: rev + 5, confirmReplace: true })).rejects.toThrow(/cambió/);
-    await expect(decideCorrection(admin.id, b.id, cand.fingerprint, "no-existe")).rejects.toThrow();
-    expect(await count("ZdTimeDecision")).toBe(0);
-    await confirmUpload(admin.id, b.id);
-    await expect(decideTimeCorrection(admin.id, b.id, { fingerprint: cand.fingerprint, decision: "DIFFERENT" })).rejects.toThrow(/listo para revisar/);
-  });
-
-  it("revertir el lote que corrigió restituye el contenido anterior; el origen revertido después retira el registro", async () => {
+  it("revertir la última instantánea restaura la anterior; un lote anterior que se activa tarde no pisa al posterior", async () => {
     const a = await importZd(admin.id, TIEMPO, await T([timeRow({ id: "88", logged_hours: 1, logged_minutes: 0 })]));
-    const b = await prepareZd(admin.id, TIEMPO, await T([timeRow({ id: "88", logged_hours: 2, logged_minutes: 0 })]));
-    const [cand] = await listCorrectionCandidates(admin.id, b.id);
-    await decideCorrection(admin.id, b.id, cand.fingerprint, cand.matches[0].id);
-    await confirmUpload(admin.id, b.id);
-    await drain();
-    expect(await sumHours()).toBeCloseTo(2, 12);
+    const b = await importZd(admin.id, TIEMPO, await T([timeRow({ id: "88", logged_hours: 2, logged_minutes: 0 })]));
+    expect(await activeHours()).toBeCloseTo(2, 12);
     await revertUpload(admin.id, b.id);
     await drain();
-    expect(await sumHours()).toBeCloseTo(1, 12);
-    expect(await count("ZdTimeEntry")).toBe(1);
+    expect(await activeHours()).toBeCloseTo(1, 12);
     await revertUpload(admin.id, a.id);
     await drain();
     expect(await count("ZdTimeEntry")).toBe(0);
+    // Dos lotes preparados: confirmar primero el posterior y después el anterior deja activo el posterior.
+    const c = await prepareZd(admin.id, TIEMPO, await T([timeRow({ id: "1", logged_hours: 5, logged_minutes: 0 })]));
+    const d = await prepareZd(admin.id, TIEMPO, await T([timeRow({ id: "2", ticket_id: "7", logged_hours: 7, logged_minutes: 0 })]));
+    await confirmUpload(admin.id, d.id);
+    await drain();
+    await confirmUpload(admin.id, c.id);
+    await drain();
+    expect(await activeHours()).toBeCloseTo(7, 12);
+  });
+
+  it("la base heredada (lotes anteriores al hotfix) sigue activa hasta la primera instantánea nueva, que la sustituye", async () => {
+    await importZd(admin.id, TIEMPO, await T([timeRow({ id: "1", logged_hours: 3, logged_minutes: 0 })]));
+    await prisma.uploadBatch.updateMany({ data: { legacyBase: true } });
+    expect(await activeHours()).toBeCloseTo(3, 12);
+    await importZd(admin.id, TIEMPO, await T([timeRow({ id: "2", ticket_id: "4", logged_hours: 1, logged_minutes: 0 })]));
+    expect(await activeHours()).toBeCloseTo(1, 12);
+    expect(await count("ZdTimeEntry")).toBe(2);
   });
 });
 
@@ -470,16 +440,6 @@ describe("instantánea de previsualización", () => {
     expect((await prisma.zdTimeEntry.findFirstOrThrow({ where: { userId: "5002" } })).drvBucket).toBe("ATTRIBUTABLE");
   });
 
-  it("una decisión de corrección actualiza la instantánea de esa fila sin recalcular todo el lote", async () => {
-    await importZd(admin.id, TIEMPO, await T([timeRow({ id: "88", logged_hours: 1, logged_minutes: 0 })]));
-    const b = await prepareZd(admin.id, TIEMPO, await T([timeRow({ id: "88", logged_hours: 2, logged_minutes: 0 }), timeRow({ id: "90", ticket_id: "3", logged_hours: 4, logged_minutes: 0 })]));
-    expect(await prisma.zdTimePreview.count({ where: { batchId: b.id } })).toBe(1);
-    const [cand] = await listCorrectionCandidates(admin.id, b.id);
-    await decideTimeCorrection(admin.id, b.id, { fingerprint: cand.fingerprint, decision: "DIFFERENT" });
-    expect(await prisma.zdTimePreview.count({ where: { batchId: b.id } })).toBe(2);
-    await decideTimeCorrection(admin.id, b.id, { fingerprint: cand.fingerprint, decision: "CLEAR" });
-    expect(await prisma.zdTimePreview.count({ where: { batchId: b.id } })).toBe(1);
-  });
 });
 
 describe("fallos y concurrencia (IMP 06)", () => {

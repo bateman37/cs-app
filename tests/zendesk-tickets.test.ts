@@ -167,25 +167,33 @@ describe("tickets sin horas, revisiones y observaciones (ZDT 02, 04)", () => {
     expect([await count("ZdTicket"), await count("ZdTicketRevision")]).toEqual([2, 2]);
   });
 
-  it("un export viejo no pisa el estado reciente; reprocesar conserva la observación original", async () => {
+  it("la carga posterior manda aunque traiga fechas antiguas; las fechas originales se conservan y reprocesar no cambia la actualidad (HOTFIX-01 §4)", async () => {
     await importZd(admin.id, TICKETS, await buf([ticket({ status: "solved" })]), { declared: { extraccion: "2026-06-01" } });
-    const old = await prepareZd(admin.id, TICKETS, await buf([ticket({ status: "open" })]), { declared: { extraccion: "2026-01-01" } });
-    const sum = await ticketsSummary(admin.id, old.id);
-    expect(sum?.olderThanCurrent).toBe(1);
-    await confirmUpload(admin.id, old.id);
+    const later = await prepareZd(admin.id, TICKETS, await buf([ticket({ status: "open" })]), { declared: { extraccion: "2026-01-01" } });
+    await confirmUpload(admin.id, later.id);
     await drain();
-    expect((await ticketCurrent("1001"))?.status).toBe("solved");
+    expect((await ticketCurrent("1001"))?.status).toBe("open");
     expect(await count("ZdTicketRevision")).toBe(2);
-    const obs = await prisma.zdTicketObservation.findMany({ where: { batchId: old.id } });
+    const obs = await prisma.zdTicketObservation.findMany({ where: { batchId: later.id } });
     expect(obs[0].observedOn.toISOString().slice(0, 10)).toBe("2026-01-01");
-    // Reprocesar el lote viejo (recalcula lo derivado) no revierte el estado de uno nuevo ni cambia su observación.
     const { reprocessUpload } = await import("@/server/uploads/batches");
-    await reprocessUpload(admin.id, old.id);
+    await reprocessUpload(admin.id, later.id);
+    await drain();
+    expect((await ticketCurrent("1001"))?.status).toBe("open");
+    const obs2 = await prisma.zdTicketObservation.findMany({ where: { batchId: later.id } });
+    expect(obs2[0].id).toBe(obs[0].id);
+  });
+
+  it("un lote antiguo que se activa tarde no pisa al lote recibido después (secuencia de recepción)", async () => {
+    const a = await prepareZd(admin.id, TICKETS, await buf([ticket({ status: "open" })]));
+    const b = await prepareZd(admin.id, TICKETS, await buf([ticket({ status: "solved" })]));
+    await confirmUpload(admin.id, b.id);
+    await drain();
+    await confirmUpload(admin.id, a.id);
     await drain();
     expect((await ticketCurrent("1001"))?.status).toBe("solved");
-    const obs2 = await prisma.zdTicketObservation.findMany({ where: { batchId: old.id } });
-    expect(obs2[0].observedOn.toISOString()).toBe(obs[0].observedOn.toISOString());
-    expect(obs2[0].id).toBe(obs[0].id);
+    expect(await count("ZdTicket")).toBe(1);
+    expect(await count("ZdTicketRevision")).toBe(2);
   });
 
   it("sin extracción declarada se registra observación recibida y se advierte frescura desconocida", async () => {

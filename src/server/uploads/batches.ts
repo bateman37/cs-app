@@ -150,6 +150,8 @@ export async function receiveUpload(actorId: string, input: ReceiveInput): Promi
       },
     });
     if (res.count === 0) throw new DomainError("El lote ya no está recibiendo archivo (caducó o se canceló).");
+    // Secuencia de recepción aceptada (HOTFIX-01 §4): orden determinista en servidor; no depende de la posición de filas ni del reloj del navegador.
+    await tx.$executeRaw(Prisma.sql`UPDATE "UploadBatch" SET "receptionSeq" = nextval('"UploadBatch_receptionSeq_seq"') WHERE id = ${batch.id}`);
     await enqueueJob(tx, batch.id, "PREPARE", actor.id);
     await recordAudit(tx, actor, {
       action: "UPLOAD",

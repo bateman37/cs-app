@@ -102,24 +102,12 @@ function parseRow(cells: Cell[], context?: unknown): ParsedRow {
 // ---------------------------------------------------------------- Correcciones explícitas (ZTM 05)
 
 /**
- * Decisiones aplicadas y candidatos. Una corrección posible = mismo id y mismo contexto de trabajo (ticket,
- * persona y día) que un registro activo, con contenido distinto: se advierte y NO se sustituye ni se suma por
- * defecto; hasta que el Administrador decida, la fila conserva su bruto y no añade actividad.
- * Es idempotente: se ejecuta tras preparar y otra vez justo antes de activar.
+ * Decisiones explícitas heredadas (HOTFIX-01 §4). Con el contrato de instantánea activa por fuente ya NO se marcan filas como «posible
+ * corrección»: el `id` de tiempos no garantiza unicidad y cada export completo posterior sustituye el conjunto activo de la fuente, de modo
+ * que una duración corregida en el archivo nuevo no se suma a la antigua. Se conservan las decisiones ya guardadas (idempotente).
  */
 export async function applyCorrectionRules(tx: Tx, batchId: string) {
-  // Decisiones explícitas (con o sin ID externo): válidas solo con el objetivo activo en la revisión que se vio.
   await applyDecisionRules(tx, ZENDESK_TIME_SOURCE, batchId);
-  await tx.$executeRaw(Prisma.sql`
-    UPDATE "UploadStagedRow" r SET disposition = 'PENDING_DECISION'
-    WHERE r."batchId" = ${batchId} AND r.classification = 'VALID' AND r."duplicateInFile" = false AND r.disposition = 'NEW'
-      AND r.typed->>'id' IS NOT NULL
-      AND NOT EXISTS (SELECT 1 FROM "ZdTimeDecision" d WHERE d."batchId" = r."batchId" AND d.fingerprint = r.fingerprint)
-      AND EXISTS (SELECT 1 FROM "ZdTimeEntry" e
-        WHERE e."sourceId" = r.typed->>'id' AND e."ticketId" = r.typed->>'ticket_id' AND e."workDate" = (r.typed->>'date')::date
-          AND e."userId" IS NOT DISTINCT FROM r.typed->>'user_id'
-          AND (e."userId" IS NOT NULL OR e."userName" IS NOT DISTINCT FROM r.typed->>'user_name')
-          AND e.fingerprint <> r.fingerprint)`);
 }
 
 async function activate(tx: Tx, ctx: ActivationContext) {

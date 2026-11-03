@@ -32,7 +32,6 @@ import {
 } from "./apply";
 import { loadPlan } from "./rows";
 
-type Tx = Prisma.TransactionClient;
 
 export type ReviewOption = { decision: string; value?: string; label: string };
 export type ReviewState = "PENDING" | "RESOLVED" | "DECIDED" | "APPLIED" | "INFO";

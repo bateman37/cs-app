@@ -15,6 +15,7 @@ import { ZendeskPanels } from "./zendesk-panels";
 import { Csapp04Panels } from "./csapp04-panels";
 import { FinancePanel } from "./finance-panel";
 import { CoveragePanel } from "./coverage-panel";
+import { MaestrosPanel } from "./maestros-panel";
 import { listDeclarations } from "@/server/quality/coverage";
 
 export const metadata: Metadata = { title: "Ficha de carga" };
@@ -174,6 +175,8 @@ export default async function CargaPage({ params, searchParams }: { params: Prom
       {prepared && !["REJECTED", "CANCELLED"].includes(st) ? (
         <FinancePanel batch={{ id: b.id, profileId: b.profileId, status: st, version: b.version, supersedesBatchId: b.supersedesBatchId, supersededByBatchId: b.supersededByBatchId, declaredExtractionDate: b.declaredExtractionDate, createdAt: b.createdAt }} base={`${BASE}/${b.id}`} />
       ) : null}
+
+      {prepared && !["REJECTED", "CANCELLED"].includes(st) ? <MaestrosPanel userId={user.id} batch={{ id: b.id, profileId: b.profileId, status: st }} /> : null}
 
       {rows ? (
         <section className="card" aria-labelledby="sec-previsualizacion">

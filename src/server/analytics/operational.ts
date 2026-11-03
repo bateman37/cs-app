@@ -37,11 +37,16 @@ export const CAUSE_CLASS_LABEL: Record<string, string> = {
 /** Etiqueta de perfil a partir de las dimensiones resueltas A LA FECHA DEL TRABAJO. PMO desconocido nunca llega aquí (elegibilidad pendiente). */
 export function profileLabel(d: { pmo: boolean | null; team: string | null; level: string | null; role: string | null }): string {
   if (d.pmo === true) return d.role ? `PMO ${d.role.trim().toUpperCase()}` : "PMO (rol sin identificar)";
-  const t = d.team?.trim() ?? "";
+  const rawTeam = d.team?.trim() ?? "";
+  const t = TEAM_DISPLAY[rawTeam.toLowerCase()] ?? rawTeam;
   const l = d.level?.trim() ?? "";
   if (!t && !l) return UNIDENTIFIED;
+  // El equipo real «CS N2» ya lleva su nivel: no se repite («CS N2 N2»).
+  if (t && l && t.toLowerCase().endsWith(` ${l.toLowerCase()}`)) return t;
   return `${t} ${l}`.trim();
 }
+/** Correspondencias semánticas EXPLÍCITAS entre la etiqueta del equipo en los maestros y el perfil analítico (HOTFIX-01 §9): PLAT es «Plataforma». Cualquier otra etiqueta se conserva tal cual. */
+export const TEAM_DISPLAY: Record<string, string> = { plat: "Plataforma" };
 const profileRank = (label: string): number => {
   const i = PROFILE_ORDER.findIndex((p) => p.toLowerCase() === label.toLowerCase());
   return i >= 0 ? i : label === UNIDENTIFIED ? 1000 : 500;

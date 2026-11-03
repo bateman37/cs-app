@@ -104,7 +104,7 @@ export function reviewCandidates(plan: Plan): ReviewCandidate[] {
     if (p.level.candidates.length === 0 || p.team.candidates.length === 0) {
       out.push({
         key: `INFO:PERSONA_INCOMPLETA:${p.id}`, kind: "INFO", state: "info", title: `Datos de ${label}`, decidable: false, positions: p.positions,
-        message: `Fila incompleta (${p.level.candidates.length === 0 ? "sin nivel" : ""}${p.level.candidates.length === 0 && p.team.candidates.length === 0 ? " ni " : ""}${p.team.candidates.length === 0 ? "sin equipo" : ""}): se carga la identidad y los alias conocidos, sin equipo ni nivel inventados.`,
+        message: `Fila incompleta (sin ${[p.level.candidates.length === 0 ? "nivel" : "", p.team.candidates.length === 0 ? "equipo" : ""].filter(Boolean).join(" ni ")}): se carga la identidad y los alias conocidos, sin equipo ni nivel inventados.`,
       });
     }
   }

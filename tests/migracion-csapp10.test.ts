@@ -65,7 +65,8 @@ describe("migración CSAPP-09 → CSAPP-10", () => {
       // Solo se añaden las dos tablas nuevas: ninguna columna anterior cambia (el código de 09 sigue siendo compatible con este esquema).
       const after = (await db.query(`SELECT table_name, column_name, data_type FROM information_schema.columns WHERE table_schema = 'public' ORDER BY 1, 2`)).rows;
       const added = after.filter((r) => !before.some((b) => b.table_name === r.table_name && b.column_name === r.column_name));
-      expect([...new Set(added.map((r) => r.table_name))].sort()).toEqual(["InstallationMeta", "WorkerInstance"]);
+      // Migraciones posteriores (p. ej. CSAPP-HOTFIX-01) añaden sus propias tablas: aquí solo se exige que estas dos estén y que ninguna columna anterior cambie.
+      expect([...new Set(added.map((r) => r.table_name))].sort()).toEqual(expect.arrayContaining(["InstallationMeta", "WorkerInstance"]));
       expect(before.every((b) => after.some((a) => a.table_name === b.table_name && a.column_name === b.column_name && a.data_type === b.data_type))).toBe(true);
       // Integridad de las tablas nuevas
       await db.query(`INSERT INTO "WorkerInstance"(id,pid,host,version,sha) VALUES ('w1',1,'h','0.1.0','abc')`);
@@ -81,7 +82,7 @@ describe("migración CSAPP-09 → CSAPP-10", () => {
     await withTempDb("cs_app_migra10b_test", async (db, env) => {
       execSync("npx prisma migrate deploy", { env, stdio: "pipe" });
       const applied = await db.query(`SELECT migration_name FROM _prisma_migrations ORDER BY migration_name`);
-      expect(applied.rows.map((r) => r.migration_name)).toEqual([...PREVIAS, NUEVA]);
+      expect(applied.rows.map((r) => r.migration_name).slice(0, 9)).toEqual([...PREVIAS, NUEVA]);
       const diff = execSync("npx prisma migrate diff --from-config-datasource --to-schema prisma/schema.prisma --script", { env, stdio: "pipe" }).toString();
       expect(diff).toMatch(/empty migration|-- This is an empty migration/i);
     });

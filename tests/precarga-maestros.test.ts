@@ -45,7 +45,7 @@ async function snapshot() {
 }
 
 const book = () => buildBook();
-const find = (items: { key: string }[], prefix: string) => items.find((i) => i.key.startsWith(prefix));
+const find = <T extends { key: string }>(items: T[], prefix: string): T | undefined => items.find((i) => i.key.startsWith(prefix));
 
 describe("perfil «Precarga de maestros»: tres hojas, un lote", () => {
   it("el formulario pide solo el archivo; el perfil no lee una hoja por defecto y no tiene metadatos", async () => {
@@ -72,6 +72,12 @@ describe("perfil «Precarga de maestros»: tres hojas, un lote", () => {
     expect([t.wrikeGrupo, t.zdGrupo, t.papGrupo, t.soporteE, t.soporteH, t.zdId]).toEqual(["ALFA", "ALFA", "ALFA", "Gold", "Gold", "360000000101"]);
     // No se activa nada al preparar.
     expect(await prisma.clientGroup.count()).toBe(0);
+  });
+
+  it("solo Administrador sube: Consulta no puede forjar la carga ni leer el archivo original", async () => {
+    await expect(uploadText(reader.id, await book(), { profileId: PROFILE, name: "hojas.xlsx" })).rejects.toBeInstanceOf(AccessError);
+    expect(await prisma.uploadBatch.count()).toBe(0);
+    await expect(getPrecargaReview(reader.id, "no-existe")).rejects.toBeInstanceOf(AccessError);
   });
 
   it("rechaza un libro cuyas cabeceras no son las de las hojas de carga y no escribe nada", async () => {
@@ -340,6 +346,32 @@ describe("decisiones: autor, motivo, idempotentes y ligadas al checksum", () => 
     const d = await prisma.masterLoadDecision.findFirstOrThrow({ where: { reviewKey: key } });
     expect(d.checksum).toBe(prepared.checksum);
     expect(JSON.stringify(d.payload)).not.toMatch(/position|fila/i);
+  });
+});
+
+describe("ficha de la carga", () => {
+  it("la sección de la precarga se pinta en la ficha con el informe, las revisiones decidibles y el aviso de reproceso (sin bandeja nueva)", async () => {
+    await prisma.uploadBatch.create({
+      data: { profileId: "wrike", profileVersion: 1, status: "COMPLETED", originalName: "wrike-antiguo.xlsx", storageId: "test-storage-wrike-1", fileFormat: "xlsx", createdById: admin.id, finishedAt: new Date(Date.now() - 86_400_000) },
+    });
+    const done = await load(await book());
+    const { renderToStaticMarkup } = await import("react-dom/server");
+    const { MaestrosPanel } = await import("@/app/(app)/administracion/cargas/[id]/maestros-panel");
+    const html = renderToStaticMarkup(await MaestrosPanel({ userId: admin.id, batch: { id: done.id, profileId: done.profileId, status: done.status } }));
+    expect(html).toContain("Precarga de maestros");
+    expect(html).toContain("Revertir no se ofrece");
+    expect(html).toContain("Reproceso necesario");
+    expect(html).toContain("wrike-antiguo.xlsx");
+    expect(html).toContain("Alias Wrike «COMPARTIDO - CS»");
+    expect(html).toContain("Guardar decisión");
+    expect(html).toContain("Motivo (obligatorio)");
+    // Otro perfil no pinta nada.
+    expect(await MaestrosPanel({ userId: admin.id, batch: { id: done.id, profileId: "pap", status: "COMPLETED" } })).toBeNull();
+    // Un lote sin completar muestra las revisiones pero sin formularios de decisión.
+    const prepared = await prepare(await book(), "preparado.xlsx");
+    const html2 = renderToStaticMarkup(await MaestrosPanel({ userId: admin.id, batch: { id: prepared.id, profileId: prepared.profileId, status: prepared.status } }));
+    expect(html2).toContain("Se podrá decidir cuando la carga esté completada");
+    expect(html2).not.toContain("Guardar decisión");
   });
 });
 

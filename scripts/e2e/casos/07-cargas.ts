@@ -29,7 +29,7 @@ export async function cargas(ctx: Ctx): Promise<void> {
   const reader = await login(ctx, ctx.accounts.readerEmail, ctx.accounts.readerPassword);
   await reader.page.goto(B);
   ctx.check("Cargas: Consulta no llega a la pantalla (redirigida)", !reader.page.url().includes("/administracion/cargas"));
-  await reader.page.goto(`${ctx.base}/administracion/clientes/grupos`);
+  await reader.page.goto(`${ctx.base}/administracion/clientes`);
   ctx.check("Cargas: la pestaña no se ofrece a Consulta", (await reader.page.getByRole("link", { name: "Cargas", exact: true }).count()) === 0);
   const origin = new URL(ctx.base).origin;
   const r1 = await reader.context.request.post(`${ctx.base}/api/cargas`, {

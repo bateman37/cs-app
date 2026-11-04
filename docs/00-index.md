@@ -65,6 +65,8 @@ Estado de la regla: **Confirmado** = decidido por Dennis; **Propuesto** = parám
 | HOTFIX-02: validación y guía de actualización | [Validación](validacion/hotfix-02.md) · [Guía Windows](plan/guia-powershell-hotfix02.md) | — | Registro; guía sin probar en Windows |
 | HOTFIX-03: maestros en tabla, estado comercial, cálculos utilizables, bandas, Calidad Por usuario/Total y perfil inicial | [Arquitectura](arquitectura/hotfix03-gestion-estado-calculos-calidad.md) | IMP, ECO 08, QLT | Implementado; probado en Linux con datos sintéticos |
 | HOTFIX-03: validación y guía de actualización | [Validación](validacion/hotfix-03.md) · [Guía Windows](plan/guia-powershell-hotfix03.md) | — | Registro; guía sin probar en Windows |
+| HOTFIX-04: edición real en las tablas de Clientes y Usuarios, guardado con confirmación, rutas y reparación de Comparativa | [Arquitectura](arquitectura/hotfix04-edicion-en-tablas.md) | IMP, USR, MST | Implementado; probado en Linux con datos sintéticos |
+| HOTFIX-04: validación y guía de actualización | [Validación](validacion/hotfix-04.md) · [Guía Windows](plan/guia-powershell-hotfix04.md) | — | Registro; guía sin probar en Windows |
 | Guía PowerShell y recorrido de CSAPP-08 | [Guía PowerShell](plan/guia-powershell-csapp08.md) | — | Escrita, sin probar en Windows |
 | Guía breve de Calidad | [Guía de Calidad](plan/guia-calidad-csapp08.md) | — | Referencia |
 | Resultados de validación de CSAPP-08 | [Validación](validacion/csapp-08.md) | — | Registro |

@@ -117,7 +117,7 @@ async function main() {
     const h2 = await waitHealth();
     const login2 = await fetch(`${base_url}/api/auth/sign-in/email`, { method: "POST", headers: { "content-type": "application/json", origin: base_url }, body: JSON.stringify({ email: "admin@ensayo.local", password }) });
     const cookie2 = login2.headers.getSetCookie().map((c) => c.split(";")[0]).join("; ");
-    const groups = await (await fetch(`${base_url}/administracion/clientes/grupos`, { headers: { cookie: cookie2 } })).text();
+    const groups = await (await fetch(`${base_url}/administracion/clientes`, { headers: { cookie: cookie2 } })).text();
     check("Reinicio: la cuenta y los datos persisten (el Grupo creado antes de parar sigue ahí) y la clave original sigue siendo la válida", !!h2 && login2.status === 200 && /Grupo persistente/.test(groups));
     const bad2 = await fetch(`${base_url}/api/auth/sign-in/email`, { method: "POST", headers: { "content-type": "application/json", origin: base_url }, body: JSON.stringify({ email: "admin@ensayo.local", password: "otra-clave-distinta-123" }) });
     check("Reinicio: la clave del segundo intento de «crear cuenta» NO sustituyó a la original", bad2.status !== 200);

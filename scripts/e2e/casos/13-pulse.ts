@@ -140,7 +140,7 @@ export async function pulse(ctx: Ctx): Promise<void> {
   const filas = await fetch(`${ctx.base}/api/analitica/pulse.csv?m=M01,M04&tam=25&q=`, { headers: { Cookie: adminCookie } });
   const bytes = new Uint8Array(await filas.arrayBuffer());
   const csv = new TextDecoder("utf-8", { ignoreBOM: true }).decode(bytes).replace(/^﻿/, "").trim().split("\r\n");
-  const groups = await ctx.prisma.clientGroup.count();
+  const groups = await ctx.prisma.clientGroup.count({ where: { isActive: true } }); // HOTFIX-03 §7: Activos por defecto
   ctx.check("CSV de Pulse: 200, UTF-8 con BOM, no-store y TODAS las filas filtradas (no solo la página de 25)", filas.status === 200 && bytes[0] === 0xef && /no-store/.test(filas.headers.get("cache-control") ?? "") && csv.length === 1 + groups, `${csv.length - 1} filas / ${groups} grupos`);
   ctx.check("CSV de Pulse: columnas de valor, estado, banda, revisión y sello", /M01_valor/.test(csv[0]) && /M01_banda/.test(csv[0]) && /revision_pulse/.test(csv[0]) && /sello_datos/.test(csv[0]));
   const est = await (await fetch(`${ctx.base}/api/analitica/pulse.csv?m=M01&tabla=estadisticas`, { headers: { Cookie: adminCookie } })).text();
@@ -207,7 +207,7 @@ export async function pulse(ctx: Ctx): Promise<void> {
   ctx.check("Calidad: volver a una anterior crea una NUEVA revisión identificada y la historia queda", (await ctx.prisma.configRevision.count({ where: { family: "QUALITY" } })) === 3 && (await ctx.prisma.configRevision.findFirstOrThrow({ where: { family: "QUALITY", revisionNo: 3 } })).kind === "ROLLBACK");
   ctx.check("Economía conservada: la revisión económica no cambia al activar Pulse y Calidad", (await ctx.prisma.economicSettingsRevision.count()) >= 1);
   await page.goto(`${ctx.base}/administracion/configuracion?seccion=economia`);
-  ctx.check("Configuración: las tres secciones (Economía / Pulse Rent / Calidad) y la económica sigue operativa", (await page.locator("nav.subtabs a").count()) === 3 && /Revisión vigente/.test(await body(page)));
+  ctx.check("Configuración: las tres secciones (Economía / Pulse Rent / Calidad) y la económica sigue operativa", (await page.locator("nav.subtabs a").count()) === 4 /* Economía, Pulse Rent, Calidad y Herramientas técnicas (HOTFIX-03) */ && /Revisión vigente/.test(await body(page)));
 
   // --- Consulta
   const rd = await login(ctx, ctx.accounts.readerEmail, ctx.accounts.readerPassword);

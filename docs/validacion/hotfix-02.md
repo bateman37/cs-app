@@ -18,7 +18,8 @@ El prompt describe 17 019 bytes, SHA-256 `bb795090…` y 74 filas útiles. El ar
 | `npm test` (suite rápida completa, 72 archivos) | 813 pasan, 3 omitidas, 2 fallos por expectativas de reglas cambiadas (cobertura por contrato de carga amplia y nuevo texto de Calidad); corregidas y repetidas en verde (25 pruebas) |
 | Prueba de extremo a extremo de datos → pantallas (`tests/hotfix02-pantallas.test.ts`) | Operativos (tickets, tiempos Zendesk, Wrike, PAP, finanzas) cargados **antes** de CLIENTES; tras confirmar el libro de una hoja, sin «Reprocesar»: Comparativa, CSV de cartera, ficha de Grupo y de Cliente y Calidad muestran lo esperado (Wrike ALFA 2 h solo Grupo, BETA 1 h, GAMMA 0,5 h; Zendesk 2024 en el año anterior; ingreso 100/200/50; ambiguos y sin correspondencia sin asignar) |
 | Migración con datos (`tests/migracion-hotfix02.test.ts`) | Sin reset, sin recalcular en la migración, reparación programada, sin deriva |
-| Recorrido de navegador compilado (`npm run e2e`) | Ver «Navegador» |
+| Recorrido de navegador compilado, web y trabajador compilados (`npm run e2e`) | **411 PASS, 0 FAIL** sobre el árbol integrado (los fallos de una primera pasada —objetivo vigente cambiado por un caso previo, ficha sin bloque de Calidad y panel de exportación plegado— eran expectativas de reglas cambiadas y se corrigieron) |
+| Revisión visual de la ficha (`scripts/e2e/ficha-visual.ts`) | 31 PASS, 0 FAIL; capturas miradas a 1920×1080, 1536×864 y 390 px |
 | Ensayo con `CLIENTES.xlsx` real + operativos sintéticos | Ver [datos](hotfix-02-datos.md): 82 filas, 0 errores, 0 discrepancias frente a la lectura independiente, repetir no crea nada |
 | Volumen (250 000 tiempos, 116 000 tickets, 6 000 PAP) | Reparación completa 27,1 s, 38 sentencias SQL (sin N+1), RSS pico 196 MB; segunda pasada idempotente 15,1 s sin escribir. Medida de esta máquina, no un SLA |
 

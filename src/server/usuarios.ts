@@ -1,7 +1,7 @@
-import { randomUUID } from "node:crypto";
+import { createHash, randomUUID } from "node:crypto";
 import { prisma } from "@/lib/db";
 import type { Prisma } from "@/generated/prisma/client";
-import { matrixChangeSchema, matrixCopySchema, matrixInitSchema } from "@/domain/usuarios-schemas";
+import { matrixBatchSchema, matrixChangeSchema, matrixCopySchema, matrixInitSchema } from "@/domain/usuarios-schemas";
 import {
   ESTIMATED_SOURCE,
   MONTH_NAMES,
@@ -18,6 +18,8 @@ import {
   planInitializeHistoric,
   planSetMonth,
   statusOf,
+  applySteps,
+  type MatrixStep,
   type Exposure,
   type MonthState,
   type Plan,
@@ -213,6 +215,135 @@ export async function confirmMatrixChange(actorId: string, raw: unknown, opts: C
     });
     return { matrixId: h.id, version: h.created ? 1 : h.version + 1, changed: applied.map((a) => a.month), protectedMonths: plan.protectedMonths };
   });
+}
+
+// ----------------------------------------------------------------------- Guardado por lote (HOTFIX-04 §6)
+
+export type BatchMonth = { month: number; before: number | null; after: number | null; beforeKind: MonthState["kind"] | null; afterKind: MonthState["kind"] | null; status: "changed" | "unchanged" | "protected"; source: string | null };
+export type BatchRowPreview = { key: string; targetType: ScopeRef["type"]; targetId: string; scopeName: string; version: number; months: BatchMonth[]; protectedMonths: number[] };
+export type BatchError = { key: string; message: string; kind: "VALIDATION" | "CONFLICT" };
+export type BatchResult = {
+  ok: boolean;
+  digest: string;
+  year: number;
+  rows: BatchRowPreview[];
+  errors: BatchError[];
+  /** Versión nueva de cada matriz guardada (clave → versión). */
+  versions: Record<string, number>;
+  alreadyApplied?: boolean;
+};
+
+class BatchRollback extends Error {
+  constructor(public readonly result: BatchResult) {
+    super("rollback");
+  }
+}
+
+export const batchKey = (type: ScopeRef["type"], id: string) => `${type}:${id}`;
+
+/** Huella estable del lote (el orden de las filas no la altera). */
+export function batchDigest(input: { year: number; matrices: readonly { targetType: string; targetId: string; expectedVersion: number; steps: readonly unknown[] }[] }): string {
+  const canon = [...input.matrices].sort((a, b) => (`${a.targetType}:${a.targetId}` < `${b.targetType}:${b.targetId}` ? -1 : 1));
+  return createHash("sha256").update(JSON.stringify({ y: input.year, m: canon })).digest("hex").slice(0, 32);
+}
+
+async function runBatch(actorId: string, raw: unknown, dryRun: boolean, opts: ClockOpts): Promise<BatchResult> {
+  const input = parseInput(matrixBatchSchema, raw);
+  const digest = batchDigest(input);
+  if (!dryRun && input.digest && input.digest !== digest) {
+    throw new DomainError("El borrador cambió después de revisarlo. Vuelva a pulsar «Guardar cambios» para revisarlo de nuevo; no se ha guardado nada.");
+  }
+  assertEditableYear(input.year, opts.now); // reloj del servidor: un año anterior o futuro es solo lectura incluso ante una petición forjada
+  const keys = new Set<string>();
+  for (const m of input.matrices) {
+    const k = batchKey(m.targetType, m.targetId);
+    if (keys.has(k)) throw new DomainError("Una misma fila figura dos veces en el borrador: revise y vuelva a guardar.");
+    keys.add(k);
+  }
+  const ordered = [...input.matrices].sort((a, b) => (batchKey(a.targetType, a.targetId) < batchKey(b.targetType, b.targetId) ? -1 : 1));
+  try {
+    return await prisma.$transaction(
+      async (tx) => {
+        const actor = await authorize(tx, actorId, "ADMIN");
+        await tx.$executeRaw`SELECT pg_advisory_xact_lock(hashtext('csapp-matrix-batch'))`;
+        if (!dryRun) {
+          const done = await tx.auditEvent.findFirst({ where: { entityType: "EditOperation", entityId: input.operationId }, select: { id: true } });
+          if (done) return { ok: true, digest, year: input.year, rows: [], errors: [], versions: {}, alreadyApplied: true };
+        }
+        const rows: BatchRowPreview[] = [];
+        const errors: BatchError[] = [];
+        const versions: Record<string, number> = {};
+        for (const m of ordered) {
+          const key = batchKey(m.targetType, m.targetId);
+          let target: ResolvedTarget;
+          try {
+            target = await resolveTarget(tx, m.targetType, m.targetId, { requireActive: true });
+          } catch (e) {
+            errors.push({ key, kind: "VALIDATION", message: e instanceof DomainError ? e.message : "El ámbito ya no existe." });
+            continue;
+          }
+          const steps = m.steps as MatrixStep[];
+          const previous = steps.some((s) => s.type === "COPY") ? (await loadYear(tx, target.fk, input.year - 1)).state : emptyYear();
+          // Primero sin bloquear: una fila sin cambios netos no crea cabecera ni versión.
+          const cur0 = await loadYear(tx, target.fk, input.year);
+          const probe = applySteps(cur0.state, steps, { year: input.year, previous });
+          if (probe.errors.length > 0) { for (const e of probe.errors) errors.push({ key, kind: "VALIDATION", message: e.message }); continue; }
+          if (!probe.rows.some((r) => r.status === "changed")) continue;
+          const h = await lockHeader(tx, target.fk, input.year);
+          if ((h.created ? 0 : h.version) !== m.expectedVersion) {
+            errors.push({ key, kind: "CONFLICT", message: "Otra persona ha modificado esta fila mientras la editaba. Se muestran sus valores actuales; revise su cambio y vuelva a guardar. No se ha guardado nada." });
+            continue;
+          }
+          const cur = await loadYear(tx, target.fk, input.year); // bajo bloqueo
+          const out = applySteps(cur.state, steps, { year: input.year, previous });
+          if (out.errors.length > 0) { for (const e of out.errors) errors.push({ key, kind: "VALIDATION", message: e.message }); continue; }
+          const changed = out.rows.filter((r) => r.status === "changed");
+          if (changed.length === 0) continue;
+          for (const r of changed) {
+            if (r.after) {
+              const data = { value: r.after.value, kind: r.after.kind, isLocked: r.after.isLocked, source: r.after.source ?? "Ajuste explícito del mes", updatedById: actor.id };
+              if (r.before) await tx.userMatrixMonth.update({ where: { matrixId_month: { matrixId: h.id, month: r.month } }, data: { ...data, revision: { increment: 1 } } });
+              else await tx.userMatrixMonth.create({ data: { matrixId: h.id, month: r.month, ...data } });
+            } else {
+              // «Sin informar» tras confirmar: la fila del mes se retira; el valor anterior queda en la auditoría.
+              await tx.userMatrixMonth.delete({ where: { matrixId_month: { matrixId: h.id, month: r.month } } });
+            }
+          }
+          if (!h.created) await tx.userMatrix.update({ where: { id: h.id }, data: { version: { increment: 1 } } });
+          const newVersion = h.created ? 1 : h.version + 1;
+          versions[key] = newVersion;
+          const brief2 = (s: MonthState | null) => (s ? { value: s.value, kind: s.kind, isLocked: s.isLocked } : { value: null });
+          await recordAudit(tx, actor, {
+            action: "UPDATE", entityType: "UserMatrix", entityId: h.id, groupId: target.groupId, clientId: target.clientId,
+            summary: `${describe(target, input.year)}: ${changed.length} ${changed.length === 1 ? "mes" : "meses"} guardados tras confirmación (${changed.map((r) => `${MONTH_NAMES[r.month - 1]} ${r.before ? r.before.value : "sin informar"}→${r.after ? r.after.value : "sin informar"}`).join(", ")})${out.protectedMonths.length ? `; ${out.protectedMonths.length} preservados` : ""}`,
+            before: { version: h.created ? 0 : h.version, months: changed.map((r) => ({ month: r.month, ...brief2(r.before) })) },
+            after: { version: newVersion, months: changed.map((r) => ({ month: r.month, ...brief2(r.after) })) },
+          });
+          rows.push({
+            key, targetType: m.targetType, targetId: m.targetId, scopeName: target.name, version: h.created ? 0 : h.version, protectedMonths: out.protectedMonths,
+            months: out.rows.map((r) => ({ month: r.month, before: r.before?.value ?? null, after: r.after?.value ?? null, beforeKind: r.before?.kind ?? null, afterKind: r.after?.kind ?? null, status: r.status, source: r.after?.source ?? null })),
+          });
+        }
+        const result: BatchResult = { ok: errors.length === 0, digest, year: input.year, rows, errors, versions };
+        if (!result.ok || dryRun) throw new BatchRollback(result);
+        await recordAudit(tx, actor, { action: "UPDATE", entityType: "EditOperation", entityId: input.operationId, summary: `Usuarios contratados ${input.year}: guardado por lote tras confirmación (${rows.length} ${rows.length === 1 ? "fila" : "filas"})`, after: { digest, year: input.year, rows: rows.map((r) => r.key) } });
+        return result;
+      },
+      { maxWait: 5000, timeout: 30000 },
+    );
+  } catch (e) {
+    if (e instanceof BatchRollback) return e.result;
+    throw e;
+  }
+}
+
+/** Vista previa del guardado por lote: valida y calcula antes→después de cada mes SIN escribir (la transacción se deshace). */
+export function previewMatrixBatch(actorId: string, raw: unknown, opts: ClockOpts = {}): Promise<BatchResult> {
+  return runBatch(actorId, raw, true, opts);
+}
+/** Guardado por lote atómico: cada matriz se bloquea y versiona UNA vez; todo o nada. Idempotente por `operationId`. */
+export function applyMatrixBatch(actorId: string, raw: unknown, opts: ClockOpts = {}): Promise<BatchResult> {
+  return runBatch(actorId, raw, false, opts);
 }
 
 // ----------------------------------------------------------------------- Valor inicial uniforme
@@ -412,7 +543,8 @@ export async function listMatrices(actorId: string, query: MatrixListQuery) {
     const values: (number | null)[] = MONTHS.map((n) => m?.months.find((r) => r.month === n)?.value ?? null);
     const kinds = MONTHS.map((n) => m?.months.find((r) => r.month === n)?.kind ?? null);
     const locked = MONTHS.map((n) => m?.months.find((r) => r.month === n)?.isLocked ?? false);
-    return { ...e, version: m?.version ?? 0, values, kinds, locked };
+    const sources = MONTHS.map((n) => m?.months.find((r) => r.month === n)?.source ?? null);
+    return { ...e, version: m?.version ?? 0, values, kinds, locked, sources };
   });
   return pageResult(rows, total, page, pageSize);
 }

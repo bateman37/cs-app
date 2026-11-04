@@ -52,3 +52,18 @@ export const usersBaseResolveSchema = z.object({
 });
 
 export type MatrixChangeInput = z.output<typeof matrixChangeSchema>;
+
+const stepSchema = z.discriminatedUnion("type", [
+  z.object({ type: z.literal("SET"), month: monthNumber, value: z.union([z.number().int().min(0).max(10_000_000), z.null()], { error: "Indique un número entero de usuarios, 0 o mayor, o deje la celda vacía." }) }),
+  z.object({ type: z.literal("APPLY_FROM"), month: monthNumber, value: z.number({ error: "Indique un número entero de usuarios." }).int("Indique un número entero de usuarios.").min(0, "Indique un número entero de usuarios, 0 o mayor.").max(10_000_000) }),
+  z.object({ type: z.literal("COPY"), mode: z.enum(["SAME_MONTH", "DECEMBER"]) }),
+]);
+
+/** Guardado por lote de la matriz de usuarios contratados (HOTFIX-04 §6): varias celdas y varias filas en UNA operación atómica con una versión esperada por matriz. */
+export const matrixBatchSchema = z.object({
+  operationId: z.string().min(8).max(80),
+  year: yearNumber,
+  matrices: z.array(z.object({ targetType, targetId, expectedVersion, steps: z.array(stepSchema).min(1).max(60) })).min(1, "No hay cambios que guardar.").max(300),
+  digest: z.string().max(100).optional(),
+});
+export type MatrixBatchInput = z.output<typeof matrixBatchSchema>;

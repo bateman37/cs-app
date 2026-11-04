@@ -6,11 +6,14 @@ import { listUsersBaseConflicts } from "@/server/usuarios-base";
 import { currentYear, editability } from "@/domain/usuarios";
 import { first, type SearchParams } from "@/lib/format";
 import { Pager } from "@/components/list";
-import { BASE, Cell, Legend, SCOPE_LABEL, SLUG_SCOPE, SCOPE_SLUG, fichaHref, monthShort } from "./_lib";
-import { MONTHS } from "@/domain/usuarios";
+import { BASE, Legend, SCOPE_LABEL, SLUG_SCOPE, SCOPE_SLUG, fichaHref } from "./_lib";
+import { UsuariosEditor } from "./editor";
+import "../clientes/editor.css";
 
 export const metadata: Metadata = { title: "Usuarios contratados" };
+export const dynamic = "force-dynamic";
 
+/** Matriz de usuarios contratados EDITABLE (HOTFIX-04 §6): la propia tabla es el editor; la ficha de cada fila es solo historial y gestión excepcional. */
 export default async function UsuariosPage({ searchParams }: { searchParams: Promise<SearchParams> }) {
   const user = await requirePageUser();
   const sp = await searchParams;
@@ -25,56 +28,17 @@ export default async function UsuariosPage({ searchParams }: { searchParams: Pro
     status: first(sp.status) || "active",
     page: Number(first(sp.page)) || 1,
   };
-  const result = await listMatrices(user.id, {
-    year,
-    scopeType,
-    q: params.q,
-    status: params.status as "active" | "inactive" | "all",
-    page: params.page,
-  });
+  const result = await listMatrices(user.id, { year, scopeType, q: params.q, status: params.status as "active" | "inactive" | "all", page: params.page });
   const years = [...new Set([...(await listMatrixYears(user.id)), cy - 1, cy])].sort((a, b) => a - b);
   const ed = editability(year);
   const conflicts = await listUsersBaseConflicts(user.id);
+  const isAdmin = user.role === "ADMIN";
   return (
     <>
       <h1>Usuarios contratados</h1>
       <p className="muted">
-        Usuarios que <strong>pagan</strong> cada mes (contratados). No son usuarios activos de la aplicación, cuentas de acceso ni personas del maestro
-        Personal. Grupo Cliente, Cliente e implantación tienen cada uno su propia matriz: no se suman ni se copian entre ámbitos. Se editan el año en curso ({cy}) y el anterior ({cy - 1}); los demás años se consultan.
-      </p>
-      <form className="toolbar" action={BASE} method="get">
-        <div className="field">
-          <label htmlFor="anio">Año</label>
-          <input id="anio" name="anio" type="number" min={2000} max={2100} step={1} defaultValue={year} list="anios-con-datos" inputMode="numeric" />
-          <datalist id="anios-con-datos">{years.map((y) => <option key={y} value={y} />)}</datalist>
-        </div>
-        <div className="field">
-          <label htmlFor="ambito">Ámbito</label>
-          <select id="ambito" name="ambito" defaultValue={params.ambito}>
-            {(Object.keys(SCOPE_LABEL) as (keyof typeof SCOPE_LABEL)[]).map((t) => (
-              <option key={t} value={SCOPE_SLUG[t]}>
-                {SCOPE_LABEL[t]}
-              </option>
-            ))}
-          </select>
-        </div>
-        <div className="field">
-          <label htmlFor="q">Buscar</label>
-          <input id="q" name="q" defaultValue={params.q} placeholder="Nombre" />
-        </div>
-        <div className="field">
-          <label htmlFor="status">Estado</label>
-          <select id="status" name="status" defaultValue={params.status}>
-            <option value="active">Activos</option>
-            <option value="inactive">Inactivos</option>
-            <option value="all">Todos</option>
-          </select>
-        </div>
-        <button className="btn btn-primary" type="submit">Filtrar</button>
-        <Link className="btn btn-secondary" href={BASE}>Limpiar</Link>
-      </form>
-      <p className="muted">
-        {year}: {ed.editable ? (year === cy ? "año en curso, editable" : "año anterior, editable") : ed.reason}
+        Usuarios que <strong>pagan</strong> cada mes (contratados). No son usuarios activos de la aplicación, cuentas de acceso ni personas del maestro Personal. Grupo Cliente, Cliente e implantación tienen cada uno su propia
+        matriz: no se suman ni se copian entre ámbitos. Se editan el año en curso ({cy}) y el anterior ({cy - 1}); los demás años se consultan.
       </p>
       {conflicts.length > 0 ? (
         <p className="notice notice-info" role="note">
@@ -86,44 +50,33 @@ export default async function UsuariosPage({ searchParams }: { searchParams: Pro
         </p>
       ) : null}
       {result.rows.length === 0 ? (
-        <div className="empty">
-          <p>{params.q || params.status !== "active" ? "Ningún elemento coincide con los filtros." : `Todavía no hay ${SCOPE_LABEL[scopeType].toLowerCase()}s en los maestros.`}</p>
-        </div>
-      ) : (
         <>
-          <div className="table-wrap">
-            <table>
-              <caption className="skip">Usuarios contratados {year} por mes, {SCOPE_LABEL[scopeType]}</caption>
-              <thead>
-                <tr>
-                  <th>{SCOPE_LABEL[scopeType]}</th>
-                  {MONTHS.map((m) => (
-                    <th key={m} style={{ textAlign: "right" }} title={`Mes ${m}`}>{monthShort(m)}</th>
-                  ))}
-                </tr>
-              </thead>
-              <tbody>
-                {result.rows.map((r) => (
-                  <tr key={r.id} className={r.isActive ? undefined : "inactive-row"}>
-                    <td>
-                      <Link href={fichaHref(scopeType, r.id, year)}>{r.name}</Link>
-                      {r.context ? <div className="muted" style={{ fontSize: "0.8rem" }}>{r.context}</div> : null}
-                      {!r.isActive ? <span className="badge badge-off" style={{ marginLeft: 6 }}>Inactivo</span> : null}
-                    </td>
-                    {MONTHS.map((m) => (
-                      <Cell key={m} value={r.values[m - 1]} kind={r.kinds[m - 1]} locked={r.locked[m - 1]} />
-                    ))}
-                  </tr>
-                ))}
-              </tbody>
-            </table>
-          </div>
-          <Legend />
-          <Pager base={BASE} params={params} page={result.page} pageCount={result.pageCount} total={result.total} />
+          <form className="toolbar" action={BASE} method="get">
+            <div className="field"><label htmlFor="anio">Año</label><input id="anio" name="anio" type="number" min={2000} max={2100} defaultValue={year} /></div>
+            <div className="field"><label htmlFor="ambito">Ámbito</label><select id="ambito" name="ambito" defaultValue={params.ambito}>{(Object.keys(SCOPE_LABEL) as (keyof typeof SCOPE_LABEL)[]).map((t) => <option key={t} value={SCOPE_SLUG[t]}>{SCOPE_LABEL[t]}</option>)}</select></div>
+            <button className="btn btn-primary" type="submit">Filtrar</button>
+            <Link className="btn btn-secondary" href={BASE}>Limpiar</Link>
+          </form>
+          <div className="empty"><p>{params.q || params.status !== "active" ? "Ningún elemento coincide con los filtros." : `Todavía no hay ${SCOPE_LABEL[scopeType].toLowerCase()}s en los maestros.`}</p></div>
         </>
-      )}
-      {user.role !== "ADMIN" ? null : (
-        <p className="muted">Abra una fila para editar un mes, aplicar un valor desde un mes, copiar la base anterior o dar un valor inicial.</p>
+      ) : (
+        <UsuariosEditor
+          rows={result.rows.map((r) => ({ id: r.id, name: r.name, context: r.context, isActive: r.isActive, version: r.version, values: r.values, kinds: r.kinds, locked: r.locked, sources: r.sources }))}
+          year={year}
+          scopeType={scopeType}
+          scopeLabel={SCOPE_LABEL[scopeType]}
+          scopeSlug={SCOPE_SLUG[scopeType]}
+          editable={isAdmin && ed.editable}
+          reason={ed.editable ? (year === cy ? "año en curso, editable" : "año anterior, editable") : ed.reason}
+          filters={{ anio: year, ambito: params.ambito, q: params.q, status: params.status }}
+          years={years}
+          scopeOptions={(Object.keys(SCOPE_LABEL) as (keyof typeof SCOPE_LABEL)[]).map((t) => ({ value: SCOPE_SLUG[t], label: SCOPE_LABEL[t] }))}
+          history={Object.fromEntries(result.rows.map((r) => [r.id, fichaHref(scopeType, r.id, year)]))}
+          legend={<Legend />}
+        >
+          <Pager base={BASE} params={params} page={result.page} pageCount={result.pageCount} total={result.total} />
+          {!isAdmin ? null : <p className="muted">Edite los meses directamente en la tabla. La ficha de cada fila (nombre) queda como historial y gestión excepcional.</p>}
+        </UsuariosEditor>
       )}
     </>
   );

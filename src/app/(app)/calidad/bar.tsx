@@ -3,6 +3,7 @@ import { FiltrosComunes } from "@/components/filtros-comunes";
 import { commonFiltersToParams, type CommonFilters } from "@/domain/filtros-comunes";
 import { QSCOPES, QSCOPE_NAME, lastClosedMonthEnd, monthToDate, qualityToParams, type QualityPeriod, type QualityQuery } from "@/domain/quality-query";
 import { qs } from "@/lib/format";
+import { DEFAULT_MEASURE, MEASURES, MEASURE_LABEL } from "@/domain/quality-config";
 
 const ym = (y: number, m: number) => `${y}-${String(m).padStart(2, "0")}`;
 
@@ -29,7 +30,7 @@ export function QualityBar({ title, q, period, today, basePath, pending, csvHref
           <label className="visually-hidden" htmlFor="ql-mes">Mes</label>
           <input id="ql-mes" type="month" name="mes" defaultValue={ym(period.year, period.month)} max={today.slice(0, 7)} />
           <input type="hidden" name="modo" value={mode} />
-          {Object.entries({ ...commonFiltersToParams(q.filters), ambito: q.scope !== "group" ? q.scope : "", kpi: q.kpi, sel: q.sel }).map(([k, v]) => (v ? <input key={k} type="hidden" name={k} value={v} /> : null))}
+          {Object.entries({ ...commonFiltersToParams(q.filters), medida: q.measure !== DEFAULT_MEASURE ? q.measure : "", ambito: q.scope !== "group" ? q.scope : "", kpi: q.kpi, sel: q.sel }).map(([k, v]) => (v ? <input key={k} type="hidden" name={k} value={v} /> : null))}
           <button type="submit">Ir</button>
         </form>
         <Link className="ql-arrow" href={monthLink(shift(1))} aria-label="Mes siguiente" aria-disabled={!nextOk} tabIndex={nextOk ? undefined : -1} prefetch={false}>›</Link>
@@ -40,6 +41,10 @@ export function QualityBar({ title, q, period, today, basePath, pending, csvHref
         <Link href={link({}, lastClosedMonthEnd(today), "FULL_MONTH")} className="chip" prefetch={false}>Último mes cerrado</Link>
         {period.provisional ? <span className="ql-tag" title={`Corte efectivo ${period.cut.split("-").reverse().join("/")}: el mes no está cerrado.`}>Provisional</span> : null}
       </nav>
+      <span className="chips-group" role="group" aria-label="Medida de los indicadores">
+        <span className="chips-title">Medida</span>
+        {MEASURES.map((m) => <Link key={m} className={q.measure === m ? "chip chip-on" : "chip"} aria-pressed={q.measure === m} href={link({ measure: m })} title={m === "usuario" ? "Cada numerador dividido entre la exposición de usuarios (por un usuario)." : "Numerador observado del periodo, sin dividir por usuarios."} prefetch={false}>{MEASURE_LABEL[m]}</Link>)}
+      </span>
       <FiltrosComunes value={q.filters} hrefFor={hrefFilters} />
       <span className="chips-group" role="group" aria-label="Nivel">
         <span className="chips-title">Nivel</span>

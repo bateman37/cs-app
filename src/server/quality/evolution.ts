@@ -6,7 +6,7 @@ import { qualityPeriod, type QualityPeriod, type QualityQuery } from "@/domain/q
 import { loadGroupMetaForCuts } from "@/server/analytics/portfolio";
 import { snapshotPoint, type Tx } from "@/server/analytics/snapshot";
 import { getActive } from "@/server/pulse/config";
-import { selectorsOf } from "@/server/pulse/sql";
+import { qualitySelectors } from "./selectors";
 import { loadDeclarations, loadTicketBatches } from "./coverage";
 import { cov, evaluateMonth, loadEntities, loadStocks, loadUsers, snapshotOf, type BacklogInfo, type MonthFacts, type QualityRow, type StockEntity } from "./engine";
 import { hourFactsByPeriod, papFactsByPeriod, ticketFactsByPeriod, type FactPeriod } from "./facts";
@@ -66,7 +66,7 @@ export async function evolutionRows(tx: Tx, q: QualityQuery, id: string, cfg: Qu
   const tByP = await ticketFactsByPeriod(tx, scope, ids, periods);
   await snapshotPoint("quality:after-tickets");
   const pByP = await papFactsByPeriod(tx, scope, ids, periods);
-  const hByP = await hourFactsByPeriod(tx, scope, ids, periods, selectorsOf(pulse.payload));
+  const hByP = await hourFactsByPeriod(tx, scope, ids, periods, await qualitySelectors(tx, pulse.payload));
   await snapshotPoint("quality:after-hours");
   // El Client Health solo interviene en la fila evaluada (la cohorte de referencia no lo usa): se lee el de la entidad de la ficha, todos los meses de una vez.
   const healthByMonth = await loadHealthForMonths(tx, scope, [id], months[0].period.year, months.map((m) => m.month));

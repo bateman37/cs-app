@@ -245,6 +245,16 @@ details.chart-table > summary { cursor: pointer; color: var(--blue); font-size: 
 .cmp2 tfoot th, .cmp2 tfoot td { position: sticky; bottom: 0; z-index: 2; background: #f0f0f7; font-weight: 600; border-top: 2px solid var(--border); }
 .cmp2 tfoot th.sticky-col { z-index: 3; }
 .cmp2 .dev-pos { color: var(--err); }
+/* Bandas económicas (HOTFIX-03 §9): fondo + texto con contraste AA; el color nunca es la única señal (aria-label y title). */
+.band { display: inline-block; min-width: 3.2ch; padding: 0 0.3rem; border-radius: 4px; font-variant-numeric: tabular-nums; }
+.band-red { background: #fbd5d5; color: #7a0c0c; }
+.band-orange { background: #ffe0c2; color: #7a3500; }
+.band-yellow { background: #fff3b8; color: #5c4700; }
+.band-green { background: #d4f0d8; color: #0f5223; }
+.band-green-strong { background: #8fdc9f; color: #08391a; font-weight: 700; }
+.prov-val { outline: 1px dashed #6b6b88; outline-offset: 1px; font-style: italic; }
+.band-chip { display: inline-block; margin: 0 0.3rem 0.2rem 0; padding: 0.05rem 0.45rem; border-radius: 4px; font-size: 12px; }
+.band-fields { border: 1px solid var(--border); border-radius: 6px; margin: 0.75rem 0; padding: 0.5rem 0.75rem; }
 .cmp2 .dev-neg { color: var(--ok); }
 .cmp2 .mixto { background: #ececf4; border-radius: 99px; padding: 0 0.45rem; font-size: 11px; cursor: help; }
 .nd { display: inline-block; position: relative; }

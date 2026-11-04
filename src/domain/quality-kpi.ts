@@ -1,4 +1,4 @@
-import type { IndicatorKey } from "./quality-config";
+import type { IndicatorKey, MetricUnit } from "./quality-config";
 
 /**
  * Nombres completos de los seis accesos de Calidad (HOTFIX-02 §9). Son SOLO de presentación del panel: la configuración y Administración conservan
@@ -42,3 +42,10 @@ export const KPI_RATE_UNIT: Record<IndicatorKey, string> = {
   INCIDENTS_PROBLEMS: "/100 u·mes",
   BUGS_STANDARD: "/100 u·mes",
 };
+
+/** Unidad corta según la unidad real del resultado (HOTFIX-03 §11): por UN usuario o total del periodo; nunca «por 100» bajo una etiqueta de otra unidad. */
+const UNIT_SHORT: Partial<Record<MetricUnit, string>> = {
+  HOURS_PER_USER_MONTH: "h/usuario·mes", PER_USER_MONTH: "/usuario·mes", PER_USER_STOCK: "/usuario", PER_100_USER_MONTHS: "/100 u·mes", PER_100_USERS_STOCK: "/100 usuarios",
+  TOTAL_HOURS: "h (total)", TOTAL_COUNT: "(total)",
+};
+export const rateUnit = (k: IndicatorKey, unit?: MetricUnit): string => (k === "HEALTH" ? "" : (unit ? UNIT_SHORT[unit] : undefined) ?? KPI_RATE_UNIT[k]);

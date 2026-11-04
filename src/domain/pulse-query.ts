@@ -133,7 +133,7 @@ export function pulseToParams(q: PulseQuery, now: Date = new Date()): Record<str
   if (b.hosting.length) out.alojamiento = b.hosting.join(",");
   if (b.complexity.length) out.complejidad = b.complexity.join(",");
   if (b.product) out.producto = b.product;
-  if (b.status !== "todos") out.estado = b.status;
+  if (b.status !== "activos") out.estado = b.status;
   if (b.coverage !== "todas") out.cobertura = b.coverage;
   if (b.dir !== "asc") out.dir = b.dir;
   if (b.page !== 1) out.pagina = String(b.page);

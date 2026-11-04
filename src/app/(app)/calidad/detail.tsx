@@ -2,7 +2,7 @@ import type { ReactNode } from "react";
 import Link from "next/link";
 import { ActionForm, SelectField, SubmitButton, TextAreaField, TextField } from "@/components/form-kit";
 import { DIAGNOSIS_FAMILIES, DIAGNOSIS_LABEL, INDICATOR_KEYS, INDICATOR_NAME } from "@/domain/quality-config";
-import { KPI_ACCESS_NAME, KPI_RATE_UNIT } from "@/domain/quality-kpi";
+import { KPI_ACCESS_NAME, rateUnit } from "@/domain/quality-kpi";
 import { qualityToParams, type QualityQuery } from "@/domain/quality-query";
 import { HEALTH_DB_LABEL, type HealthDbState } from "@/domain/quality-health";
 import { qs } from "@/lib/format";
@@ -32,7 +32,7 @@ export function EntityDetail({ r, view, q, basePath, evolutionSlot, notes, isAdm
           <a href={`/api/analitica/calidad.csv${qs({ ...kpiParams(q), tabla: "ficha" })}`}>CSV de la ficha</a>
         </p>
         <p>
-          Resultado global del mes: {g.color ? <StateTag color={g.color} /> : <NeutralTag>{g.status === "SIN_METODO" ? "Sin calibrar" : "Incompleto"}</NeutralTag>} {g.partialAlerts.length ? <StateTag color="red" text="Alerta roja parcial" /> : null}{" "}
+          Resultado global del mes: {g.color ? <StateTag color={g.color} /> : <NeutralTag>{g.status === "SIN_METODO" ? "Sin método del global" : "Parcial"}</NeutralTag>} {g.partialAlerts.length ? <StateTag color="red" text="Alerta roja parcial" /> : null}{" "}
           {g.score ? <>índice {num(g.score, 2)} <small className="ql-muted">(no es una probabilidad de fallo)</small></> : null} <small className="ql-muted">{g.reason}</small>
         </p>
         <div className="ql-wrap" tabIndex={0} role="region" aria-label="Seis indicadores del mes (desplazable)">
@@ -47,7 +47,7 @@ export function EntityDetail({ r, view, q, basePath, evolutionSlot, notes, isAdm
                 return (
                   <tr key={k}>
                     <th scope="row">{KPI_ACCESS_NAME[k]}</th>
-                    <td className="ql-r">{c.main === null ? <span className="ql-muted">—</span> : <><strong>{c.kind === "PARTIAL" ? "≥ " : ""}{k === "HEALTH" ? c.main : num(c.main)}</strong> <span className="ql-u">{KPI_RATE_UNIT[k]}</span></>}</td>
+                    <td className="ql-r">{c.main === null ? <span className="ql-muted">—</span> : <><strong>{c.kind === "PARTIAL" ? "≥ " : ""}{k === "HEALTH" ? c.main : num(c.main)}</strong> <span className="ql-u">{rateUnit(k, i.unit)}</span></>}</td>
                     <td>{c.color ? <StateTag color={c.color} /> : <NeutralTag partial={c.kind === "PARTIAL"} title={reasonOf(i)}>{c.label || "Sin dato"}</NeutralTag>}</td>
                     <td className="ql-r">{w ? pct(w.configuredPercent[k]) : "—"}</td>
                     <td className="ql-r">{w ? <>{pct(w.percent[k])}{w.percent[k] === "0" && w.configuredPercent[k] !== "0" ? <small> (redistribuido)</small> : uncovered ? <small> (sin cubrir)</small> : null}</> : "—"}</td>
@@ -90,7 +90,7 @@ export function EntityKpiHead({ r, k }: { r: QualityRow; k: (typeof INDICATOR_KE
     <section className="ql-panel" aria-label={`${KPI_ACCESS_NAME[k]} de ${r.name}`}>
       <h2>{r.name} · {KPI_ACCESS_NAME[k]} <small className="ql-muted">{r.parent ? `${r.parent} · ` : ""}{r.scope === "group" ? "Grupo Cliente" : "Cliente"}</small></h2>
       <p>
-        {c.main === null ? <strong>—</strong> : <strong style={{ fontSize: "1.15em" }}>{c.kind === "PARTIAL" ? "≥ " : ""}{k === "HEALTH" ? c.main : num(c.main)}</strong>} <span className="ql-u">{KPI_RATE_UNIT[k]}</span>{" "}
+        {c.main === null ? <strong>—</strong> : <strong style={{ fontSize: "1.15em" }}>{c.kind === "PARTIAL" ? "≥ " : ""}{k === "HEALTH" ? c.main : num(c.main)}</strong>} <span className="ql-u">{rateUnit(k, i.unit)}</span>{" "}
         {c.color ? <StateTag color={c.color} /> : i.alert && i.value !== null ? <StateTag color="red" text="Alerta parcial" /> : <NeutralTag partial={c.kind === "PARTIAL"}>{c.label || "Sin dato"}</NeutralTag>}
         {k !== "HEALTH" && e.observed !== null ? <> <span className="ql-obs">Observado: {num(e.observed, 1)}</span></> : null}
       </p>

@@ -40,13 +40,13 @@ export default async function Page({ searchParams }: { searchParams: Promise<Sea
   const ratio = (k: "month" | "cum") => {
     const p = pf?.[k];
     if (!p) return "—";
-    if (p.perDay.value !== null) return formatDecimalEs(p.perDay.value, 0);
-    return p.knownSet.perDay ? `${formatDecimalEs(p.knownSet.perDay, 0)}*` : "—";
+    if (p.perDay.value !== null) return `${formatDecimalEs(p.perDay.value, 0)}${p.complete ? "" : "*"}`;
+    return "—";
   };
   const year = view ? Number(view.cut.slice(0, 4)) : Number(today.slice(0, 4));
   const finPending = (e?.reference.finance ?? []).filter((f) => f.year === year && f.category === "SOPORTE" && f.coverage !== "COMPLETA");
   const pending = Boolean(e && (e.reference.validation.state === "PENDING_RECALC" || finPending.length > 0 || (pf && (!pf.month.complete || !pf.cum.complete))));
-  const hrefFor = (next: typeof filters) => `${BASE}${qs(comparativaParams({ ...query, page: 1, support: next.soporte, hosting: next.servidor }))}`;
+  const hrefFor = (next: typeof filters) => `${BASE}${qs(comparativaParams({ ...query, page: 1, support: next.soporte, hosting: next.servidor, status: next.estado }))}`;
 
   return (
     <div className="cmp-page">
@@ -85,7 +85,7 @@ export default async function Page({ searchParams }: { searchParams: Promise<Sea
         </div>
       ) : null}
       {view && view.totalGroups > 0 && view.filteredGroups === 0 ? (
-        <div className="empty"><p><strong>Sin coincidencias.</strong> Ningún Grupo tiene un Cliente con esa combinación de Soporte y Servidor.</p><p><Link href={`${BASE}${qs({ ...params, soporte: undefined, servidor: undefined })}`}>Quitar la selección</Link></p></div>
+        <div className="empty"><p><strong>Sin coincidencias.</strong> Ningún Grupo {query.status === "activos" ? "activo " : query.status === "inactivos" ? "inactivo " : ""}tiene un Cliente con esa combinación de Soporte y Servidor.</p><p><Link href={`${BASE}${qs({ ...params, soporte: undefined, servidor: undefined })}`}>Quitar Soporte y Servidor</Link>{query.status !== "todos" ? <> · <Link href={`${BASE}${qs({ ...params, estado: "todos" })}`}>Ver todos los estados</Link></> : null}</p></div>
       ) : null}
       {view && view.filteredGroups > 0 ? (
         <>

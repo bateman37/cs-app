@@ -1,5 +1,6 @@
 import { Prisma } from "@/generated/prisma/client";
-import { hasCommonFilters, type CommonFilters } from "@/domain/filtros-comunes";
+import { matchesEstado } from "@/domain/estado";
+import type { CommonFilters } from "@/domain/filtros-comunes";
 import type { Tx } from "@/server/analytics/snapshot";
 
 /**
@@ -16,6 +17,8 @@ export type ServiceFacts = {
   group: { support: Map<string, Set<string>>; hosting: Map<string, Set<string>> };
   /** Clientes externos de cada Grupo. */
   clientsOfGroup: Map<string, string[]>;
+  /** Estado efectivo de cada Cliente externo (propio y de su Grupo). */
+  clientActive: Map<string, boolean>;
 };
 
 type TermRow = { attr: string; value: string; gid: string | null; cid: string | null; cgid: string | null };
@@ -27,14 +30,15 @@ export async function loadServiceFacts(tx: Tx, cut: string): Promise<ServiceFact
     LEFT JOIN "Implementation" i ON i.id = t."implementationId"
     LEFT JOIN "Client" c ON c.id = COALESCE(t."clientId", i."clientId")
     WHERE t.attribute::text IN ('SUPPORT', 'HOSTING') AND (t."validFrom" IS NULL OR t."validFrom" <= ${cut}::date) AND (t."validTo" IS NULL OR ${cut}::date < t."validTo")`);
-  const clients = await tx.client.findMany({ where: { isInternal: false }, select: { id: true, groupId: true } });
-  const facts: ServiceFacts = { client: { support: new Map(), hosting: new Map() }, group: { support: new Map(), hosting: new Map() }, clientsOfGroup: new Map() };
+  const clients = await tx.client.findMany({ where: { isInternal: false }, select: { id: true, groupId: true, isActive: true, group: { select: { isActive: true } } } });
+  const facts: ServiceFacts = { client: { support: new Map(), hosting: new Map() }, group: { support: new Map(), hosting: new Map() }, clientsOfGroup: new Map(), clientActive: new Map() };
   const add = (m: Map<string, Set<string>>, k: string, v: string) => (m.get(k) ?? m.set(k, new Set()).get(k)!).add(v);
   for (const t of terms) {
     const key = t.attr === "SUPPORT" ? "support" : "hosting";
     if (t.gid) add(facts.group[key], t.gid, t.value);
     else if (t.cid) add(facts.client[key], t.cid, t.value);
   }
+  for (const c of clients) facts.clientActive.set(c.id, c.isActive && (c.group?.isActive ?? true));
   for (const c of clients) if (c.groupId) (facts.clientsOfGroup.get(c.groupId) ?? facts.clientsOfGroup.set(c.groupId, []).get(c.groupId)!).push(c.id);
   return facts;
 }
@@ -49,13 +53,16 @@ export function clientMatches(f: CommonFilters, s: ServiceFacts, clientId: strin
 
 /** ¿El Grupo entra? Alguno de sus Clientes cumple ambos filtros en el mismo Cliente; sin Clientes, sus propios valores. */
 export function groupMatches(f: CommonFilters, s: ServiceFacts, groupId: string): boolean {
-  const kids = s.clientsOfGroup.get(groupId) ?? [];
+  // HOTFIX-03 §7: Soporte/Servidor se justifica en un Cliente compatible del MISMO estado pedido (un hijo Platinum inactivo no mete al Grupo en «Activos + Platinum»).
+  const kids = (s.clientsOfGroup.get(groupId) ?? []).filter((c) => f.estado === "todos" || (f.estado === "activos") === (s.clientActive.get(c) ?? true));
+  if (kids.length === 0 && (s.clientsOfGroup.get(groupId) ?? []).length > 0) return false;
   if (kids.length === 0) return hit(s.group.support.get(groupId), f.soporte) && hit(s.group.hosting.get(groupId), f.servidor);
   return kids.some((c) => clientMatches(f, s, c, groupId));
 }
 
 /** Entidades (de `all`, en su ámbito) que cumplen los segmentadores. Sin filtros activos: todas. */
-export function selectByFilters<T extends { id: string; groupId: string | null }>(all: T[], scope: "group" | "client", f: CommonFilters, s: ServiceFacts | null): T[] {
-  if (!hasCommonFilters(f) || s === null) return all;
-  return all.filter((e) => (scope === "group" ? groupMatches(f, s, e.id) : clientMatches(f, s, e.id, e.groupId)));
+export function selectByFilters<T extends { id: string; groupId: string | null; effectiveActive?: boolean; isActive?: boolean }>(all: T[], scope: "group" | "client", f: CommonFilters, s: ServiceFacts | null): T[] {
+  const byEstado = all.filter((e) => matchesEstado(e.effectiveActive ?? e.isActive ?? true, f.estado));
+  if ((f.soporte.length === 0 && f.servidor.length === 0) || s === null) return byEstado;
+  return byEstado.filter((e) => (scope === "group" ? groupMatches(f, s, e.id) : clientMatches(f, s, e.id, e.groupId)));
 }

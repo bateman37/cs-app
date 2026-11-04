@@ -51,6 +51,7 @@
     "postinstall": "prisma generate",
     "db:comprobar": "tsx scripts/check-env.ts",
     "db:migrar": "prisma migrate deploy",
+    "hotfix03:preparar": "tsx scripts/hotfix03-preparar.ts",
     "cuenta:crear": "tsx scripts/crear-cuenta.ts",
     "worker:build": "node scripts/build-worker.mjs && node scripts/build-info.mjs",
     "worker:start": "node worker-dist/worker.mjs",

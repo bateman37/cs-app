@@ -397,6 +397,10 @@ export type Formula = {
   expression?: string;
   /** Falso si algún derivado usado está pendiente de reproceso: se conserva la magnitud, no se presenta como validada. */
   validated?: boolean;
+  /** HOTFIX-03 §8: cifra calculada con el conjunto OBSERVADO mientras el perímetro tiene actividad pendiente (nunca rentabilidad completa). */
+  provisional?: boolean;
+  /** HOTFIX-03 §8: ingreso imputado (anual/12 prorrateado), no facturación mensual real (p. ej. Silver On Demand). */
+  imputed?: boolean;
 };
 
 /** Euros por jornada dedicada: R / H × jornada, con H = minutos / 60. Con H = 0 no hay ratio (nunca infinito). */

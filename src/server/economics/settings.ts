@@ -2,6 +2,7 @@ import { Prisma } from "@/generated/prisma/client";
 import type { Db } from "@/server/uploads/profile";
 import { prisma } from "@/lib/db";
 import { Dec } from "@/domain/finance";
+import { DEFAULT_BAND_FACTORS, validateBandFactors, type BandFactors } from "@/domain/economic-bands";
 import { recordAudit } from "@/server/audit";
 import { authorize } from "@/server/authorize";
 import { DomainError, StaleVersionError } from "@/server/errors";
@@ -18,6 +19,10 @@ export type EconomicSettings = {
   targetEurosPerDay: string;
   dayHours: string;
   reconciliationTolerance: string;
+  /** Factores de las bandas de rentabilidad respecto al objetivo (HOTFIX-03 §9). */
+  bandFactors: BandFactors;
+  /** Falso si se usan las bandas iniciales (revisión sin bandas propias). */
+  customBands: boolean;
   reason: string | null;
   activatedAt: string;
   activatedByEmail: string | null;
@@ -31,6 +36,7 @@ type Row = {
   targetEurosPerDay: Prisma.Decimal;
   dayHours: Prisma.Decimal;
   reconciliationTolerance: Prisma.Decimal;
+  bandFactors: Prisma.JsonValue | null;
   reason: string | null;
   activatedAt: Date;
   activatedBy: { email: string } | null;
@@ -39,7 +45,10 @@ type Row = {
 const dec = (d: Prisma.Decimal) => Dec.parse(d.toFixed())?.toString() ?? d.toString();
 
 function shape(r: Row): EconomicSettings {
+  const bands = r.bandFactors === null ? null : validateBandFactors(r.bandFactors);
   return {
+    bandFactors: bands?.ok ? bands.factors : DEFAULT_BAND_FACTORS,
+    customBands: Boolean(bands?.ok),
     revisionId: r.id.toString(),
     revisionNo: r.revisionNo,
     targetEurosPerDay: dec(r.targetEurosPerDay),
@@ -95,6 +104,14 @@ export async function updateSettings(actorId: string, raw: Record<string, unknow
   const target = fieldDec(raw.targetEurosPerDay, "targetEurosPerDay", { positive: true, max: "1000000" });
   const dayHours = fieldDec(raw.dayHours, "dayHours", { positive: true, max: "24" });
   const tolerance = fieldDec(raw.reconciliationTolerance, "reconciliationTolerance", { positive: false, max: "1000" });
+  const bandInput = [raw.band1, raw.band2, raw.band3, raw.band4];
+  const bandsGiven = bandInput.some((x) => String(x ?? "").trim() !== "");
+  let bands: BandFactors | null = null;
+  if (bandsGiven) {
+    const v = validateBandFactors(bandInput);
+    if (!v.ok) throw new DomainError("Revise los campos marcados.", { band1: v.error });
+    bands = v.factors;
+  }
   const expected = Number(raw.expectedRevisionNo);
   if (!Number.isInteger(expected) || expected < 1) throw new DomainError("Falta la revisión que está editando; recargue la página.");
   const reason = String(raw.reason ?? "").trim().slice(0, 500) || null;
@@ -103,13 +120,17 @@ export async function updateSettings(actorId: string, raw: Record<string, unknow
     await ensureInitialSettings(tx);
     const latest = await tx.economicSettingsRevision.findFirstOrThrow({ orderBy: { revisionNo: "desc" } });
     if (latest.revisionNo !== expected) throw new StaleVersionError("La configuración económica");
+    const prevBands = shape({ ...latest, activatedBy: null }).bandFactors;
+    const nextBands = bands ?? prevBands;
+    const bandsSame = nextBands.join("|") === prevBands.join("|");
     const same =
+      bandsSame &&
       Dec.parse(latest.targetEurosPerDay.toFixed())?.toString() === target &&
       Dec.parse(latest.dayHours.toFixed())?.toString() === dayHours &&
       Dec.parse(latest.reconciliationTolerance.toFixed())?.toString() === tolerance;
     if (same) throw new DomainError("Los valores indicados son los de la revisión vigente: no hay nada que cambiar.");
     const created = await tx.economicSettingsRevision.create({
-      data: { revisionNo: latest.revisionNo + 1, targetEurosPerDay: target, dayHours, reconciliationTolerance: tolerance, reason, activatedById: actor.id },
+      data: { revisionNo: latest.revisionNo + 1, targetEurosPerDay: target, dayHours, reconciliationTolerance: tolerance, bandFactors: (latest.bandFactors === null && bands === null ? Prisma.DbNull : [...nextBands]) as Prisma.InputJsonValue, reason, activatedById: actor.id },
       include: { activatedBy: { select: { email: true } } },
     });
     await recordAudit(tx, actor, {
@@ -117,8 +138,8 @@ export async function updateSettings(actorId: string, raw: Record<string, unknow
       entityType: "EconomicSettings",
       entityId: String(created.revisionNo),
       summary: `Configuración económica: revisión ${created.revisionNo} (objetivo ${target} €/jornada, jornada ${dayHours} h, tolerancia ${tolerance} €); anterior: revisión ${latest.revisionNo}`,
-      before: { revisionNo: latest.revisionNo, targetEurosPerDay: latest.targetEurosPerDay.toString(), dayHours: latest.dayHours.toString(), reconciliationTolerance: latest.reconciliationTolerance.toString() },
-      after: { revisionNo: created.revisionNo, targetEurosPerDay: target, dayHours, reconciliationTolerance: tolerance, reason },
+      before: { revisionNo: latest.revisionNo, targetEurosPerDay: latest.targetEurosPerDay.toString(), dayHours: latest.dayHours.toString(), reconciliationTolerance: latest.reconciliationTolerance.toString(), bandFactors: [...prevBands] },
+      after: { revisionNo: created.revisionNo, targetEurosPerDay: target, dayHours, reconciliationTolerance: tolerance, bandFactors: [...nextBands], reason },
     });
     return shape(created);
   });

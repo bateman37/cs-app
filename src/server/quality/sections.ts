@@ -5,7 +5,8 @@ import { PROFILE_KEYS, PROFILE_LABEL } from "@/domain/pulse-catalog";
 import { flowRate, hoursPerUserMonth, type IndicatorKey, type QualityConfig } from "@/domain/quality-config";
 import { qualityPeriod, type QualityPeriod, type QualityQuery } from "@/domain/quality-query";
 import { diagnosisFamily, type DiagnosisFamily } from "@/domain/quality-config";
-import { papSetSql, selectorsOf, ticketSetSql } from "@/server/pulse/sql";
+import { papSetSql, type selectorsOf, ticketSetSql } from "@/server/pulse/sql";
+import { qualitySelectors } from "./selectors";
 import { getActive } from "@/server/pulse/config";
 import { readSnapshot, type Tx } from "@/server/analytics/snapshot";
 import { loadUsers } from "./engine";
@@ -241,7 +242,7 @@ export async function getKpiSection(actorId: string, q: QualityQuery, kpi: Indic
     const per = c.base.period;
     switch (kpi) {
       case "HEALTH": return { kind: "HEALTH", base: c.base };
-      case "DEDICATION": return { kind: "DEDICATION", data: await dedicationSection(c, selectorsOf((await getActive(tx, "PULSE", q.prev ?? undefined)).payload)) };
+      case "DEDICATION": return { kind: "DEDICATION", data: await dedicationSection(c, await qualitySelectors(tx, (await getActive(tx, "PULSE", q.prev ?? undefined)).payload)) };
       case "PAP_CORRECTIVE": return { kind: "PAP_CORRECTIVE", data: await papSection(c), list: await papRows(tx, q, c.ids, per.from, per.cut, q.base.page) };
       case "N3_ESCALATIONS": return { kind: "N3_ESCALATIONS", data: await ticketsSection(c), list: await ticketRows(tx, q, c.ids, c.cfg, "n3", per.from, per.cut, q.base.page) };
       case "INCIDENTS_PROBLEMS": return { kind: "INCIDENTS_PROBLEMS", data: await ticketsSection(c) };

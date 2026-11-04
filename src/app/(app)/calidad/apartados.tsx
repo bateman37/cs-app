@@ -1,7 +1,7 @@
 import Link from "next/link";
 import type { ReactNode } from "react";
 import { INDICATOR_NAME, UNIT_LABEL, type IndicatorKey } from "@/domain/quality-config";
-import { KPI_ACCESS_NAME, KPI_OBSERVED_UNIT, KPI_RATE_UNIT } from "@/domain/quality-kpi";
+import { KPI_ACCESS_NAME, KPI_OBSERVED_UNIT, rateUnit } from "@/domain/quality-kpi";
 import { COVERAGE_SOURCE_LABEL } from "@/domain/quality-coverage";
 import { MONTH_SHORT } from "@/domain/usuarios";
 import { qualityToParams, type QualityQuery } from "@/domain/quality-query";
@@ -36,7 +36,7 @@ const rateOrDash = (v: string | null) => (v === null ? dash : <span className="q
 // ---------------------------------------------------------------- Selección: una fila por entidad para el indicador abierto
 
 export function SelectionTable({ rows, k, q, basePath }: { rows: QualityRow[]; k: IndicatorKey; q: QualityQuery; basePath: string }) {
-  const unit = KPI_RATE_UNIT[k];
+  const unit = rateUnit(k, rows[0]?.evaluation.indicators[k].unit);
   return (
     <div className="ql-wrap" tabIndex={0} role="region" aria-label={`${KPI_ACCESS_NAME[k]} por ${q.scope === "group" ? "Grupo Cliente" : "Cliente"} (desplazable)`}>
       <table className="ql-table">

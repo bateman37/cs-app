@@ -1329,6 +1329,8 @@ model EconomicSettingsRevision {
   targetEurosPerDay       Decimal  @db.Decimal(18, 6)
   dayHours                Decimal  @db.Decimal(10, 4)
   reconciliationTolerance Decimal  @db.Decimal(18, 6)
+  /// HOTFIX-03: factores de las bandas económicas respecto al objetivo (4 cortes crecientes, el tercero = 1). NULL = bandas iniciales 0,6/0,8/1/1,2.
+  bandFactors             Json?
   reason                  String?
   activatedAt             DateTime @default(now())
   activatedById           String?

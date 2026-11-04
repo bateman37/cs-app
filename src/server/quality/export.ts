@@ -21,7 +21,7 @@ const ctx = (v: QualityView): CsvValue[] => [
   Object.values(v.coverage).map((c) => `${c.source}: ${c.state}`).join(" | "), v.backlog.exact ? `exacta ${v.backlog.observedOn}` : v.backlog.provisional ? `observada en ${v.backlog.observedOn} (provisional)` : "no disponible", v.readAt,
   v.query.filters.soporte.join(" | ") || "todos", v.query.filters.servidor.join(" | ") || "todos",
 ];
-const STATUS_TEXT: Record<string, string> = { OK: "calculado", SIN_CALIBRAR: "sin calibrar", SIN_REGLA: "sin regla", SIN_REFERENCIA: "sin referencia", DATO_INVALIDO: "dato no calculable", REGLA_INVALIDA: "regla no aplicable", BLANCO: "sin feedback (blanco)", CATEGORIA: "categoría", SIN_DATO: "sin dato", PARCIAL: "parcial", INCOMPLETO: "incompleto", COMPOSICION_SIN_ELEGIR: "composición sin elegir" };
+const STATUS_TEXT: Record<string, string> = { OK: "calculado", SIN_CALIBRAR: "sin calibrar", SIN_REGLA: "sin regla", SIN_REFERENCIA: "muestra insuficiente", DATO_INVALIDO: "dato no calculable", REGLA_INVALIDA: "regla no aplicable", BLANCO: "sin feedback (blanco)", CATEGORIA: "categoría", SIN_DATO: "sin dato", PARCIAL: "parcial", INCOMPLETO: "incompleto", COMPOSICION_SIN_ELEGIR: "composición sin elegir" };
 const colorText = (c: keyof typeof COLOR_LABEL | null) => (c ? COLOR_LABEL[c] : "sin color");
 
 export type QualityCsv = { filename: string; body: string; rows: number; stamp: string };

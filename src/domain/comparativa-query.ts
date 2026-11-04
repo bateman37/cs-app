@@ -1,8 +1,8 @@
 /**
- * Consulta de la vista normal de Comparativa (HOTFIX-02 §6–7). Solo existen dos filtros de negocio (Soporte y Servidor) más la barra de periodo
+ * Consulta de la vista normal de Comparativa (HOTFIX-02 §6–7). Solo existen tres filtros de negocio (Soporte, Servidor y Estado comercial) más la barra de periodo
  * (fecha y modo), el orden por cabecera y la página. Cualquier otra clave de la URL —incluidas las antiguas `q`, `servicio`, `complejidad`,
  * `producto`, `estado`, `cobertura`, `revision`, `tam`, `bloques`, `ref`, `pestana`, `alojamiento`— se IGNORA al leer y NO se vuelve a escribir en
- * ningún enlace: un parámetro oculto antiguo no puede recortar datos en secreto.
+ * ningún enlace: un parámetro oculto antiguo no puede recortar datos en secreto. HOTFIX-03: `estado` (Activos/Inactivos/Todos, predeterminado Activos) vuelve a ser un parámetro explícito y válido.
  */
 import { parseAnalysisQuery, SORT_KEYS, type AnalysisQuery, type RawParams, PERIOD_BLOCKS } from "./analytics-query";
 import { parseCommonFilters, commonFiltersToParams, type CommonFilters } from "./filtros-comunes";
@@ -12,7 +12,7 @@ import { todayMadrid } from "./vigencia";
 export const COMPARATIVA_PAGE_SIZE = 50;
 
 /** Claves que la vista normal conserva en una URL (lista cerrada). */
-export const COMPARATIVA_KEYS = ["fecha", "modo", "soporte", "servidor", "orden", "dir", "pagina"] as const;
+export const COMPARATIVA_KEYS = ["fecha", "modo", "soporte", "servidor", "estado", "orden", "dir", "pagina"] as const;
 
 const PERIODS = ["month", "prevMonth", "cum", "prevYear", "prevCum"] as const;
 const METRICS = ["hours", "revenue", "perDay", "devTarget", "devPortfolio", "stock", "tariff"] as const;
@@ -39,7 +39,7 @@ export function parseComparativaQuery(raw: RawParams, now: Date = new Date()): C
       hosting: [...filters.servidor],
       complexity: [],
       product: "",
-      status: "todos",
+      status: filters.estado,
       coverage: "todas",
       sort: orden,
       pageSize: COMPARATIVA_PAGE_SIZE,
@@ -56,7 +56,7 @@ export function comparativaParams(q: AnalysisQuery, now: Date = new Date()): Rec
   const out: Record<string, string> = {};
   if (q.date !== todayMadrid(now)) out.fecha = q.date;
   if (q.mode !== "CUTOFF") out.modo = q.mode;
-  Object.assign(out, commonFiltersToParams({ soporte: q.support as CommonFilters["soporte"], servidor: q.hosting as CommonFilters["servidor"] }));
+  Object.assign(out, commonFiltersToParams({ soporte: q.support as CommonFilters["soporte"], servidor: q.hosting as CommonFilters["servidor"], estado: q.status === "todos" || q.status === "inactivos" ? q.status : "activos" }));
   if (q.sort !== "name") out.orden = q.sort;
   if (q.dir !== "asc") out.dir = q.dir;
   if (q.page !== 1) out.pagina = String(q.page);

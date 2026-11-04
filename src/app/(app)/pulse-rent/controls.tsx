@@ -88,7 +88,7 @@ export function Controls({ q, products, references, basePath }: { q: PulseQuery;
           <div className="field"><label htmlFor="f-producto">Producto</label>
             <select id="f-producto" name="producto" defaultValue={b.product}><option value="">Todos</option><option value={SELECT_NONE}>Sin informar</option>{products.map((p) => <option key={p} value={p}>{p}</option>)}</select></div>
           <div className="field"><label htmlFor="f-estado">Estado</label>
-            <select id="f-estado" name="estado" defaultValue={b.status}><option value="todos">Todos</option><option value="activos">Activos</option><option value="inactivos">Inactivos</option></select></div>
+            <select id="f-estado" name="estado" defaultValue={b.status}><option value="activos">Activos</option><option value="inactivos">Inactivos</option><option value="todos">Todos</option></select></div>
           <div className="field"><label htmlFor="f-cobertura">Cobertura del maestro</label>
             <select id="f-cobertura" name="cobertura" defaultValue={b.coverage}><option value="todas">Todas</option><option value="completa">Completa</option><option value="parcial">Parcial</option><option value="sin_datos">Sin datos</option></select></div>
           <div className="field"><label htmlFor="f-tam">Filas por página</label>

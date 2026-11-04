@@ -100,7 +100,7 @@ export function Head({ f, nav, hasBack }: { f: FichaView; nav: Nav; hasBack: boo
         <span>Servidor: <b>{label(srv.v)}</b>{srv.fromGroup ? <small title="Dato del Grupo: este objeto no tiene el suyo informado"> (Grupo)</small> : null}</span>
         <span>Usuarios al corte: <b>{users.value === null ? <Na reason="Usuarios sin informar para el mes del corte." align="left" /> : users.value}</b></span>
         <span>{MONTH_SHORT[Number(f.cut.slice(5, 7)) - 1]} {f.cut.slice(0, 4)} · {f.query.mode === "FULL_MONTH" ? "mes completo" : `corte ${dmy(f.cut)}`}{prov ? <span className="fc-prov" title="Mes en curso: las cifras se prorratean hasta el corte">Provisional</span> : null}</span>
-        {!c.isActive ? <span className="fc-tag fc-tag-warn">inactivo</span> : null}
+        {!c.isActive ? <span className="fc-tag fc-tag-warn" title="Estado comercial actual: no se muestra en las listas de Activos. Sus datos históricos se conservan.">Inactivo · <Link href={`${BASE}?estado=inactivos`}>volver a la selección de inactivos</Link></span> : null}
       </div>
       <span className="fc-spacer" />
       <PeriodBar f={f} nav={nav} />

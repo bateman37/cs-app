@@ -231,10 +231,7 @@ export async function calidad(ctx: Ctx): Promise<void> {
   // --- Ficha de Análisis Cliente: mismos resultados y vuelta
   await page.goto(`${ctx.base}/analisis-cliente?ambito=group&id=${atlas.id}&fecha=${end}&modo=FULL_MONTH`);
   t = await body(page);
-  ctx.check("Análisis Cliente: integra los seis indicadores de Calidad con el mismo resultado global y enlace al detalle", /Calidad/.test(t) && /Amarillo/.test(t));
-  await page.locator("a[href^='/calidad']").first().click();
-  await page.waitForURL(/\/calidad/);
-  ctx.check("El enlace desde Análisis Cliente llega a Calidad (los parámetros de contexto los fija esa vista, no Calidad)", page.url().includes("/calidad"), page.url());
+  ctx.check("Análisis Cliente: la ficha única (HOTFIX-02 §8) no embebe el bloque de Calidad ni abre pestañas; Calidad se consulta en su propia vista", !/Resultado global/.test(t) && (await page.getByRole("tab").count()) === 0);
 
   // --- Revisión visual con datos representativos: Grupos con varios Clientes, nombres largos, valores grandes, mezcla de soportes, Health informado y no
   // informado, KPI sin datos (Grupos sin usuarios), nivel Cliente sin umbrales y un error real. Se mide la geometría y se capturan las pantallas.

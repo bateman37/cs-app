@@ -1,4 +1,5 @@
 import { ExportPanel } from "@/components/exports/export-panel";
+import { listMyExports } from "@/server/exports/service";
 import type { Metadata } from "next";
 import { Suspense } from "react";
 import Link from "next/link";
@@ -85,8 +86,10 @@ export default async function Page({ searchParams }: { searchParams: Promise<Sea
   );
 }
 
-function Resumen({ v, q, isAdmin, userId }: { v: QualityView; q: QualityQuery; isAdmin: boolean; userId: string }) {
+async function Resumen({ v, q, isAdmin, userId }: { v: QualityView; q: QualityQuery; isAdmin: boolean; userId: string }) {
   const params = qualityToParams(q);
+  // El panel de exportación va plegado, pero se mantiene abierto mientras la persona tiene exportaciones propias (se ve su progreso al volver).
+  const hasExports = (await listMyExports(userId, 1).catch(() => [])).length > 0;
   return (
     <>
       {v.filteredEntities === 0 ? <div className="ql-empty">Ninguna entidad cumple Soporte y Servidor a la vez en el mismo Cliente. <Link href={`${BASE}${qs({ ...params, soporte: undefined, servidor: undefined })}`} prefetch={false}>Quitar los segmentadores</Link></div> : (
@@ -99,7 +102,7 @@ function Resumen({ v, q, isAdmin, userId }: { v: QualityView; q: QualityQuery; i
         {isAdmin ? <><Link href="/administracion/configuracion?seccion=calidad" prefetch={false}>Configuración de Calidad</Link> (pesos, umbrales, perfiles y calibración){v.query.sim ? "" : <> · <Link href={`${BASE}${qs({ ...params, sim: "borrador" })}`} prefetch={false}>Simular el borrador</Link></>}</> : null}
       </p>
       {v.totalEntities > 0 ? (
-        <details className="ql-calc">
+        <details className="ql-calc" open={hasExports}>
           <summary>Exportar detalle completo</summary>
           <ExportPanel userId={userId} scope={q.scope} sel={q.sel} selName={null} from={`${v.period.year}-01-01`} to={v.period.cut} service={q.base.service} stamp={v.stamp} />
         </details>

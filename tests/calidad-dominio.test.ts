@@ -1,7 +1,7 @@
 import { describe, expect, it } from "vitest";
 import { Dec } from "@/domain/finance";
 import {
-  INDICATOR_KEYS, adaptQualityV1, ageDays, backlogStockRate, defaultQualityConfig, diagnosisFamily, effectiveWeights, evaluateEntity, evaluateRule, healthOutcome, isAged, readQualityPayload,
+  INDICATOR_KEYS, adaptQualityV1, ageDays, backlogStockRate, uncalibratedQualityConfig as defaultQualityConfig, diagnosisFamily, effectiveWeights, evaluateEntity, evaluateRule, healthOutcome, isAged, readQualityPayload,
   validateQualityConfig, weightUnits, qualityConfigV1Schema,
   type Availability, type EntityInput, type IndicatorKey, type QualityConfig, type QualityConfigV1, type ThresholdRule, type ComponentInput,
 } from "@/domain/quality-config";

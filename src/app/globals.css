@@ -287,6 +287,6 @@ details.chart-table > summary { cursor: pointer; color: var(--blue); font-size: 
 
 /* HOTFIX-03 §3: Administración panorámica. El `main` padre ya es ancho; los formularios de credenciales y los diálogos pequeños conservan un ancho legible. */
 .admin-body { width: 100%; }
-.admin-body form:not(.toolbar):not(.mt-tools):not(.inline-form) { max-width: 64rem; }
+.admin-body form:not(.toolbar):not(.mt-filters):not(.inline-form) { max-width: 64rem; }
 .admin-body .card { max-width: none; }
 .admin-body .card form { max-width: 64rem; }

@@ -253,6 +253,8 @@ function fromFormula(c: Cell, f: { value: string | null; numerator: string | nul
     return c;
   }
   c.reason = f.reason ?? scopeNote ?? null;
+  // HOTFIX-03 §8: un ratio provisional (perímetro observado con actividad pendiente) se muestra como Parcial con su cifra, sin colorearse como completo.
+  if (f.value !== null && f.status === "PARTIAL") { c.value = f.value; c.raw = f.value; }
   if (f.status === "PARTIAL") c.state = "PARTIAL";
   else if (f.code === "NOT_GROUP_LEVEL" || f.code === "SILVER_ON_DEMAND" || f.code === "PLAN_MIXED") c.state = "NA";
   else c.state = "NO_DATA";

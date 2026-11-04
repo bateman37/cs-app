@@ -1,13 +1,13 @@
 import { beforeEach, describe, expect, it } from "vitest";
 import { prisma } from "@/lib/db";
 import { parseQualityQuery } from "@/domain/quality-query";
-import { defaultQualityConfig } from "@/domain/quality-config";
+import { uncalibratedQualityConfig as defaultQualityConfig } from "@/domain/quality-config";
 import { activateDraft, saveDraft } from "@/server/pulse/config";
 import { computeQuality } from "@/server/quality/engine";
 import { evolutionIn } from "@/server/quality/detail";
 import { saveHealthCell } from "@/server/quality/health";
 import { readSnapshot, setSnapshotTestHook } from "@/server/analytics/snapshot";
-import { resetDatabase, makeUsers } from "./helpers";
+import { resetDatabase, makeUsers, useUncalibratedQuality } from "./helpers";
 import { addClient, addGroup, seedFinance, setUsers } from "./economia-helpers";
 import { batchOf, declare, seedTicket } from "./calidad-helpers";
 
@@ -21,6 +21,7 @@ let admin: { id: string };
 beforeEach(async () => {
   await resetDatabase();
   ({ admin } = await makeUsers());
+  await useUncalibratedQuality(admin.id);
 });
 const Q = (extra: Record<string, string> = {}) => parseQualityQuery({ fecha: "2026-10-31", modo: "FULL_MONTH", ...extra }, NOW).query;
 

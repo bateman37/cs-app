@@ -8,6 +8,7 @@ import { getFicha } from "./ficha";
 import { loadTickets, type EntityRef } from "./operational";
 import { MEASURES, type MeasureKey, type MonthRow } from "@/domain/ficha-series";
 import { readSnapshot } from "./snapshot";
+import { BAND_SHORT, economicBand, type BandFactors } from "@/domain/economic-bands";
 
 /**
  * CSV de resúmenes (CSAPP-06 §11). Mismo servicio, orden, periodo y estados que la pantalla: nunca la página renderizada ni ratios recalculados.
@@ -32,13 +33,19 @@ export function contextCells(q: AnalysisQuery, e: Ctx, scope: string): CsvValue[
 }
 
 const f = (x: Formula | null | undefined): CsvValue[] => [n(x?.value ?? null), x?.status ?? "", x?.reason ?? ""];
+/** Banda económica del €/jornada (misma escala que la pantalla), provisional e imputado: color + estado, nunca solo color. */
+let CSV_BANDS: { target: string; factors: BandFactors } = { target: "550", factors: ["0.6", "0.8", "1", "1.2"] };
+const bandCells = (x: Formula | null | undefined): CsvValue[] => {
+  const b = economicBand(x?.value ?? null, CSV_BANDS.target, CSV_BANDS.factors);
+  return [b ? BAND_SHORT[b] : "", x?.provisional ? "provisional" : "", x?.imputed ? "imputación anual prorrateada" : ""];
+};
 const periodCells = (p: PeriodSeries): CsvValue[] => [
   p.from, p.to, p.provisional ? "provisional" : "cerrado", p.validated ? "sí" : "no",
   n(p.hours.inPerimeter), n(p.revenue.value), p.revenue.status, n(p.revenue.known),
   ...f(p.perDay), ...f(p.deviationVsTarget), ...f(p.deviationVsPortfolio), ...f(p.deviationHours), n(p.targetHours.value),
-  p.users.stock.value === null ? null : String(p.users.stock.value), n(p.users.averageUsers), n(p.users.userMonths), ...f(p.perUserPerYear),
+  p.users.stock.value === null ? null : String(p.users.stock.value), n(p.users.averageUsers), n(p.users.userMonths), ...f(p.perUserPerYear), ...bandCells(p.perDay),
 ];
-const PERIOD_COLS = ["desde", "hasta", "estado_periodo", "validado", "horas", "ingreso_imputado_eur", "estado_ingreso", "ingreso_conocido_eur", "eur_jornada", "estado_ratio", "motivo_ratio", "desv_objetivo", "estado_desv_objetivo", "motivo_desv_objetivo", "desv_cartera", "estado_desv_cartera", "motivo_desv_cartera", "desv_horas", "estado_desv_horas", "motivo_desv_horas", "horas_objetivo", "usuarios_corte", "usuarios_medios", "usuarios_mes", "tarifa_usuario_anio", "estado_tarifa", "motivo_tarifa"];
+const PERIOD_COLS = ["desde", "hasta", "estado_periodo", "validado", "horas", "ingreso_imputado_eur", "estado_ingreso", "ingreso_conocido_eur", "eur_jornada", "estado_ratio", "motivo_ratio", "desv_objetivo", "estado_desv_objetivo", "motivo_desv_objetivo", "desv_cartera", "estado_desv_cartera", "motivo_desv_cartera", "desv_horas", "estado_desv_horas", "motivo_desv_horas", "horas_objetivo", "usuarios_corte", "usuarios_medios", "usuarios_mes", "tarifa_usuario_anio", "estado_tarifa", "motivo_tarifa", "banda_rentabilidad", "perimetro_cifra", "metodo_imputacion"];
 
 export type CsvResult = { filename: string; body: string; rows: number; stamp: string };
 
@@ -46,11 +53,12 @@ export type CsvResult = { filename: string; body: string; rows: number; stamp: s
 export async function portfolioCsv(actorId: string, query: AnalysisQuery): Promise<CsvResult> {
   const v = await getPortfolioAll(actorId, query);
   const ctx = v.economics;
+  CSV_BANDS = { target: ctx.settings.targetEurosPerDay, factors: ctx.settings.bandFactors };
   const header = [...CONTEXT_HEADER, "fila", "grupo_cliente", "id", "denominacion_bc", "estado_maestro", "soporte", "servidor", "complejidad", "producto", "cobertura_maestro", "periodo", ...PERIOD_COLS, "cobertura_cartera_grupos", "cobertura_cartera_completos", "grupos_afectados", "ingreso_sin_dedicacion_eur", "grupos_sin_dedicacion"];
   const rows: CsvValue[][] = [];
   const keys = Object.keys(PERIOD_NAME) as PeriodKey[];
   const sel = [query.support.length ? `soporte: ${query.support.map(label).join(" / ")}` : "", query.hosting.length ? `servidor: ${query.hosting.join(" / ")}` : ""].filter(Boolean).join("; ");
-  const scope = `grupos filtrados (${v.filteredGroups} de ${v.totalGroups})${sel ? ` · ${sel}` : ""}`;
+  const scope = `grupos filtrados (${v.filteredGroups} de ${v.totalGroups}) · estado: ${query.status}${sel ? ` · ${sel}` : ""}`;
   for (const k of keys) {
     const pf = ctx.portfolio?.[k];
     if (!pf) continue;
@@ -59,7 +67,7 @@ export async function portfolioCsv(actorId: string, query: AnalysisQuery): Promi
       ...contextCells(query, ctx, scope), "CARTERA", "(cartera filtrada)", "", "", "", "", "", "", "", "", PERIOD_NAME[k],
       p.from, p.to, p.provisional ? "provisional" : "cerrado", ctx.reference.validation.state === "VALIDATED" ? "sí" : "no",
       n(pf.hours), n(pf.revenue), pf.complete ? "AVAILABLE" : "PARTIAL", n(pf.revenue),
-      ...f(pf.perDay), ...f(pf.deviationVsTarget), n(null), "", "", n(null), "", "", n(null), v.totals[k].users, n(null), n(null), n(v.totals[k].tariff), v.totals[k].tariff === null ? "NOT_COMPUTABLE" : v.totals[k].tariffMissing > 0 ? "PARTIAL" : "AVAILABLE", v.totals[k].tariffMissing > 0 ? `${v.totals[k].tariffMissing} grupo(s) sin tarifa calculable no aportan` : "",
+      ...f(pf.perDay), ...f(pf.deviationVsTarget), n(null), "", "", n(null), "", "", n(null), v.totals[k].users, n(null), n(null), n(v.totals[k].tariff), v.totals[k].tariff === null ? "NOT_COMPUTABLE" : v.totals[k].tariffMissing > 0 ? "PARTIAL" : "AVAILABLE", v.totals[k].tariffMissing > 0 ? `${v.totals[k].tariffMissing} grupo(s) sin tarifa calculable no aportan` : "", ...bandCells(pf.perDay),
       String(pf.coverage.groups), String(pf.coverage.complete), pf.affected.map((a) => `${a.code}:${a.groups}`).join(" | "), n(pf.zeroHours.income), String(pf.zeroHours.count),
     ]);
   }
@@ -81,6 +89,7 @@ export async function fichaCsv(actorId: string, query: AnalysisQuery, ref: Entit
   const v = await getFicha(actorId, query, ref);
   if (!v) return null;
   const ctx = v.economics;
+  CSV_BANDS = { target: ctx.settings.targetEurosPerDay, factors: ctx.settings.bandFactors };
   const scope = `${ref.type === "group" ? "grupo" : ref.type === "client" ? "cliente" : "implantación"}: ${v.context.name}`;
   const base = (): CsvValue[] => [...contextCells(query, ctx, scope), v.context.ref.type, v.context.name, v.context.ref.id];
   const head = [...CONTEXT_HEADER, "tipo_ambito", "ambito", "id"];

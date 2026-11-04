@@ -1,5 +1,6 @@
 import { Prisma } from "@/generated/prisma/client";
 import { prisma } from "@/lib/db";
+import { LINK_LABEL, LINK_STATE_LABEL, LINK_SYSTEMS, type LinkState, type LinkSystem } from "@/domain/master-links";
 import { groupEffectiveActive, matchesEstado, clientEffectiveActive, type Estado } from "@/domain/estado";
 import { todayMadrid } from "@/domain/vigencia";
 import { recordAudit } from "@/server/audit";
@@ -12,11 +13,7 @@ import { adminTransaction } from "@/server/tx";
  * nueva ni un producto cartesiano. Una fila es un Grupo (sin Clientes, o como cabecera) o un Cliente de ese Grupo; la identidad de fila es el ID de la entidad, nunca su posición.
  * Cada sistema distingue Configurado · Sin informar · No aplica · En conflicto. Una sola lectura por conjuntos (sin consultas por fila).
  */
-export const LINK_SYSTEMS = ["WRIKE", "ZENDESK", "PAP", "SUPPORT", "HOSTING"] as const;
-export type LinkSystem = (typeof LINK_SYSTEMS)[number];
-export const LINK_LABEL: Record<LinkSystem, string> = { WRIKE: "Wrike", ZENDESK: "Zendesk", PAP: "PAP", SUPPORT: "Soporte", HOSTING: "Servidor" };
-export type LinkState = "CONFIGURED" | "MISSING" | "NOT_APPLICABLE" | "CONFLICT";
-export const LINK_STATE_LABEL: Record<LinkState, string> = { CONFIGURED: "Configurado", MISSING: "Sin informar", NOT_APPLICABLE: "No aplica", CONFLICT: "En conflicto" };
+export { LINK_SYSTEMS, LINK_LABEL, LINK_STATE_LABEL, type LinkSystem, type LinkState };
 
 export type MasterRow = {
   kind: "group" | "client";

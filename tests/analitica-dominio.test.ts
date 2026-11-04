@@ -96,18 +96,33 @@ describe("agregación de cartera", () => {
   });
   it.each([
     ["ingreso ausente", row("x", null, 4), "INCOME_UNKNOWN"],
-    ["servicio desconocido o conflictivo / elegibilidad pendiente", row("x", "1000", 4, "PARTIAL", "PERIMETER_PARTIAL"), "PERIMETER_PARTIAL"],
     ["filtro que recorta solo horas", row("x", "1000", 4, "NOT_COMPUTABLE", "HOURS_FILTER"), "HOURS_FILTER"],
-    ["Silver On Demand mensual", row("x", "1000", 4, "NOT_COMPUTABLE", "SILVER_ON_DEMAND"), "SILVER_ON_DEMAND"],
-  ])("%s: la cartera no se publica como completa y conserva componentes, afectados y cobertura", (_n, bad, code) => {
+  ])("%s: la media se calcula con el subconjunto comparable y se declara su alcance (HOTFIX-03 §8)", (_n, bad, code) => {
     const p = aggregatePortfolio([row("a", "1000", 10), bad], TARGET, DAY);
     expect(p.complete).toBe(false);
-    expect(p.perDay.value).toBeNull();
+    expect(p.perDay.value).toBe("800"); // ΣR/ΣH del subconjunto comparable (1 de 2 grupos): ya no queda vacía
     expect(p.perDay.status).toBe("PARTIAL");
-    expect(p.deviationVsTarget.value).toBeNull();
+    expect(p.perDay.reason).toContain("1/2 grupos");
+    expect(p.scope).toEqual({ used: 1, total: 2, provisional: 0 });
+    expect(p.deviationVsTarget.value).not.toBeNull();
     expect(p.affected.map((a) => a.code)).toEqual([code]);
     expect(p.coverage).toEqual({ groups: 2, complete: 1, blocked: 1 });
-    expect(p.knownSet).toMatchObject({ groups: 1, revenue: "1000", hours: "10", perDay: "800" }); // conjunto conocido: no es la cartera
+    expect(p.knownSet).toMatchObject({ groups: 1, revenue: "1000", hours: "10", perDay: "800" });
+  });
+  it("perímetro provisional: el grupo entra con sus horas observadas y la referencia se marca provisional (no completa)", () => {
+    const prov = { ...row("x", "1000", 4, "PARTIAL", "PERIMETER_PARTIAL"), provisional: true };
+    const p = aggregatePortfolio([row("a", "1000", 10), prov], TARGET, DAY);
+    expect(p.complete).toBe(false);
+    expect(p.scope).toEqual({ used: 2, total: 2, provisional: 1 });
+    expect(Number(p.perDay.value)).toBeCloseTo((2000 / 14) * 8, 6);
+    expect(p.perDay.status).toBe("PARTIAL");
+    expect(p.affected).toEqual([]);
+  });
+  it("Silver On Demand ya no bloquea (ECO 08 retirado): su ratio entra en la media completa", () => {
+    const p = aggregatePortfolio([row("a", "1000", 10), row("x", "1000", 4)], TARGET, DAY);
+    expect(p.complete).toBe(true);
+    expect(p.affected).toEqual([]);
+    expect(Number(p.perDay.value)).toBeCloseTo((2000 / 14) * 8, 6);
   });
   it("ningún grupo con ingreso: sin fuente, no cero; conjunto vacío: no calculable", () => {
     expect(aggregatePortfolio([row("a", null, 3)], TARGET, DAY).perDay.status).toBe("NO_SOURCE");

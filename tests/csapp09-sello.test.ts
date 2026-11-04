@@ -1,10 +1,10 @@
 import { beforeEach, describe, expect, it } from "vitest";
 import { prisma } from "@/lib/db";
-import { defaultQualityConfig } from "@/domain/quality-config";
+import { uncalibratedQualityConfig as defaultQualityConfig } from "@/domain/quality-config";
 import { readSnapshot } from "@/server/analytics/snapshot";
 import { readDataStamp } from "@/server/analytics/stamp";
 import { activateDraft, saveDraft } from "@/server/pulse/config";
-import { resetDatabase, makeUsers } from "./helpers";
+import { resetDatabase, makeUsers, useUncalibratedQuality } from "./helpers";
 import { addClient, addGroup, addZd, setUsers, serviceAssignment } from "./economia-helpers";
 import { batchOf, declare, seedBugLink, seedTicket } from "./calidad-helpers";
 
@@ -17,6 +17,7 @@ let admin: { id: string };
 beforeEach(async () => {
   await resetDatabase();
   ({ admin } = await makeUsers());
+  await useUncalibratedQuality(admin.id);
 });
 const stamp = async () => readSnapshot(admin.id, (tx) => readDataStamp(tx));
 

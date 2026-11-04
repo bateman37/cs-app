@@ -1,7 +1,7 @@
 "use client";
 
 import { ActionForm, SubmitButton, TextField } from "@/components/form-kit";
-import { LINK_STATE_LABEL, type LinkState, type LinkSystem } from "@/server/master-table";
+import { LINK_STATE_LABEL, type LinkState, type LinkSystem } from "@/domain/master-links";
 import { createGroupInlineAction, setLinkDecisionAction } from "./actions";
 
 /** Alta rápida de Grupo en la propia tabla (compacta, con Guardar). */

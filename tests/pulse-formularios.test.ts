@@ -1,6 +1,6 @@
 import { describe, expect, it } from "vitest";
 import { defaultPulseConfig, validatePulseConfig } from "@/domain/pulse-catalog";
-import { defaultQualityConfig, validateQualityConfig } from "@/domain/quality-config";
+import { uncalibratedQualityConfig as defaultQualityConfig, validateQualityConfig } from "@/domain/quality-config";
 import { buildPulseDraft, buildQualityDraft, formatAgeBands, parseAgeBands } from "@/server/pulse/forms";
 import { DomainError } from "@/server/errors";
 

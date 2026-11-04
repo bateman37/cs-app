@@ -39,13 +39,14 @@ describe("TAR RUN en el motor (12 × R_periodo / usuarios mes expuestos)", () =>
     const full = await run([g.id], { date: "2026-12-31" });
     expect(full.entities[0].periods.cum.perUserPerYear).toMatchObject({ value: "1200", numerator: "144000", denominator: "120", reason: null });
   });
-  it("Silver On Demand no se anualiza en un periodo parcial, pero sí con doce meses completos", async () => {
+  it("Silver On Demand (ECO 08 retirado como veto, HOTFIX-03): la tarifa del periodo parcial sí se calcula con el equivalente anual; con doce meses completos, también", async () => {
     const g = await addGroup("G");
     await seedFinance(admin.id, "SOPORTE", 2026, [{ groupId: g.id, income: "12000" }]);
     await setUsers(admin.id, { groupId: g.id }, 2026, Array(12).fill(10));
     await prisma.serviceTerm.create({ data: { attribute: "SUPPORT", value: "SILVER_ON_DEMAND", groupId: g.id } });
     const part = await run([g.id]);
-    expect(part.entities[0].periods.cum.perUserPerYear).toMatchObject({ value: null, code: "SILVER_ON_DEMAND" });
+    expect(part.entities[0].periods.cum.perUserPerYear.value).not.toBeNull();
+    expect(part.entities[0].periods.cum.perUserPerYear.code).not.toBe("SILVER_ON_DEMAND");
     const full = await run([g.id], { date: "2026-12-31" });
     expect(full.entities[0].periods.cum.perUserPerYear.value).toBe("1200");
   });
@@ -104,7 +105,7 @@ describe("series mensuales: estado real y datos propios del comparable", () => {
 });
 
 describe("cartera incompleta: no se elude la restricción de las filas mediante el total", () => {
-  it("un grupo con horas sin servicio (parcial) impide publicar la cartera, que devuelve componentes, afectados y cobertura; las desviaciones contra cartera tampoco", async () => {
+  it("un grupo con horas sin servicio (perímetro sin horas observables) queda fuera de la media comparable, que se declara «1/2 grupos»; los demás conservan su desviación (HOTFIX-03 §8)", async () => {
     const [a, b] = [await addGroup("A"), await addGroup("B")];
     await seedFinance(admin.id, "SOPORTE", 2026, [{ groupId: a.id, income: "12000" }, { groupId: b.id, income: "12000" }]);
     await supportTicket();
@@ -113,14 +114,31 @@ describe("cartera incompleta: no se elude la restricción de las filas mediante 
     const r = await run([a.id, b.id], { date: "2026-01-31", mode: "FULL_MONTH" });
     const p = r.portfolio!.month;
     expect(p.complete).toBe(false);
-    expect(p.perDay).toMatchObject({ value: null, status: "PARTIAL", numerator: "2000" });
-    expect(p.affected).toEqual([expect.objectContaining({ code: "PERIMETER_PARTIAL", groups: 1 })]);
+    expect(p.perDay).toMatchObject({ value: "800", status: "PARTIAL", numerator: "1000" });
+    expect(p.scope).toEqual({ used: 1, total: 2, provisional: 0 });
+    expect(p.perDay.reason).toContain("1/2 grupos");
     expect(p.coverage).toEqual({ groups: 2, complete: 1, blocked: 1 });
     expect(p.knownSet).toMatchObject({ groups: 1, revenue: "1000", hours: "10", perDay: "800" });
     const rowA = r.entities.find((x) => x.name === "A")!.periods.month;
     expect(rowA.perDay.value).toBe("800");
-    expect(rowA.deviationVsPortfolio).toMatchObject({ value: null, code: "PORTFOLIO_PARTIAL", status: "PARTIAL" });
-    expect(p.deviationVsTarget.value).toBeNull();
+    expect(rowA.deviationVsPortfolio?.value).toBe("0"); // la desviación de A ya no queda vacía
+    const rowB = r.entities.find((x) => x.name === "B")!.periods.month;
+    expect(rowB.perDay).toMatchObject({ value: null, status: "PARTIAL", code: "PERIMETER_PARTIAL" }); // sin horas observables: permanece «—» con causa
+    expect(p.deviationVsTarget.value).not.toBeNull();
+  });
+  it("un grupo con horas del servicio Y horas sin servicio publica el ratio de las horas observadas como PROVISIONAL, coherente con la columna Horas", async () => {
+    const g = await addGroup("G");
+    await seedFinance(admin.id, "SOPORTE", 2026, [{ groupId: g.id, income: "12000" }]);
+    await supportTicket();
+    await hours(g.id, "2026-01-10", 10);
+    await addZd({ batchId: bid, date: "2026-01-11", minutes: 600, groupId: g.id }); // 10 h sin servicio: perímetro incierto
+    const r = await run([g.id], { date: "2026-01-31", mode: "FULL_MONTH" });
+    const m = r.entities[0].periods.month;
+    expect(m.hours.inPerimeter).toBe("10");
+    expect(m.perDay).toMatchObject({ value: "800", status: "PARTIAL", provisional: true, code: "PERIMETER_PARTIAL", denominator: "10" });
+    expect(m.deviationVsTarget).toMatchObject({ status: "PARTIAL", provisional: true });
+    expect(m.perDay.reason).toContain("provisional");
+    expect(r.portfolio!.month.scope).toEqual({ used: 1, total: 1, provisional: 1 });
   });
   it("ingreso ausente en un grupo (conjunto sin fuente de su categoría) → cartera parcial, no cero", async () => {
     const [a, b] = [await addGroup("A"), await addGroup("B")];
@@ -155,21 +173,26 @@ describe("cartera incompleta: no se elude la restricción de las filas mediante 
 });
 
 describe("Silver On Demand por vigencia del periodo valorado", () => {
-  it("el mes anterior a un cambio de plan sigue habilitado; el mes del cambio mezcla tramos y el posterior queda restringido", async () => {
+  it("Silver On Demand y los planes mixtos usan la misma imputación anual prorrateada en los cinco periodos y se rotulan como imputación (ECO 08 retirado)", async () => {
     const g = await addGroup("G");
     await seedFinance(admin.id, "SOPORTE", 2026, [{ groupId: g.id, income: "12000" }]);
     await supportTicket();
     await hours(g.id, "2026-01-10", 10);
+    await hours(g.id, "2026-06-10", 10);
+    await hours(g.id, "2026-07-10", 10);
     await prisma.serviceTerm.create({ data: { attribute: "SUPPORT", value: "GOLD", groupId: g.id, validTo: new Date("2026-06-10T00:00:00Z") } });
     await prisma.serviceTerm.create({ data: { attribute: "SUPPORT", value: "SILVER_ON_DEMAND", groupId: g.id, validFrom: new Date("2026-06-10T00:00:00Z") } });
     const r = await run([g.id], { date: "2026-06-30", mode: "FULL_MONTH", detailFor: g.id });
     const m = r.entities[0].monthly;
-    expect(m[0].perDay.status).toBe("AVAILABLE"); // enero con Gold: no se restringe retrospectivamente por el plan actual
-    expect(m[5].perDay).toMatchObject({ value: null, code: "PLAN_MIXED" }); // junio mezcla Gold y Silver On Demand
-    expect(m[5].revenue.value).toBe("1000"); // ingreso conocido visible con la limitación
-    expect(r.entities[0].periods.cum.perDay.code ?? "").not.toMatch(/SILVER|PLAN/); // el CUM sí se calcula
+    expect(m[0].perDay.status).toBe("AVAILABLE"); // enero con Gold
+    expect(m[0].perDay.imputed).toBeUndefined();
+    expect(m[5].perDay).toMatchObject({ value: "800", status: "AVAILABLE", imputed: true }); // junio mezcla Gold y Silver On Demand: calculable, rotulado como imputación
+    expect(m[5].perDay.reason).toContain("Imputación económica anual prorrateada");
+    expect(m[5].revenue.value).toBe("1000");
+    expect(r.entities[0].periods.cum.perDay.code ?? "").not.toMatch(/SILVER|PLAN/);
     const jul = await run([g.id], { date: "2026-07-31", mode: "FULL_MONTH" });
-    expect(jul.entities[0].periods.month.perDay.code).toBe("SILVER_ON_DEMAND");
+    expect(jul.entities[0].periods.month.perDay).toMatchObject({ value: "800", imputed: true });
+    expect(jul.entities[0].periods.prevMonth.perDay.value).toBe("800");
   });
 });
 

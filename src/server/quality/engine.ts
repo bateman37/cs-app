@@ -5,7 +5,7 @@ import { PMO_CUTOFF } from "@/domain/zendesk";
 import { PROFILE_KEYS, referenceMembership, type PulseReference, type CriteriaMeta } from "@/domain/pulse-catalog";
 import { percentileInc, sortDec } from "@/domain/pulse-stats";
 import {
-  INDICATOR_KEYS, INDICATOR_NAME, METRIC_UNIT, UNIT_LABEL, QUALITY_COHORT_REFERENCE, QUALITY_COHORT_REFERENCE_ALL, ageDays, backlogUnitFor, evaluateEntity, hoursPerUserMonth, isAged, metricUnitFor,
+  INDICATOR_KEYS, INDICATOR_NAME, METRIC_UNIT, UNIT_LABEL, QUALITY_COHORT_REFERENCE, QUALITY_COHORT_REFERENCE_ALL, ageDays, backlogUnitFor, evaluateEntity, hoursPerUserMonth, isAged, metricUnitFor, perUserRate,
   type ComponentInput, type EntityEvaluation, type EntityInput, type IndicatorKey, type QScope, type QualityConfig,
 } from "@/domain/quality-config";
 import { chooseSnapshot, coverageOf, type Coverage, type CoverageSource, type Declaration, type SnapshotChoice } from "@/domain/quality-coverage";
@@ -245,7 +245,7 @@ export function evaluateMonth(f: MonthFacts, q: QualityQuery, cfg: QualityConfig
   // HOTFIX-03 §11: «total» usa el numerador observado sin denominador; «usuario» divide por la exposición (por UN usuario, no por 100).
   const measure = q.measure ?? "usuario";
   const isTotal = measure === "total";
-  const perUser = (n: number | Dec, um: Dec | null): Dec | null => (um === null || um.sign() <= 0 ? null : (typeof n === "number" ? Dec.int(n) : n).div(um));
+  const perUser = perUserRate;
 
   type Raw = { input: Omit<EntityInput, "scope" | "health">; explain: Record<IndicatorKey, Explain>; users: Users };
   const rawOf = new Map<string, Raw>();

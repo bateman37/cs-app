@@ -101,3 +101,6 @@ QLT 27. Lo técnico sale del recorrido principal: ya no hay tarjeta de contexto 
 QLT 28. CSV = pantalla: `tabla=cartera` exporta todas las entidades del conjunto filtrado por Soporte/Servidor (columnas de contexto `filtro_soporte` y `filtro_servidor`, y por indicador valor, unidad, color, estado, pesos y `observado`); `tabla=health` la matriz de esa selección (o del objeto `sel`); `tabla=ficha` el objeto abierto.
 
 Confirmado, propuesto y activado: **confirmados** los pesos iguales 1/6 y la regla de redistribución sin Health; **propuestas** (no aceptadas) mapeo de Client Health, selección de perfiles de Dedicación, «peor señal», plantilla del global, umbrales y política de fotografía anterior; **activado** solo lo que el Administrador elija en Administración › Configuración. No se activan datos de ejemplo para que haya colores.
+
+
+**HOTFIX-03.** Interruptor Por usuario / Total, referencia propia (P25/P75, muestra mínima 5) y configuración inicial operativa, editable y versionada: las reglas aquí marcadas como «propuestas a calibrar» que HOTFIX-03 define se inicializan activas. Ver [HOTFIX-03](../arquitectura/hotfix03-gestion-estado-calculos-calidad.md).

@@ -129,9 +129,9 @@ function SumRow({ f, nav, e, k, title, titleAttr, ctx, withEco }: { f: FichaView
   return (
     <tr className={ctx ? "fc-ctx" : undefined}>
       <th scope="row" title={titleAttr}>{title}{k === "month" && p.provisional && !ctx ? <span className="fc-prov">Provisional</span> : null}</th>
-      <td>{hasEco ? <Amt f={p.perDay} /> : <Na reason={p.perDay.reason} />}</td>
+      <td>{hasEco ? <Amt f={p.perDay} band={{ target: f.economics.settings.targetEurosPerDay, factors: f.economics.settings.bandFactors }} /> : <Na reason={p.perDay.reason} />}</td>
       <td>{hasEco ? <Dev f={p.deviationVsTarget} /> : <Na reason={p.deviationVsTarget.reason} />}</td>
-      <td>{hasEco ? <Amt f={prevPerDay} /> : <Na reason={prevPerDay?.reason ?? p.perDay.reason} />}</td>
+      <td>{hasEco ? <Amt f={prevPerDay} band={{ target: f.economics.settings.targetEurosPerDay, factors: f.economics.settings.bandFactors }} /> : <Na reason={prevPerDay?.reason ?? p.perDay.reason} />}</td>
       <td>{ctx ? num(p.hours.inPerimeter, 2) : <Link href={hours} title="Detalle de las actividades que componen las horas">{num(p.hours.inPerimeter, 2)}</Link>}</td>
       <td>{hasEco ? <Amt f={p.targetHours} /> : <Na reason={p.targetHours.reason} />}</td>
       <td>{hasEco ? <Dev f={p.deviationHours} /> : <Na reason={p.deviationHours.reason} />}</td>

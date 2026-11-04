@@ -27,3 +27,9 @@ export async function counts() {
   ]);
   return { groups, clients, impls, identities, terms, milestones, audits };
 }
+
+/** Persiste la revisión 1 de Calidad con la configuración «de fábrica» anterior a HOTFIX-03 (todo sin calibrar): las pruebas del evaluador que verifican el comportamiento «sin calibrar» la usan de forma explícita. */
+export async function useUncalibratedQuality(adminId: string) {
+  const { uncalibratedQualityConfig } = await import("@/domain/quality-config");
+  await prisma.configRevision.create({ data: { family: "QUALITY", revisionNo: 1, payload: uncalibratedQualityConfig() as never, reason: "Prueba: configuración sin calibrar (anterior a HOTFIX-03)", kind: "INITIAL", activatedById: adminId } });
+}

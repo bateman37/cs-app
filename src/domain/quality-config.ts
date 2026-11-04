@@ -392,6 +392,11 @@ export function flowRate(altas: number, userMonths: Dec | null): Dec | null {
   if (userMonths === null || userMonths.sign() <= 0) return null;
   return Dec.int(altas).mulInt(100).div(userMonths);
 }
+/** Por UN usuario (HOTFIX-03 §11): conteo (o stock) ÷ exposición de usuarios. Sin exposición o con exposición cero no se divide ni se inventa un cero: null. Dos PAP con 10 usuarios·mes → 0,2. */
+export function perUserRate(count: number | Dec, userExposure: Dec | null): Dec | null {
+  if (userExposure === null || userExposure.sign() <= 0) return null;
+  return (typeof count === "number" ? Dec.int(count) : count).div(userExposure);
+}
 /** Tasa por 100 usuarios·mes de un conteo de eventos (PAP, escalados, bugs). */
 export const ratePer100UserMonths = flowRate;
 /** Horas por usuario·mes. */
@@ -648,7 +653,24 @@ export function defaultQualityConfig(): QualityConfig {
   };
 }
 
-/** Configuración «de fábrica» anterior a HOTFIX-03: todo sin calibrar. Solo sirve para reconocer una revisión inicial que nadie calibró. */
+/**
+ * Configuración «de fábrica» anterior a HOTFIX-03: todo sin calibrar y la composición/global sin elegir. Ya NO es la configuración por defecto: sirve para reconocer una revisión
+ * inicial que nadie calibró (`isLegacyUncalibrated`) y para probar el comportamiento «sin calibrar» del evaluador.
+ */
+export function uncalibratedQualityConfig(): QualityConfig {
+  const cfg = defaultQualityConfig();
+  for (const k of INDICATOR_KEYS) for (const sc of QUALITY_SCOPES) cfg.indicators[k].rules[sc] = { ...emptyRule(k === "HEALTH" ? "HIGHER_BETTER" : "LOWER_BETTER", METRIC_UNIT[k]), ...(k === "HEALTH" ? { method: "CATEGORICAL" as const } : {}) };
+  cfg.incidents.backlog = { INCIDENT: emptyRuleSet("LOWER_BETTER", BACKLOG_UNIT), PROBLEM: emptyRuleSet("LOWER_BETTER", BACKLOG_UNIT) };
+  cfg.incidents.ageBands = [];
+  cfg.incidents.concerningDays = { incident: null, problem: null };
+  cfg.incidents.worstOfFlowAndBacklog = false;
+  cfg.snapshotPolicy = { mode: "EXACT", maxDays: null };
+  cfg.health = { mapping: { ...PROPOSED_HEALTH_MAPPING }, confirmed: false };
+  cfg.dedication = { profiles: [], selectionConfirmed: false };
+  cfg.global = { template: "WEIGHTED_SEVERITY", enabled: false, severity: { ...PROPOSED_SEVERITY }, greenMax: null, yellowMax: null };
+  return cfg;
+}
+
 export function isLegacyUncalibrated(cfg: QualityConfig): boolean {
   const rules = [...INDICATOR_KEYS.filter((k) => k !== "HEALTH").flatMap((k) => QUALITY_SCOPES.map((sc) => cfg.indicators[k].rules[sc])), ...(["INCIDENT", "PROBLEM"] as const).flatMap((t) => QUALITY_SCOPES.map((sc) => cfg.incidents.backlog[t][sc]))];
   return rules.every((r) => r.calibration === "SIN_CALIBRAR") && !cfg.global.enabled && !cfg.dedication.selectionConfirmed && !cfg.health.confirmed && cfg.incidents.concerningDays.incident === null && cfg.incidents.concerningDays.problem === null && cfg.snapshotPolicy.mode === "EXACT" && !cfg.incidents.worstOfFlowAndBacklog;

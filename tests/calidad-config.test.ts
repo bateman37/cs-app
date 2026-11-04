@@ -2,14 +2,14 @@ import { beforeEach, describe, expect, it } from "vitest";
 import { prisma } from "@/lib/db";
 import { Dec } from "@/domain/finance";
 import {
-  INDICATOR_KEYS, PROPOSED_SEVERITY, defaultQualityConfig, effectiveWeights, evaluateGlobal, evaluateRule, healthColor, isAged, parsePercentCents, validateAgeBands,
+  INDICATOR_KEYS, PROPOSED_SEVERITY, uncalibratedQualityConfig as defaultQualityConfig, effectiveWeights, evaluateGlobal, evaluateRule, healthColor, isAged, parsePercentCents, validateAgeBands,
   validateQualityConfig, validateRule, weightUnits, worstSignal, backlogStockRate, flowRate, percentileAt,
   type Availability, type Color, type IndicatorKey, type QualityConfig, type ThresholdRule, type GlobalTemplate,
 } from "@/domain/quality-config";
 import { activateDraft, discardDraft, getActive, getDraft, getManifest, listRevisions, rollbackTo, saveDraft } from "@/server/pulse/config";
 import { readDataStamp } from "@/server/analytics/stamp";
 import { defaultPulseConfig } from "@/domain/pulse-catalog";
-import { resetDatabase, makeUsers } from "./helpers";
+import { resetDatabase, makeUsers, useUncalibratedQuality } from "./helpers";
 
 const D = (v: string | number) => Dec.parse(String(v)) as Dec;
 const custom = (v: number[]) => ({ mode: "CUSTOM" as const, custom: Object.fromEntries(INDICATOR_KEYS.map((k, i) => [k, String(v[i])])) as Record<IndicatorKey, string> });
@@ -186,6 +186,7 @@ let reader: { id: string };
 beforeEach(async () => {
   await resetDatabase();
   ({ admin, reader } = await makeUsers());
+  await useUncalibratedQuality(admin.id);
 });
 const withWeights = (v: number[]): QualityConfig => ({ ...defaultQualityConfig(), weights: custom(v) });
 

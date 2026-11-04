@@ -1,6 +1,6 @@
 import { prisma } from "@/lib/db";
 import { defaultPulseConfig } from "@/domain/pulse-catalog";
-import { defaultQualityConfig, emptyRule, type QualityConfig } from "@/domain/quality-config";
+import { uncalibratedQualityConfig as defaultQualityConfig, emptyRule, type QualityConfig } from "@/domain/quality-config";
 import { STANDARD_CAUSE } from "@/domain/zendesk";
 import { activateDraft, saveDraft } from "@/server/pulse/config";
 import { addClient, addGroup, addZd, setUsers } from "./economia-helpers";

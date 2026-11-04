@@ -2,14 +2,14 @@ import { beforeEach, describe, expect, it } from "vitest";
 import { prisma } from "@/lib/db";
 import { Dec } from "@/domain/finance";
 import { parseQualityQuery } from "@/domain/quality-query";
-import { defaultQualityConfig, type QualityConfig, type IndicatorKey } from "@/domain/quality-config";
+import { uncalibratedQualityConfig as defaultQualityConfig, type QualityConfig, type IndicatorKey } from "@/domain/quality-config";
 import { defaultPulseConfig } from "@/domain/pulse-catalog";
 import { STANDARD_CAUSE } from "@/domain/zendesk";
 import { computeQuality, getQuality } from "@/server/quality/engine";
 import { activateDraft, saveDraft } from "@/server/pulse/config";
 import { saveHealthCell, getHealthMatrix } from "@/server/quality/health";
 import { readSnapshot } from "@/server/analytics/snapshot";
-import { resetDatabase, makeUsers } from "./helpers";
+import { resetDatabase, makeUsers, useUncalibratedQuality } from "./helpers";
 import { addClient, addGroup, addTicket, fakeBatch, setUsers, tkey } from "./economia-helpers";
 import { batchOf, declare, seedBugLink, seedPap, seedTicket } from "./calidad-helpers";
 
@@ -23,6 +23,7 @@ const NOW = new Date("2026-11-02T09:00:00Z");
 beforeEach(async () => {
   await resetDatabase();
   ({ admin, reader } = await makeUsers());
+  await useUncalibratedQuality(admin.id);
 });
 const Q = (extra: Record<string, string> = {}) => parseQualityQuery({ fecha: "2026-10-31", modo: "FULL_MONTH", ...extra }, NOW).query;
 const run = (extra: Record<string, string> = {}, o: Parameters<typeof getQuality>[2] = {}) => getQuality(admin.id, Q(extra), { now: NOW, ...o });

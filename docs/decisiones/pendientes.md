@@ -61,3 +61,10 @@ Decisiones concretas pendientes, con su efecto y la pantalla o el documento prop
 | Aceptación funcional con datos reales y prueba en Windows | Dennis / IT | Cierra el [registro de aceptación](../validacion/registro-aceptacion.md) | Registro de aceptación |
 
 Propuestas técnicas de CSAPP-10 (ajustables, no aceptadas): umbrales de salud (latido vivo < 45 s, sin avance 15 min, cola desatendida 5 min), tiempo máximo de cierre ordenado (120 s), periodo máximo de un informe del puente de conciliación (debe coincidir con uno de los cinco periodos de las pantallas).
+
+
+## CSAPP-HOTFIX-03 (cambios de criterio respecto a propuestas anteriores)
+
+- **ECO 08 / Silver On Demand**: deja de ser un veto técnico. Para esta propuesta, Silver On Demand y los Grupos mixtos usan la **misma imputación anual prorrateada** (anual/12 × días/días del mes), rotulada como imputación económica y no como facturación mensual real. Sustituye la propuesta anterior; sigue pendiente de aceptación manual de Dennis como método definitivo. Ver [HOTFIX-03](../arquitectura/hotfix03-gestion-estado-calculos-calidad.md).
+- **Calidad**: el perfil inicial (percentiles P25/P75, muestra mínima 5, global 0,25/0,50, edades 7/30 días, fotografía ≤7 días, Dedicación CS N1/CS N2/PMO N3) **ya no está «por calibrar»**: se instala como configuración inicial HOTFIX-03, editable y versionada. No es un benchmark científico; Dennis puede ajustarla en Administración.
+- Siguen sin aceptar: ZDT 11–13, ZTM 06–08, la lista de origen PAP, los estados de bugs y el signo de «Diferencia».

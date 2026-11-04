@@ -3,14 +3,14 @@ import { createElement } from "react";
 import { renderToStaticMarkup } from "react-dom/server";
 import { prisma } from "@/lib/db";
 import { parseQualityQuery, qualityToParams, DEFAULT_QUALITY_QUERY } from "@/domain/quality-query";
-import { defaultQualityConfig, INDICATOR_KEYS, type IndicatorKey } from "@/domain/quality-config";
+import { uncalibratedQualityConfig as defaultQualityConfig, INDICATOR_KEYS, type IndicatorKey } from "@/domain/quality-config";
 import { KPI_ACCESS_NAME } from "@/domain/quality-kpi";
 import { getQuality } from "@/server/quality/engine";
 import { getKpiSection } from "@/server/quality/sections";
 import { qualityCsv } from "@/server/quality/export";
 import { getHealthMatrix, saveHealthCell } from "@/server/quality/health";
 import { activateDraft, saveDraft, getActive } from "@/server/pulse/config";
-import { resetDatabase, makeUsers } from "./helpers";
+import { resetDatabase, makeUsers, useUncalibratedQuality } from "./helpers";
 import { addClient, addGroup, setUsers, tkey } from "./economia-helpers";
 import { batchOf, declare, seedBugLink, seedPap, seedTicket } from "./calidad-helpers";
 
@@ -24,6 +24,7 @@ const NOW = new Date("2026-11-02T09:00:00Z");
 beforeEach(async () => {
   await resetDatabase();
   ({ admin, reader } = await makeUsers());
+  await useUncalibratedQuality(admin.id);
 });
 const Q = (extra: Record<string, string> = {}) => parseQualityQuery({ fecha: "2026-10-31", modo: "FULL_MONTH", ...extra }, NOW).query;
 const run = (extra: Record<string, string> = {}, o: Parameters<typeof getQuality>[2] = {}) => getQuality(admin.id, Q(extra), { now: NOW, ...o });
@@ -60,10 +61,12 @@ describe("parámetros retirados: no filtran en secreto", () => {
     const w = await world();
     await seedTicket(w.tb.id, { id: "T1", org: "701", type: "incident", created: "2026-10-05", observedOn: "2026-10-31" });
     const clean = await run();
-    const old = { q: "Atl", servicio: "TOTAL", complejidad: "ALTA", producto: "Vincle", estado: "inactivos", cobertura: "parcial", tam: "25", color: "green", alojamiento: "CLOUD", revision: "3", pestana: "pap", bloques: "mes" };
+    const old = { q: "Atl", servicio: "TOTAL", complejidad: "ALTA", producto: "Vincle", cobertura: "parcial", tam: "25", color: "green", alojamiento: "CLOUD", revision: "3", pestana: "pap", bloques: "mes" };
     const parsed = parseQualityQuery({ fecha: "2026-10-31", modo: "FULL_MONTH", ...old }, NOW);
-    expect(parsed.obsolete.sort()).toEqual(["alojamiento", "bloques", "cobertura", "color", "complejidad", "estado", "pestana", "producto", "q", "revision", "servicio", "tam"].sort());
-    expect(parsed.query.base).toMatchObject({ q: "", support: [], hosting: [], complexity: [], product: "", status: "todos", coverage: "todas", service: "SOPORTE", pageSize: 100 });
+    expect(parsed.obsolete.sort()).toEqual(["alojamiento", "bloques", "cobertura", "color", "complejidad", "pestana", "producto", "q", "revision", "servicio", "tam"].sort());
+    expect(parsed.query.base).toMatchObject({ q: "", support: [], hosting: [], complexity: [], product: "", status: "activos", coverage: "todas", service: "SOPORTE", pageSize: 100 });
+    // HOTFIX-03 §7: `estado` ya no es un parámetro retirado: es explícito, válido y se conserva en la URL.
+    expect(parseQualityQuery({ estado: "inactivos" }, NOW).obsolete).not.toContain("estado");
     const dirty = await run(old);
     expect(dirty.rows.map((r) => r.id)).toEqual(clean.rows.map((r) => r.id));
     expect(dirty.filteredEntities).toBe(clean.filteredEntities);
@@ -83,7 +86,7 @@ describe("parámetros retirados: no filtran en secreto", () => {
   });
   it("valores no válidos de los segmentadores se descartan y se reportan; los enlaces antiguos vista=health llegan al apartado de Client Health", () => {
     const p = parseQualityQuery({ soporte: "GOLD,ZINC", servidor: "CLOUD,NUBE", vista: "health" }, NOW);
-    expect(p.query.filters).toEqual({ soporte: ["GOLD"], servidor: ["CLOUD"] });
+    expect(p.query.filters).toEqual({ soporte: ["GOLD"], servidor: ["CLOUD"], estado: "activos" });
     expect(p.invalid).toEqual(expect.arrayContaining(["soporte", "servidor"]));
     expect(p.query.kpi).toBe("HEALTH");
     expect(parseQualityQuery({ vista: "backlog" }, NOW).query.kpi).toBe("INCIDENTS_PROBLEMS");

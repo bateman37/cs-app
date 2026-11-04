@@ -71,7 +71,7 @@ describe("contrato de consulta", () => {
   });
   it("los valores iniciales son hoy en Madrid, a fecha de corte, SOPORTE y la última configuración (sin fechas fijas)", () => {
     const q = parseAnalysisQuery({}, new Date("2031-03-05T23:30:00Z")).query; // 00:30 del 06/03 en Madrid
-    expect(q).toMatchObject({ date: "2031-03-06", mode: "CUTOFF", service: "SOPORTE", revision: null, status: "todos" });
+    expect(q).toMatchObject({ date: "2031-03-06", mode: "CUTOFF", service: "SOPORTE", revision: null, status: "activos" });
   });
 });
 
@@ -101,7 +101,37 @@ describe("Comparativa: cartera filtrada", () => {
     expect((await getPortfolio(admin.id, Q({ q: "BET" }))).rows.map((r) => r.meta.name)).toEqual(["Beta"]);
     await prisma.clientGroup.update({ where: { id: w.C.id }, data: { isActive: false } });
     expect((await getPortfolio(admin.id, Q({ estado: "inactivos" }))).rows.map((r) => r.meta.name)).toEqual(["Gamma"]);
-    expect((await getPortfolio(admin.id, Q())).filteredGroups).toBe(3); // por defecto incluye todos los estados; un inactivo sigue consultable
+    expect((await getPortfolio(admin.id, Q())).filteredGroups).toBe(2); // HOTFIX-03: el predeterminado es Activos
+    expect((await getPortfolio(admin.id, Q({ estado: "todos" }))).filteredGroups).toBe(3); // un inactivo sigue consultable en Todos
+  });
+
+  it("estado efectivo (HOTFIX-03 §7): Grupo mixto en Activos con sus cifras completas; «Activos + Silver» se justifica en un Cliente ACTIVO; todos sus Clientes inactivos → Inactivos", async () => {
+    const w = await world();
+    await prisma.serviceTerm.create({ data: { attribute: "SUPPORT", value: "GOLD", clientId: w.A1.id } });
+    await prisma.serviceTerm.create({ data: { attribute: "SUPPORT", value: "SILVER_RECURRENTE", clientId: w.A2.id } });
+    await tk(w, { ticketId: "T1", org: "9001" });
+    await addZd({ batchId: bid, date: "2026-06-10", minutes: 600, groupId: w.A.id, clientId: w.A1.id, ticketId: "T1" });
+    await addZd({ batchId: bid, date: "2026-06-11", minutes: 300, groupId: w.A.id, ticketId: "T1" });
+    const before = await getPortfolio(admin.id, Q());
+    const alfaBefore = before.rows.find((r) => r.meta.name === "Alfa")!;
+    // El hijo Silver (A2) pasa a inactivo: el Grupo sigue en Activos (le queda A1 activo) y sus cifras son las del Grupo completo.
+    await prisma.client.update({ where: { id: w.A2.id }, data: { isActive: false } });
+    const mixed = await getPortfolio(admin.id, Q());
+    const alfa = mixed.rows.find((r) => r.meta.name === "Alfa")!;
+    expect(alfa.meta.effectiveActive).toBe(true);
+    expect(alfa.meta.externalClients).toEqual({ total: 2, active: 1 });
+    expect(alfa.periods.month.hours.inPerimeter).toBe(alfaBefore.periods.month.hours.inPerimeter);
+    expect(alfa.periods.month.revenue.value).toBe(alfaBefore.periods.month.revenue.value);
+    // «Activos + Silver Recurrente»: su único hijo Silver está inactivo → el Grupo NO entra; con Todos, sí; con Inactivos tampoco (el Grupo es activo).
+    expect((await getPortfolio(admin.id, Q({ soporte: "SILVER_RECURRENTE" }))).rows.map((r) => r.meta.name)).toEqual([]);
+    expect((await getPortfolio(admin.id, Q({ soporte: "SILVER_RECURRENTE", estado: "todos" }))).rows.map((r) => r.meta.name)).toEqual(["Alfa"]);
+    expect((await getPortfolio(admin.id, Q({ soporte: "GOLD" }))).rows.map((r) => r.meta.name)).toContain("Alfa");
+    // Todos los Clientes externos de Beta inactivos → Beta es inactivo para las listas (conserva su estado explícito).
+    await prisma.client.update({ where: { id: w.B1.id }, data: { isActive: false } });
+    expect((await getPortfolio(admin.id, Q())).rows.map((r) => r.meta.name)).not.toContain("Beta");
+    const inact = await getPortfolio(admin.id, Q({ estado: "inactivos" }));
+    expect(inact.rows.map((r) => r.meta.name)).toContain("Beta");
+    expect(inact.rows.find((r) => r.meta.name === "Beta")!.meta.isActive).toBe(true);
   });
 
   it("la media filtrada no cambia con orden ni página y cambia con el filtro; los nulos no se ordenan como ceros", async () => {

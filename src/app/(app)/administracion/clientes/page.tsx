@@ -3,7 +3,8 @@ import Link from "next/link";
 import { requirePageUser } from "@/lib/session";
 import { first, qs, type SearchParams } from "@/lib/format";
 import { ESTADO_LABEL, ESTADO_VALUES, parseEstado } from "@/domain/estado";
-import { loadMasterTable, LINK_STATE_LABEL, type MasterRow } from "@/server/master-table";
+import { loadMasterTable, type MasterRow } from "@/server/master-table";
+import { type LINK_STATE_LABEL } from "@/domain/master-links";
 import { formatDecimalEs } from "@/lib/money";
 import { SUPPORT_LABEL } from "@/domain/precarga-maestros";
 import { ToggleActive } from "./toggle-active";
@@ -32,7 +33,8 @@ export default async function ClientesTablaPage({ searchParams }: { searchParams
         <h1>Clientes y Grupos</h1>
         <p className="muted">Una fila por Grupo BC y por cada Cliente (organización Zendesk) que contiene. Los enlaces con Wrike, Zendesk y PAP se completan desde la propia fila; al guardar, lo ya cargado se atribuye solo.</p>
       </header>
-      <form className="mt-tools" method="get" action={BASE}>
+      <div className="mt-tools">
+      <form className="mt-filters" method="get" action={BASE}>
         <label className="field"><span>Buscar</span><input name="q" defaultValue={q} placeholder="Grupo, Cliente, ID Zendesk, Wrike o PAP" maxLength={100} /></label>
         <span className="chips-group" role="group" aria-label="Estado comercial">
           <span className="chips-title">Estado</span>
@@ -41,8 +43,9 @@ export default async function ClientesTablaPage({ searchParams }: { searchParams
         <label className="mt-check"><input type="checkbox" name="pendientes" value="1" defaultChecked={onlyPending} /> Solo con enlaces pendientes</label>
         {estado !== "activos" ? <input type="hidden" name="estado" value={estado} /> : null}
         <button className="btn btn-secondary" type="submit">Filtrar</button>
-        {isAdmin ? <NuevoGrupoInline /> : null}
       </form>
+      {isAdmin ? <NuevoGrupoInline /> : null}
+      </div>
       <p className="mt-sum" role="status">
         {t.totals.groups} {t.totals.groups === 1 ? "Grupo" : "Grupos"} · {t.totals.clients} {t.totals.clients === 1 ? "Cliente" : "Clientes"} · <strong>{t.totals.pendingRows}</strong> con enlaces pendientes · {t.totals.conflicts} con conflicto
         {t.unattributed.financeRows > 0 || Number(t.unattributed.hoursWithoutGroup) > 0 ? (

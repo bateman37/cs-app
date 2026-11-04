@@ -1,8 +1,9 @@
 .mt-page { width: 100%; }
 .mt-head h1 { margin: 0 0 0.25rem; }
 .mt-tools { display: flex; flex-wrap: wrap; gap: 0.5rem 1rem; align-items: flex-end; margin: 0.75rem 0; }
-.mt-tools .field { display: flex; flex-direction: column; font-size: 12px; gap: 2px; }
-.mt-tools input[name="q"] { min-width: 18rem; }
+.mt-filters { display: flex; flex-wrap: wrap; gap: 0.5rem 1rem; align-items: flex-end; }
+.mt-filters .field { display: flex; flex-direction: column; font-size: 12px; gap: 2px; }
+.mt-filters input[name="q"] { min-width: 18rem; }
 .mt-check { font-size: 13px; display: flex; align-items: center; gap: 0.3rem; }
 .mt-new { position: relative; margin-left: auto; }
 .mt-new > summary { list-style: none; cursor: pointer; display: inline-block; }
@@ -33,4 +34,4 @@
 .mt-conf { background: #fbd5d5; color: #7a0c0c; }
 .mt-links { white-space: nowrap; }
 .mt-cell .inline-form button, .mt-table td .inline-form button { font-size: 11px; padding: 0 0.35rem; }
-@media (max-width: 700px) { .mt-sticky { min-width: 9rem; max-width: 11rem; } .mt-tools input[name="q"] { min-width: 10rem; } }
+@media (max-width: 700px) { .mt-sticky { min-width: 9rem; max-width: 11rem; } .mt-filters input[name="q"] { min-width: 10rem; } }

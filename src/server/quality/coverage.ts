@@ -2,7 +2,7 @@ import { z } from "zod";
 import { Prisma } from "@/generated/prisma/client";
 import { prisma } from "@/lib/db";
 import { isIsoDate, todayMadrid } from "@/domain/vigencia";
-import { COVERAGE_SOURCES, SOURCE_PROFILE, type CoverageSource, type Declaration, type Population, type SnapshotBatch, type StatusScope } from "@/domain/quality-coverage";
+import { BROAD_EXPORT_CONTRACT, COVERAGE_SOURCES, SOURCE_PROFILE, type CoverageSource, type Declaration, type Population, type SnapshotBatch, type StatusScope } from "@/domain/quality-coverage";
 import { recordAudit } from "@/server/audit";
 import { authorize } from "@/server/authorize";
 import { DomainError, StaleVersionError } from "@/server/errors";
@@ -29,20 +29,46 @@ export async function loadDeclarations(db: Db): Promise<Declaration[]> {
     JOIN "UploadBatch" b ON b.id = d."batchId" AND b.status = 'COMPLETED'
     WHERE d.version = (SELECT max(x.version) FROM "UploadCoverageDeclaration" x WHERE x."batchId" = d."batchId")
       AND b."profileId" = ANY(${Object.keys(PROFILE_SOURCE)}::text[])`);
-  return rows.map((r) => ({ batchId: r.batchId, version: r.version, population: r.population as Population, statusScope: r.statusScope as StatusScope, coveredFrom: r.coveredFrom, coveredTo: r.coveredTo, extractedOn: r.extractedOn, source: PROFILE_SOURCE[r.profileId] }));
+  const explicit: Declaration[] = rows.map((r) => ({
+    batchId: r.batchId, version: r.version, population: r.population as Population, statusScope: r.statusScope as StatusScope, coveredFrom: r.coveredFrom, coveredTo: r.coveredTo,
+    extractedOn: r.extractedOn, source: PROFILE_SOURCE[r.profileId], provenance: "DECLARED" as const,
+  }));
+  return [...explicit, ...(await loadContractDeclarations(db))];
 }
 
-export type TicketBatchInfo = SnapshotBatch & { receivedOn: string; observationKind: "DECLARED" | "RECEIVED" | null; declared: boolean; tickets: number };
+/**
+ * Cobertura por CONTRATO de carga amplia (HOTFIX-02 §10): un lote completado, no heredado (`legacyBase = false`) y SIN declaración explícita hereda la cobertura
+ * que el contrato de su fuente autoriza (BROAD_EXPORT_CONTRACT). En tiempos solo cuenta la instantánea activa de la fuente (las sustituidas no suman). El fin es la
+ * extracción declarada o, si falta, la recepción (observación operativa); el inicio NO se infiere de MIN(fecha). Ninguna declaración explícita se pisa: una
+ * limitación o una cobertura más precisa del Administrador sigue mandando.
+ */
+async function loadContractDeclarations(db: Db): Promise<Declaration[]> {
+  const rows = await db.$queryRaw<{ batchId: string; profileId: string; observedOn: string }[]>(Prisma.sql`
+    SELECT b.id AS "batchId", b."profileId",
+      to_char(COALESCE(b."declaredExtractionDate", (b."createdAt" AT TIME ZONE 'Europe/Madrid')::date), 'YYYY-MM-DD') AS "observedOn"
+    FROM "UploadBatch" b
+    WHERE b.status = 'COMPLETED' AND NOT b."legacyBase" AND b."profileId" = ANY(${Object.keys(PROFILE_SOURCE)}::text[])
+      AND NOT EXISTS (SELECT 1 FROM "UploadCoverageDeclaration" d WHERE d."batchId" = b.id)
+      AND (b."profileId" NOT IN ('zendesk-tiempo', 'wrike') OR b.id = (SELECT a."batchId" FROM "ActiveTimeBatch" a WHERE a."profileId" = b."profileId"))`);
+  return rows.map((r) => {
+    const source = PROFILE_SOURCE[r.profileId];
+    const c = BROAD_EXPORT_CONTRACT[source];
+    return { batchId: r.batchId, version: 0, population: c.population, statusScope: c.statusScope, coveredFrom: null, coveredTo: r.observedOn, extractedOn: null, source, provenance: "SOURCE_CONTRACT" as const };
+  });
+}
+
+export type TicketBatchInfo = SnapshotBatch & { receivedOn: string; observationKind: "DECLARED" | "RECEIVED" | null; declared: boolean; tickets: number; provenance: "DECLARED" | "SOURCE_CONTRACT" | null };
 /** Lotes de tickets completados con su fecha de observación y declaración: candidatos a fotografía. Una fecha RECEIVED es frescura desconocida salvo extracción revisada. */
 export async function loadTicketBatches(db: Db): Promise<TicketBatchInfo[]> {
-  const rows = await db.$queryRaw<{ id: string; observedOn: string | null; kind: string | null; receivedOn: string; declaredExtraction: string | null; population: string | null; statusScope: string | null; extractedOn: string | null; tickets: number }[]>(Prisma.sql`
+  const rows = await db.$queryRaw<{ id: string; observedOn: string | null; kind: string | null; receivedOn: string; declaredExtraction: string | null; population: string | null; statusScope: string | null; extractedOn: string | null; tickets: number; byContract: boolean }[]>(Prisma.sql`
     SELECT b.id, to_char(max(o."observedOn"), 'YYYY-MM-DD') AS "observedOn", max(o."observedKind") AS kind, to_char(b."createdAt" AT TIME ZONE 'Europe/Madrid', 'YYYY-MM-DD') AS "receivedOn",
-      to_char(b."declaredExtractionDate", 'YYYY-MM-DD') AS "declaredExtraction", d.population, d."statusScope", to_char(d."extractedOn", 'YYYY-MM-DD') AS "extractedOn", count(o.id)::int AS tickets
+      to_char(b."declaredExtractionDate", 'YYYY-MM-DD') AS "declaredExtraction", d.population, d."statusScope", to_char(d."extractedOn", 'YYYY-MM-DD') AS "extractedOn", count(o.id)::int AS tickets,
+      NOT b."legacyBase" AS "byContract"
     FROM "UploadBatch" b
     LEFT JOIN "ZdTicketObservation" o ON o."batchId" = b.id
     LEFT JOIN "UploadCoverageDeclaration" d ON d."batchId" = b.id AND d.version = (SELECT max(x.version) FROM "UploadCoverageDeclaration" x WHERE x."batchId" = b.id)
     WHERE b."profileId" = 'zendesk-tickets' AND b.status = 'COMPLETED'
-    GROUP BY b.id, b."createdAt", b."declaredExtractionDate", d.population, d."statusScope", d."extractedOn"
+    GROUP BY b.id, b."createdAt", b."declaredExtractionDate", b."legacyBase", d.population, d."statusScope", d."extractedOn"
     ORDER BY b."createdAt", b.id`);
   return rows.map((r) => {
     const observedOn = r.extractedOn ?? r.declaredExtraction ?? r.observedOn ?? r.receivedOn;
@@ -50,11 +76,13 @@ export async function loadTicketBatches(db: Db): Promise<TicketBatchInfo[]> {
       batchId: r.id,
       observedOn,
       extractionKnown: r.extractedOn !== null || r.declaredExtraction !== null,
-      population: (r.population ?? "UNKNOWN") as Population,
-      statusScope: (r.statusScope ?? "UNKNOWN") as StatusScope,
+      // Sin declaración explícita, un lote no heredado hereda el contrato de carga amplia de la fuente (HOTFIX-02 §10); lo heredado sigue «desconocido».
+      population: (r.population ?? (r.byContract ? BROAD_EXPORT_CONTRACT.tickets.population : "UNKNOWN")) as Population,
+      statusScope: (r.statusScope ?? (r.byContract ? BROAD_EXPORT_CONTRACT.tickets.statusScope : "UNKNOWN")) as StatusScope,
       receivedOn: r.receivedOn,
       observationKind: r.kind as "DECLARED" | "RECEIVED" | null,
       declared: r.population !== null,
+      provenance: r.population !== null ? ("DECLARED" as const) : r.byContract ? ("SOURCE_CONTRACT" as const) : null,
       tickets: r.tickets,
     };
   });

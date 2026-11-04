@@ -47,7 +47,7 @@ export function derivationSql(src: Prisma.Sql): Prisma.Sql {
         LIMIT 1) pid ON true
       LEFT JOIN LATERAL (
         SELECT a."personId" FROM "PersonAlias" a
-        WHERE s.user_name IS NOT NULL AND a.system = 'ZENDESK' AND a.kind = 'NAME' AND a."isActive" AND a."searchValue" = lower(s.user_name)
+        WHERE s.user_name IS NOT NULL AND a.system = 'ZENDESK' AND a.kind = 'NAME' AND a."isActive" AND a."searchValue" = csapp_norm_name(s.user_name)
           AND (a."validFrom" IS NULL OR a."validFrom" <= s.work_date) AND (a."validTo" IS NULL OR s.work_date < a."validTo")
         LIMIT 1) pnm ON true
     ),
@@ -120,7 +120,7 @@ export async function lockDerivation(tx: Tx) {
  * Recalcula lo derivado de los registros indicados. Solo escribe (y versiona) los que cambian: el recálculo es
  * idempotente y no altera contenido fuente, fechas de trabajo ni observaciones.
  */
-export async function rederiveEntries(tx: Tx, where: Prisma.Sql, batchId: string | null): Promise<number> {
+export async function rederiveEntries(tx: Tx, where: Prisma.Sql, batchId: string | null, opts: { keepBatch?: boolean } = {}): Promise<number> {
   // La derivación se materializa primero y después se aplica: unir una derivación cara dentro del UPDATE deja al
   // planificador decidir el orden sin estadísticas fiables (riesgo de reevaluarla por fila).
   await tx.$executeRaw(Prisma.sql`DROP TABLE IF EXISTS "_zd_drv"`);
@@ -132,7 +132,7 @@ export async function rederiveEntries(tx: Tx, where: Prisma.Sql, batchId: string
       "drvTicketKnown" = d.ticket_known, "drvOrganizationId" = d.org_id, "drvClientId" = d.client_id, "drvGroupId" = d.group_id,
       "drvInternal" = d.internal, "drvPersonId" = d.person_id, "drvPersonVia" = d.via, "drvPmo" = d.pmo, "drvTeamId" = d.team_id,
       "drvLevelId" = d.level_id, "drvEligibility" = d.eligibility, "drvBucket" = d.bucket, "drvFlags" = d.flags,
-      "drvVersion" = e."drvVersion" + 1, "drvAt" = now(), "drvBatchId" = ${batchId}, "updatedAt" = now()
+      "drvVersion" = e."drvVersion" + 1, "drvAt" = now(), "drvBatchId" = ${opts.keepBatch ? Prisma.sql`e."drvBatchId"` : Prisma.sql`${batchId}`}, "updatedAt" = now()
     FROM "_zd_drv" d
     WHERE e.id = d.key AND (
       e."drvTicketKnown", e."drvOrganizationId", e."drvClientId", e."drvGroupId", e."drvInternal", e."drvPersonId", e."drvPersonVia",

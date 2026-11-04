@@ -23,7 +23,7 @@ const entities = (batchId: string) => Prisma.sql`
     sc.scope, sc.group_id, sc.client_id
   FROM "UploadStagedRow" r
   LEFT JOIN (${papScopeSql(Prisma.sql`
-    SELECT r2.position::text AS key, r2.typed->>'proyecto' AS project, (r2.typed->>'fecha_produccion')::date AS production_date
+    SELECT r2.position::text AS key, r2.typed->>'proyecto' AS project, (r2.typed->>'fecha_produccion')::date AS production_date, NULL::bigint AS rev_id
     FROM "UploadStagedRow" r2 WHERE r2."batchId" = ${batchId} AND r2.classification = 'VALID' AND NOT r2."duplicateInFile"`)}) sc ON sc.key = r.position::text
   WHERE r."batchId" = ${batchId} AND r.classification = 'VALID' AND NOT r."duplicateInFile"`;
 
@@ -188,7 +188,7 @@ export async function listBatchPap(actorId: string, batchId: string, query: { pa
       case "unknown-cause": return Prisma.sql`x.corrective = 'UNKNOWN'`;
       case "no-production-date": return Prisma.sql`x.production_date IS NULL`;
       case "revision": return Prisma.sql`x.disposition = 'REVISION'`;
-      case "unmapped": return Prisma.sql`x.scope IN ('UNMAPPED', 'NO_PROJECT')`;
+      case "unmapped": return Prisma.sql`x.scope IN ('UNMAPPED', 'NO_PROJECT', 'AMBIGUOUS')`;
       case "group-only": return Prisma.sql`x.scope = 'GROUP_ONLY'`;
       case "pending-ticket": return Prisma.sql`EXISTS (SELECT 1 FROM jsonb_array_elements(x.refs) ref WHERE ref->>'kind' IN ('TICKET_ASSOCIATED', 'TICKET_PAP')
         AND NOT EXISTS (SELECT 1 FROM "ZdTicket" t WHERE t."ticketId" = ref->>'refId'))`;

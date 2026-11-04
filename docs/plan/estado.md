@@ -177,6 +177,18 @@ Documentación vigente: [instalación y operación](../operacion/instalacion-ope
 
 Documentación: [arquitectura](../arquitectura/hotfix01-ultima-carga.md), [proceso común IMP 08–12](../importaciones/proceso-comun.md), [PAP](../importaciones/pap.md), [histórico económico](../importaciones/historico-economico.md), [precarga de maestros](../importaciones/precarga-maestros.md).
 
+## Resultado de CSAPP-HOTFIX-02 (enlace automático y rediseño de Comparativa, Análisis Cliente y Calidad; fuera de las diez entregas)
+
+| Dato | Valor |
+| --- | --- |
+| Rama / base | `feature/CSAPP-HOTFIX-02-enlace-automatico-y-vistas`, desde `main` `1abda3f` (CSAPP-01 a 10 y HOTFIX-01); [PR 14](https://github.com/bateman37/cs-app/pull/14) sin fusionar ni desplegar; sin force |
+| Migración | `20261110090000_hotfix02_enlace_automatico` (estado de actualización y reparación programada; no recalcula en la migración) |
+| Implementado | Reenlace automático de lo ya cargado cuando cambian los maestros (sin «Reprocesar» por lote, sin límite de 100); libro CLIENTES de una hoja; normalización única; alias ambiguos por evidencia del propio registro; clasificación de servicio `servicio-v2`; cobertura de Calidad por contrato de carga amplia; Comparativa de una línea por Grupo con filtros Soporte/Servidor; ficha de Análisis Cliente de una pantalla; Calidad «Resumen de clientes» con los seis KPI como navegación; ancho panorámico; Diagnóstico de datos en Administración |
+| Probado | Linux con datos sintéticos y el maestro real en base aislada. Ver [validación](../validacion/hotfix-02.md) |
+| No probado | Windows/PowerShell; la base local de Dennis y sus operativos reales; SIGKILL real del trabajador |
+| Archivo recibido | `CLIENTES.xlsx` real: 17 667 bytes, SHA-256 `9b4fc599…`, 82 filas útiles; el prompt describía otra versión (17 019 bytes, 74 filas) |
+| Pendiente de Dennis | Ejecutar la [guía](guia-powershell-hotfix02.md), comprobar la actualización automática, el recorrido corto y resolver las excepciones reales del maestro (alias de varios Grupos, soportes E/H, un ID Zendesk con dos Grupos) |
+
 ## Estado por trabajo
 
 Niveles: diseñado, documentado, implementado, probado, aceptado. Un criterio de aceptación escrito no es una prueba ejecutada.
@@ -195,6 +207,7 @@ Niveles: diseñado, documentado, implementado, probado, aceptado. Un criterio de
 | CSAPP-09 | Sí | Sí | Sí (PR apilada sin fusionar) | Sí en Linux con datos sintéticos; Windows y conciliación real sin ejecutar | No |
 | CSAPP-10 | Sí | Sí | Sí (PR apilada sin fusionar) | Sí en Linux con datos sintéticos; Windows, proxy y datos reales sin ejecutar | No |
 | CSAPP-HOTFIX-01 | Sí | Sí | Sí (PR apilada sin fusionar) | Sí en Linux con datos sintéticos y ensayo con los libros reales en bases aisladas; Windows y datos de Dennis sin probar | No |
+| CSAPP-HOTFIX-02 | Sí | Sí | Sí (PR sin fusionar) | Sí en Linux con datos sintéticos y el maestro real en base aislada; Windows y datos de Dennis sin probar | No |
 | Cargas reales | — | Política en [precarga y pruebas](precarga-y-pruebas.md) | No | No | No; las probará Dennis |
 
 Las diez entregas están implementadas. Siguen pendientes, y **no** están cerradas por este trabajo: la aceptación funcional con los archivos reales de Dennis, la prueba en Windows, las decisiones listadas en [pendientes](../decisiones/pendientes.md) y el despliegue en un destino autorizado por IT. No existe CSAPP-11.

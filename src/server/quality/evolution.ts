@@ -37,7 +37,7 @@ export function evolutionMonths(q: QualityQuery, today: string): { lastM: number
   for (let m = 1; m <= lastM; m++) {
     const date = m === lastM ? q.base.date : `${per.year}-${String(m).padStart(2, "0")}-01`;
     const mode = m === lastM ? q.base.mode : "FULL_MONTH";
-    const qm: QualityQuery = { ...q, base: { ...q.base, date, mode, q: "", page: 1, pageSize: 1, status: "todos" }, sel: "", color: "", sim: "" };
+    const qm: QualityQuery = { ...q, base: { ...q.base, date, mode, q: "", page: 1, pageSize: 1, status: "todos" }, sel: "", sim: "" };
     months.push({ month: m, q: qm, period: qualityPeriod(date, mode, todayM) });
   }
   return { lastM, months, year: per.year, per };

@@ -33,6 +33,7 @@ export async function exportaciones(ctx: Ctx): Promise<void> {
   const page = adm.page;
   await page.setViewportSize({ width: 1440, height: 900 });
   await page.goto(`${ctx.base}/calidad?fecha=2026-10-31&modo=FULL_MONTH`);
+  await page.locator("summary", { hasText: "Exportar detalle completo" }).first().click(); // el panel está plegado en el Resumen de clientes
   ctx.check("Exportar: el panel «Exportar detalle completo» muestra alcance, periodo y referencia antes de solicitar", /Exportar detalle completo/.test(await body(page)) && /Alcance:/.test(await body(page)) && /referencia de la pantalla/.test(await body(page)));
   await page.getByLabel("Conjunto").selectOption("horas");
   await page.getByLabel("Desde").fill("2026-10-01");

@@ -4,7 +4,8 @@ import { AccessError } from "@/lib/access";
 import { DomainError } from "@/server/errors";
 import { confirmUpload } from "@/server/uploads/batches";
 import { listSources } from "@/server/uploads/batches";
-import { computeReview, decidePrecargaReview, getPrecargaReview, reprocessNeeded } from "@/server/precarga/review";
+import { computeReview, decidePrecargaReview, getPrecargaReview } from "@/server/precarga/review";
+import { readRefreshStatus } from "@/server/relations/refresh";
 import { batch, drain, freshEnvironment, removeUploadDir, uploadText, useUploadDir } from "./cargas-helpers";
 import { CLIENT_HEADER, CLIENT_ROWS, PMO_ROWS, buildBook, cliente, personalRows } from "./generators/precarga-maestros";
 
@@ -231,15 +232,20 @@ describe("activación: crea lo ausente, conserva lo ambiguo en revisión", () =>
     expect(await prisma.externalIdentity.count({ where: { system: "BC", groupId: g.id } })).toBe(1);
   });
 
-  it("un mismo ID de Zendesk con nombres distintos bloquea esas filas, no el resto", async () => {
-    const rows = [...CLIENT_ROWS, cliente(null, "ALFA", "360000000101", "Otro nombre", "Gold", "ALFA", "OP", "Gold", null, "ALFA", null)];
+  it("un mismo ID de Zendesk con nombres distintos no crea ese Cliente ni elige uno, pero sus alias Wrike y PAP y el resto de filas siguen su camino (HOTFIX-02: la fila ya no es un error)", async () => {
+    // Antes (HOTFIX-01) las tres filas pasaban a ERROR y se perdían también sus columnas Wrike y PAP, que son claves independientes de C/D/F.
+    const rows = [...CLIENT_ROWS, cliente("OTRO - WRIKE", "ALFA", "360000000101", "Otro nombre", "Gold", "ALFA", "OP", "Gold", "OTRO - PAP", "ALFA", null)];
     const b = await prepare(await buildBook({ clients: rows }));
     expect(b.status).toBe("READY");
-    expect(b.rowsError).toBe(3); // las dos filas del Cliente con nombre contradictorio y la nueva
+    expect(b.rowsError).toBe(0);
     await confirmUpload(admin.id, b.id);
     await drain();
     expect(await prisma.externalIdentity.count({ where: { system: "ZENDESK", rawValue: "360000000101" } })).toBe(0);
-    expect(await prisma.client.count()).toBe(8);
+    expect(await prisma.client.count()).toBe(8); // el Cliente contradictorio no se crea
+    expect(await prisma.externalIdentity.count({ where: { system: "WRIKE", searchValue: "otro - wrike" } })).toBe(1); // su alias Wrike sí (a Grupo)
+    expect(await prisma.externalIdentity.count({ where: { system: "PAP", searchValue: "otro - pap" } })).toBe(1); // y su nombre PAP (a Grupo, sin implantación ficticia)
+    const review = await computeReview(prisma, await batch(b.id));
+    expect(review.items.some((i) => i.key.startsWith("INFO:ZENDESK_ID_CONFLICTO:"))).toBe(true);
   });
 
   it("alias sin conflicto por semejanza: un alias activo de otro Grupo no se reasigna", async () => {
@@ -350,18 +356,16 @@ describe("decisiones: autor, motivo, idempotentes y ligadas al checksum", () => 
 });
 
 describe("ficha de la carga", () => {
-  it("la sección de la precarga se pinta en la ficha con el informe, las revisiones decidibles y el aviso de reproceso (sin bandeja nueva)", async () => {
-    await prisma.uploadBatch.create({
-      data: { profileId: "wrike", profileVersion: 1, status: "COMPLETED", originalName: "wrike-antiguo.xlsx", storageId: "test-storage-wrike-1", fileFormat: "xlsx", createdById: admin.id, finishedAt: new Date(Date.now() - 86_400_000) },
-    });
+  it("la sección de la precarga se pinta en la ficha con el informe, las revisiones decidibles y el estado de la actualización automática de relaciones (sin bandeja nueva)", async () => {
     const done = await load(await book());
     const { renderToStaticMarkup } = await import("react-dom/server");
     const { MaestrosPanel } = await import("@/app/(app)/administracion/cargas/[id]/maestros-panel");
     const html = renderToStaticMarkup(await MaestrosPanel({ userId: admin.id, batch: { id: done.id, profileId: done.profileId, status: done.status } }));
     expect(html).toContain("Precarga de maestros");
     expect(html).toContain("Revertir no se ofrece");
-    expect(html).toContain("Reproceso necesario");
-    expect(html).toContain("wrike-antiguo.xlsx");
+    // HOTFIX-02: ya no se remite a «Reprocesar» lote a lote; la ficha informa del estado de la actualización automática de relaciones.
+    expect(html).not.toContain("Reproceso necesario");
+    expect(html).toMatch(/Relaciones al día|Actualizando relaciones/);
     expect(html).toContain("Alias Wrike «COMPARTIDO - CS»");
     expect(html).toContain("Guardar decisión");
     expect(html).toContain("Motivo (obligatorio)");
@@ -375,16 +379,19 @@ describe("ficha de la carga", () => {
   });
 });
 
-describe("reproceso necesario", () => {
-  it("avisa de los lotes completados de otras fuentes con recálculo anteriores al cambio de maestros", async () => {
-    const old = await prisma.uploadBatch.create({
-      data: { profileId: "pap", profileVersion: 1, status: "COMPLETED", originalName: "pap-antiguo.xlsx", storageId: "test-storage-pap-1", fileFormat: "xlsx", createdById: admin.id, finishedAt: new Date(Date.now() - 86_400_000) },
-    });
+describe("actualización automática en lugar de «reproceso necesario»", () => {
+  it("la precarga que crea o decide maestros solicita la actualización de relaciones de TODO lo cargado (sin lista de 100 lotes) y la deja publicada", async () => {
+    // Antes (HOTFIX-01) la ficha listaba como máximo 100 lotes y pedía «Reprocesar» en cada uno; ahora basta confirmar el libro.
+    for (let i = 0; i < 105; i++) {
+      await prisma.uploadBatch.create({
+        data: { profileId: "pap", profileVersion: 1, status: "COMPLETED", originalName: `pap-${i}.xlsx`, storageId: `test-storage-pap-${i}`, fileFormat: "xlsx", createdById: admin.id, finishedAt: new Date(Date.now() - 86_400_000) },
+      });
+    }
     const done = await load(await book());
-    const needed = await reprocessNeeded(admin.id, done.id);
-    expect(needed.map((n) => n.id)).toEqual([old.id]);
-    // Un lote posterior a la precarga no aparece.
-    await prisma.uploadBatch.create({ data: { profileId: "pap", profileVersion: 1, status: "COMPLETED", originalName: "pap-nuevo.xlsx", storageId: "test-storage-pap-2", fileFormat: "xlsx", createdById: admin.id, finishedAt: new Date(Date.now() + 60_000) } });
-    expect((await reprocessNeeded(admin.id, done.id)).map((n) => n.id)).toEqual([old.id]);
+    const status = await readRefreshStatus();
+    expect(status.requestedGeneration).toBeGreaterThan(0);
+    expect(status.state).toBe("UP_TO_DATE"); // el trabajador (drain) ya la publicó
+    expect(status.completedGeneration).toBe(status.requestedGeneration);
+    expect(done.status).toBe("COMPLETED");
   });
 });

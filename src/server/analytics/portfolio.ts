@@ -1,5 +1,5 @@
 import { Prisma } from "@/generated/prisma/client";
-import { Dec, effectiveCut } from "@/domain/finance";
+import { Dec, effectiveCut, tariffRun } from "@/domain/finance";
 import { BLOCK_PERIOD, SELECT_MIXED, SELECT_NONE, type AnalysisQuery } from "@/domain/analytics-query";
 import { economicsInTx, PERIOD_KEYS, type EconomicResult, type EntityResult, type PeriodKey, type PeriodSeries } from "@/server/economics/engine";
 import { readSnapshot, snapshotPoint, type Tx } from "./snapshot";
@@ -33,6 +33,11 @@ export type GroupMeta = {
   complexity: MetaCell;
   product: MetaCell;
   coverage: "completa" | "parcial" | "sin_datos";
+  /**
+   * Unidades de coincidencia (HOTFIX-02 §6): cada Cliente con atributos propios y, si el Grupo tiene valores propios, una unidad de Grupo. Soporte y Servidor
+   * seleccionados a la vez deben coincidir EN LA MISMA unidad; nunca el soporte de un Cliente con el servidor de otro.
+   */
+  units: { support: string[]; hosting: string[] }[];
 };
 
 const fold = (s: string) => s.normalize("NFD").replace(/[̀-ͯ]/g, "").toLowerCase();
@@ -85,6 +90,7 @@ export async function loadGroupMetaForCuts(tx: Tx, cuts: string[]): Promise<Map<
 /** Construcción pura de los maestros de cada grupo a partir de sus filas y de los atributos vigentes (compartida por todos los cargadores). */
 function groupMetaFrom(groups: GroupRow[], terms: TermRow[]): GroupMeta[] {
   type Acc = { own: Set<string>; child: Set<string>; kids: Set<string> };
+  const perClient = new Map<string, Map<string, { support: Set<string>; hosting: Set<string> }>>();
   const acc = new Map<string, Acc>();
   const cell = (gid: string, attr: string): Acc => {
     const k = `${gid}|${attr}`;
@@ -98,8 +104,22 @@ function groupMetaFrom(groups: GroupRow[], terms: TermRow[]): GroupMeta[] {
       const a = cell(t.cgid, t.attr);
       a.child.add(t.value);
       if (t.cid) a.kids.add(t.cid);
+      if (t.cid && (t.attr === "SUPPORT" || t.attr === "HOSTING")) {
+        const byClient = perClient.get(t.cgid) ?? new Map();
+        perClient.set(t.cgid, byClient);
+        const u = byClient.get(t.cid) ?? { support: new Set<string>(), hosting: new Set<string>() };
+        byClient.set(t.cid, u);
+        (t.attr === "SUPPORT" ? u.support : u.hosting).add(t.value);
+      }
     }
   }
+  const unitsOf = (gid: string): GroupMeta["units"] => {
+    const ownS = [...(acc.get(`${gid}|SUPPORT`)?.own ?? [])].sort();
+    const ownH = [...(acc.get(`${gid}|HOSTING`)?.own ?? [])].sort();
+    const units: GroupMeta["units"] = [...(perClient.get(gid)?.values() ?? [])].map((u) => ({ support: u.support.size ? [...u.support].sort() : ownS, hosting: u.hosting.size ? [...u.hosting].sort() : ownH }));
+    if (ownS.length > 0 || ownH.length > 0) units.push({ support: ownS, hosting: ownH });
+    return units;
+  };
   const mk = (gid: string, attr: string, clientsTotal: number): MetaCell => {
     const a = acc.get(`${gid}|${attr}`);
     const own = [...(a?.own ?? [])].sort();
@@ -131,13 +151,30 @@ function groupMetaFrom(groups: GroupRow[], terms: TermRow[]): GroupMeta[] {
       complexity: mk(g.id, "COMPLEXITY", g.clients),
       product: mk(g.id, "PRODUCT", g.clients),
       coverage: full(support) && full(hosting) ? "completa" : some(support) || some(hosting) ? "parcial" : "sin_datos",
+      units: unitsOf(g.id),
     };
   });
+}
+
+/** Valores especiales heredados («Sin informar», «Heterogéneo»): solo las vistas aún no migradas los usan. */
+function matchesSpecial(g: GroupMeta, q: AnalysisQuery): boolean {
+  const sp = q.support.filter((v) => v === SELECT_NONE || v === SELECT_MIXED);
+  const ho = q.hosting.filter((v) => v === SELECT_NONE || v === SELECT_MIXED);
+  return (sp.length === 0 || matchesSelection(g.support, sp)) && (ho.length === 0 || matchesSelection(g.hosting, ho));
 }
 
 function matchesSelection(cell: MetaCell, selected: string[]): boolean {
   if (selected.length === 0) return true;
   return selected.some((s) => (s === SELECT_NONE ? cell.contains.length === 0 : s === SELECT_MIXED ? cell.heterogeneous : cell.contains.includes(s)));
+}
+
+/**
+ * Soporte/Servidor de HOTFIX-02: OR dentro de cada filtro y AND entre ambos EN EL MISMO Cliente (unidad). Sin selección = todos. Un Grupo incluido
+ * conserva todo su ingreso y sus horas: el filtro decide la pertenencia del Grupo, no recorta sus cifras.
+ */
+export function matchesCommon(g: Pick<GroupMeta, "units">, soporte: readonly string[], servidor: readonly string[]): boolean {
+  if (soporte.length === 0 && servidor.length === 0) return true;
+  return g.units.some((u) => (soporte.length === 0 || u.support.some((v) => soporte.includes(v))) && (servidor.length === 0 || u.hosting.some((v) => servidor.includes(v))));
 }
 
 /** Conjunto filtrado de grupos (los filtros de identificación seleccionan grupos económicos completos). */
@@ -147,8 +184,8 @@ export function filterGroups(all: GroupMeta[], q: AnalysisQuery): GroupMeta[] {
     (g) =>
       (q.status === "todos" || (q.status === "activos" ? g.isActive : !g.isActive)) &&
       (needle === "" || fold(g.name).includes(needle) || fold(g.bcDenomination ?? "").includes(needle)) &&
-      matchesSelection(g.support, q.support) &&
-      matchesSelection(g.hosting, q.hosting) &&
+      matchesCommon(g, q.support.filter((v) => v !== SELECT_NONE && v !== SELECT_MIXED), q.hosting.filter((v) => v !== SELECT_NONE && v !== SELECT_MIXED)) &&
+      matchesSpecial(g, q) &&
       matchesSelection(g.complexity, q.complexity) &&
       (q.product === "" || (q.product === SELECT_NONE ? g.product.contains.length === 0 : g.product.contains.includes(q.product))) &&
       (q.coverage === "todas" || g.coverage === q.coverage),
@@ -179,9 +216,9 @@ export function sortRows(rows: PortfolioRow[], sort: string, dir: "asc" | "desc"
   const byName = (a: PortfolioRow, b: PortfolioRow) => a.meta.name.localeCompare(b.meta.name, "es") || (a.meta.id < b.meta.id ? -1 : 1);
   return [...rows].sort((a, b) => {
     if (sort === "name") return sign * byName(a, b);
-    if (sort === "support") {
-      const x = a.meta.support.values.join("+");
-      const y = b.meta.support.values.join("+");
+    if (sort === "support" || sort === "hosting") {
+      const x = a.meta[sort].values.join("+");
+      const y = b.meta[sort].values.join("+");
       if ((x === "") !== (y === "")) return x === "" ? 1 : -1; // sin informar al final
       return sign * x.localeCompare(y, "es") || byName(a, b);
     }
@@ -193,6 +230,37 @@ export function sortRows(rows: PortfolioRow[], sort: string, dir: "asc" | "desc"
   });
 }
 
+/**
+ * Totales de Usuarios al corte y Tarifa anual/usuario de TODO el filtrado (HOTFIX-02 §7), con componentes agregados: usuarios = Σ de stocks conocidos;
+ * tarifa = 12 × ΣR / Σ usuarios·mes de los grupos con tarifa calculable (nunca la media de tarifas). `missing` cuenta los grupos que no aportan y hace
+ * parcial el total (el servicio no lo presenta como completo).
+ */
+export type UsersTariffTotal = { users: string | null; usersMissing: number; tariff: string | null; tariffMissing: number; groups: number };
+export function usersTariffTotal(rows: readonly PortfolioRow[], k: PeriodKey): UsersTariffTotal {
+  let users = 0;
+  let known = 0;
+  let rev = Dec.ZERO;
+  let um = Dec.ZERO;
+  let tariffGroups = 0;
+  for (const r of rows) {
+    const p = r.periods[k];
+    if (p.users.stock.value !== null) {
+      users += p.users.stock.value;
+      known++;
+    }
+    const t = p.perUserPerYear;
+    if (t.value !== null && t.operands?.ingresoPeriodo && t.operands.usuariosMes) {
+      rev = rev.add(Dec.parse(t.operands.ingresoPeriodo) as Dec);
+      um = um.add(Dec.parse(t.operands.usuariosMes) as Dec);
+      tariffGroups++;
+    }
+  }
+  const tr = tariffGroups > 0 ? tariffRun(rev, um) : null;
+  return { users: known > 0 ? String(users) : null, usersMissing: rows.length - known, tariff: tr?.value.toString() ?? null, tariffMissing: rows.length - tariffGroups, groups: rows.length };
+}
+
+const totalsOf = (rows: readonly PortfolioRow[]) => Object.fromEntries(PERIOD_KEYS.map((k) => [k, usersTariffTotal(rows, k)])) as Record<PeriodKey, UsersTariffTotal>;
+
 export type PortfolioView = {
   query: AnalysisQuery;
   cut: string;
@@ -200,6 +268,8 @@ export type PortfolioView = {
   totalGroups: number;
   filteredGroups: number;
   rows: PortfolioRow[];
+  /** Usuarios y tarifa agregados de TODO el filtrado (no solo la página). */
+  totals: Record<PeriodKey, UsersTariffTotal>;
   page: number;
   pageCount: number;
   economics: Pick<EconomicResult, "periodsDefinition" | "settings" | "recalculatedWithOlderSettings" | "portfolio" | "unattributed" | "reference" | "input">;
@@ -231,6 +301,7 @@ export async function getPortfolio(actorId: string, query: AnalysisQuery): Promi
       totalGroups: all.length,
       filteredGroups: cohort.length,
       rows: sorted.slice((page - 1) * query.pageSize, page * query.pageSize),
+      totals: totalsOf(sorted),
       page,
       pageCount,
       economics: { periodsDefinition: econ.periodsDefinition, settings: econ.settings, recalculatedWithOlderSettings: econ.recalculatedWithOlderSettings, portfolio: econ.portfolio, unattributed: econ.unattributed, reference: econ.reference, input: econ.input },
@@ -248,7 +319,7 @@ export async function getPortfolioAll(actorId: string, query: AnalysisQuery): Pr
     const byId = new Map<string, EntityResult>(econ.entities.map((e) => [e.id, e]));
     const rows = sortRows(cohort.map((meta) => ({ meta, periods: (byId.get(meta.id) as EntityResult).periods })), query.sort, query.dir);
     return {
-      query, cut, totalGroups: all.length, filteredGroups: cohort.length, rows, allRows: rows, page: 1, pageCount: 1,
+      query, cut, totalGroups: all.length, filteredGroups: cohort.length, rows, allRows: rows, totals: totalsOf(rows), page: 1, pageCount: 1,
       economics: { periodsDefinition: econ.periodsDefinition, settings: econ.settings, recalculatedWithOlderSettings: econ.recalculatedWithOlderSettings, portfolio: econ.portfolio, unattributed: econ.unattributed, reference: econ.reference, input: econ.input },
     };
   });

@@ -1,107 +1,109 @@
 import type { ReactNode } from "react";
 import Link from "next/link";
 import { ActionForm, SelectField, SubmitButton, TextAreaField, TextField } from "@/components/form-kit";
-import { DIAGNOSIS_FAMILIES, DIAGNOSIS_LABEL, INDICATOR_KEYS, INDICATOR_NAME, UNIT_LABEL, type QualityConfig } from "@/domain/quality-config";
+import { DIAGNOSIS_FAMILIES, DIAGNOSIS_LABEL, INDICATOR_KEYS, INDICATOR_NAME } from "@/domain/quality-config";
+import { KPI_ACCESS_NAME, KPI_RATE_UNIT } from "@/domain/quality-kpi";
 import { qualityToParams, type QualityQuery } from "@/domain/quality-query";
 import { HEALTH_DB_LABEL, type HealthDbState } from "@/domain/quality-health";
 import { qs } from "@/lib/format";
 import { MONTH_SHORT } from "@/domain/usuarios";
 import { LineChart, Legend, color } from "@/components/analytics/charts";
 import { fdate } from "@/components/analytics/ui";
-import type { QualityRow } from "@/server/quality/engine";
+import type { QualityRow, QualityView } from "@/server/quality/engine";
 import type { Evolution } from "@/server/quality/detail";
 import type { QualityNoteView } from "@/server/quality/notes";
 import { addNoteAction } from "./actions";
-import { ColorBadge, KpiCell, STATUS_TEXT, num } from "./ui";
+import { NeutralTag, STATUS_TEXT, StateTag, cellInfo, num, reasonOf } from "./ui";
+import { CalcBlock } from "./apartados";
+import { kpiHref } from "./table";
 
 const pct = (v: string | null | undefined) => (v === null || v === undefined ? "—" : `${num(v, 2)} %`);
 
-export function EntityDetail({ r, q, cfg, basePath, evolutionSlot, notes, isAdmin, milestones }: { r: QualityRow; q: QualityQuery; cfg: QualityConfig; basePath: string; evolutionSlot: ReactNode; notes: QualityNoteView[]; isAdmin: boolean; milestones: { date: string; type: string; note: string | null; where: string }[] }) {
+/** Ficha de un Grupo o Cliente (resultado global): seis indicadores con enlace a su detalle, pesos, evolución y notas. Lo técnico va en «Ver cálculo». */
+export function EntityDetail({ r, view, q, basePath, evolutionSlot, notes, isAdmin, milestones }: { r: QualityRow; view: QualityView; q: QualityQuery; basePath: string; evolutionSlot: ReactNode; notes: QualityNoteView[]; isAdmin: boolean; milestones: { date: string; type: string; note: string | null; where: string }[] }) {
   const w = r.evaluation.weights;
   const g = r.evaluation.global;
-  const href = (extra: Partial<QualityQuery>) => `${basePath}${qs(qualityToParams({ ...q, ...extra }))}`;
   return (
-    <section className="card" aria-labelledby="d-title">
-      <h2 id="d-title">{r.name} <small className="muted">{q.scope === "group" ? "Grupo Cliente" : "Cliente"}</small></h2>
-      <p className="quick">
-        <Link href={href({ sel: "" })}>← Volver a la cartera</Link> · <Link href={href({ view: "diagnostico" })}>Diagnóstico de esta entidad</Link> · <Link href={href({ view: "backlog" })}>Backlog por antigüedad</Link> ·{" "}
-        <Link href={`/analisis-cliente${qs({ ambito: q.scope, id: r.id, fecha: q.base.date, modo: q.base.mode, volver: "calidad" })}`}>Análisis Cliente</Link> · <a href={`/api/analitica/calidad.csv${qs({ ...qualityToParams(q), tabla: "ficha" })}`}>CSV de la ficha</a>
-      </p>
-
-      <h3>Resultado global del mes</h3>
-      <p>
-        {g.color ? <ColorBadge color={g.color} /> : <span className="badge badge-off">{g.status === "SIN_METODO" ? "Sin calibrar" : "Incompleto"}</span>} {g.partialAlerts.length ? <ColorBadge color={null} alert /> : null}{" "}
-        {g.score ? <>índice configurado {num(g.score, 2)} (no es una probabilidad de fallo)</> : null} — {g.reason}
-      </p>
-      {w ? (
-        <div className="table-wrap" tabIndex={0} role="region" aria-label="Pesos y contribución (desplazable)">
-          <table>
-            <caption className="visually-hidden">Pesos configurados y efectivos, valores y contribución</caption>
-            <thead><tr><th scope="col">Indicador</th><th scope="col">Peso configurado</th><th scope="col">Peso asignado</th><th scope="col">Valor</th><th scope="col">Estado</th></tr></thead>
+    <>
+      <section className="ql-panel" aria-labelledby="d-title">
+        <h2 id="d-title">{r.name} <small className="ql-muted">{q.scope === "group" ? "Grupo Cliente" : "Cliente"}{r.parent ? ` · ${r.parent}` : ""}</small></h2>
+        <p className="ql-links" style={{ margin: "0 0 0.4rem" }}>
+          <Link href={`/analisis-cliente${qs({ ambito: q.scope, id: r.id, fecha: q.base.date, modo: q.base.mode, volver: "calidad" })}`}>Análisis Cliente</Link>
+          <a href={`/api/analitica/calidad.csv${qs({ ...kpiParams(q), tabla: "ficha" })}`}>CSV de la ficha</a>
+        </p>
+        <p>
+          Resultado global del mes: {g.color ? <StateTag color={g.color} /> : <NeutralTag>{g.status === "SIN_METODO" ? "Sin calibrar" : "Incompleto"}</NeutralTag>} {g.partialAlerts.length ? <StateTag color="red" text="Alerta roja parcial" /> : null}{" "}
+          {g.score ? <>índice {num(g.score, 2)} <small className="ql-muted">(no es una probabilidad de fallo)</small></> : null} <small className="ql-muted">{g.reason}</small>
+        </p>
+        <div className="ql-wrap" tabIndex={0} role="region" aria-label="Seis indicadores del mes (desplazable)">
+          <table className="ql-table">
+            <caption className="visually-hidden">Seis indicadores del mes con su peso</caption>
+            <thead><tr><th scope="col">Indicador</th><th scope="col" className="ql-r">Valor</th><th scope="col">Estado</th><th scope="col" className="ql-r">Peso configurado</th><th scope="col" className="ql-r">Peso asignado</th><th scope="col">Detalle</th></tr></thead>
             <tbody>
               {INDICATOR_KEYS.map((k) => {
                 const i = r.evaluation.indicators[k];
-                const cov = w.uncovered.some((u) => u.key === k);
+                const c = cellInfo(i, r.explain[k].observed);
+                const uncovered = w?.uncovered.some((u) => u.key === k);
                 return (
                   <tr key={k}>
-                    <th scope="row">{INDICATOR_NAME[k]}</th>
-                    <td>{pct(w.configuredPercent[k])}</td>
-                    <td>{pct(w.percent[k])}{w.percent[k] === "0" && w.configuredPercent[k] !== "0" ? <small> (redistribuido)</small> : null}</td>
-                    <td><KpiCell i={i} /></td>
-                    <td>{cov ? <span className="badge badge-warn">sin cubrir</span> : w.percent[k] === "0" ? <span className="badge badge-off">no influye</span> : <span className="badge badge-ok">cubierto</span>}</td>
+                    <th scope="row">{KPI_ACCESS_NAME[k]}</th>
+                    <td className="ql-r">{c.main === null ? <span className="ql-muted">—</span> : <><strong>{c.kind === "PARTIAL" ? "≥ " : ""}{k === "HEALTH" ? c.main : num(c.main)}</strong> <span className="ql-u">{KPI_RATE_UNIT[k]}</span></>}</td>
+                    <td>{c.color ? <StateTag color={c.color} /> : <NeutralTag partial={c.kind === "PARTIAL"} title={reasonOf(i)}>{c.label || "Sin dato"}</NeutralTag>}</td>
+                    <td className="ql-r">{w ? pct(w.configuredPercent[k]) : "—"}</td>
+                    <td className="ql-r">{w ? <>{pct(w.percent[k])}{w.percent[k] === "0" && w.configuredPercent[k] !== "0" ? <small> (redistribuido)</small> : uncovered ? <small> (sin cubrir)</small> : null}</> : "—"}</td>
+                    <td><Link href={kpiHref(q, basePath, k, r.id)} prefetch={false}>Abrir {KPI_ACCESS_NAME[k]}</Link></td>
                   </tr>
                 );
               })}
             </tbody>
           </table>
         </div>
-      ) : <p className="notice notice-warn">Los pesos configurados no son válidos: revise Administración › Configuración › Calidad.</p>}
-      {w ? <p className="hint">Asignación efectiva (con Client Health en blanco se redistribuye solo su peso), contribución disponible y <strong>cobertura calculable: {pct(w.coveragePercent)}</strong> de la asignación. {w.reasons.length ? `Pendiente: ${w.reasons.join(" ")}` : ""}</p> : null}
+        {w ? <p className="ql-note">Sin Client Health informado el resto pesa 20 %; un indicador técnico sin datos conserva su peso. Cobertura calculable: {pct(w.coveragePercent)} de la asignación. {w.reasons.length ? w.reasons.join(" ") : ""}</p> : <p className="ql-err">Los pesos configurados no son válidos: revise Administración › Configuración › Calidad.</p>}
+        <CalcBlock k="HEALTH" row={null} view={view} />
+        {evolutionSlot}
+        {milestones.length ? <p className="ql-note">Hitos del año (anotados; no se excluyen eventos automáticamente): {milestones.map((m) => `${fdate(m.date)} · ${m.type}${m.note ? ` (${m.note})` : ""} · ${m.where}`).join(" — ")}.</p> : null}
+      </section>
+      <section className="ql-panel" aria-label="Notas de revisión">
+        <h2>Notas de revisión de calidad</h2>
+        {notes.length === 0 ? <p className="ql-note">Sin notas.</p> : <ul>{notes.map((n) => <li key={n.id}><strong>{DIAGNOSIS_LABEL[n.topic as keyof typeof DIAGNOSIS_LABEL] ?? INDICATOR_NAME[n.topic as keyof typeof INDICATOR_NAME] ?? n.topic}</strong> · {n.month}/{n.year}{n.evidence ? ` · evidencia: ${n.evidence}` : ""} — {n.text} <small>({n.author}, {fdate(n.createdAt.slice(0, 10))})</small></li>)}</ul>}
+        {isAdmin ? (
+          <ActionForm action={addNoteAction} hidden={{ scope: q.scope, entityId: r.id, year: q.base.date.slice(0, 4), month: Number(q.base.date.slice(5, 7)) }}>
+            <SelectField name="topic" label="Tema" initial="CONFIGURACION" options={[...DIAGNOSIS_FAMILIES.map((f) => ({ value: f, label: DIAGNOSIS_LABEL[f] })), ...INDICATOR_KEYS.map((k) => ({ value: k, label: INDICATOR_NAME[k] }))]} />
+            <TextField name="evidence" label="Evidencia (IDs de ticket, PAP…)" />
+            <TextAreaField name="text" label="Nota de revisión" help="Una hipótesis de QA confirmada o descartada; no crea tareas ni planes de pruebas." />
+            <div className="form-actions"><SubmitButton>Añadir nota</SubmitButton></div>
+          </ActionForm>
+        ) : null}
+      </section>
+    </>
+  );
+}
 
-      <h3>Seis indicadores explicados</h3>
-      {INDICATOR_KEYS.map((k) => {
-        const i = r.evaluation.indicators[k];
-        const e = r.explain[k];
-        return (
-          <details key={k} open={q.det === k} className="kpi-detail">
-            <summary><strong>{INDICATOR_NAME[k]}</strong> — <KpiCell i={i} /></summary>
-            <dl className="kv">
-              <dt>Fórmula</dt><dd>{e.formula}</dd>
-              <dt>Numerador / denominador</dt><dd>{e.numerator ?? "—"} / {e.denominator ?? "—"} <small>({UNIT_LABEL[i.unit]})</small></dd>
-              <dt>Periodo</dt><dd>{e.period} ({q.base.mode === "FULL_MONTH" ? "mes completo" : "corte diario"})</dd>
-              <dt>Estado</dt><dd>{STATUS_TEXT[i.status] ?? i.status} — {i.reason}{i.cuts ? <> · cortes a={i.cuts.a}, b={i.cuts.b}{i.n !== undefined ? `, N=${i.n}` : ""}</> : null}</dd>
-              <dt>Fuentes y cobertura</dt><dd>{e.sources.join(", ") || "—"}{e.coverage.map((c) => <div key={c.source}><span className={`badge ${c.state === "COMPLETE" ? "badge-ok" : "badge-warn"}`}>{c.source}: {c.state === "COMPLETE" ? "cobertura declarada" : c.state === "UNKNOWN" ? "sin declaración" : "parcial"}</span> <small>{c.reason}</small></div>)}</dd>
-              {Object.keys(e.breakdown).length ? <><dt>Desglose</dt><dd><ul>{Object.entries(e.breakdown).map(([bk, bv]) => <li key={bk}>{bk}: <strong>{bv}</strong></li>)}</ul></dd></> : null}
-              {i.components ? <><dt>Componentes</dt><dd><ul>{i.components.map((c) => <li key={c.id}>{c.label}: {c.value ?? "—"} <small>({UNIT_LABEL[c.unit]})</small> → {c.color ? <ColorBadge color={c.color} /> : STATUS_TEXT[c.status] ?? c.status}{c.cuts ? <small> (a={c.cuts.a}, b={c.cuts.b})</small> : null} <small>{c.reason}</small></li>)}</ul></dd></> : null}
-              {e.notes.length ? <><dt>Avisos</dt><dd><ul>{e.notes.map((n) => <li key={n}>{n}</li>)}</ul></dd></> : null}
-              <dt>Revisión de reglas</dt><dd>Calidad {q.qrev ?? "activa"}; regla del ámbito {q.scope === "group" ? "Grupo" : "Cliente"}.</dd>
-            </dl>
-          </details>
-        );
-      })}
+const kpiParams = (q: QualityQuery) => qualityToParams(q);
 
-      <h3>Client Health del mes</h3>
-      <p>{r.health.state && r.health.state !== "NONE" ? <>{HEALTH_DB_LABEL[r.health.state as HealthDbState]}{r.health.comment ? <> — «{r.health.comment}»</> : null} <small>(versión {r.health.version}; {r.health.use?.note})</small></> : <span className="badge badge-off">Sin feedback (en blanco)</span>}</p>
-
-      <h3>Evolución mensual</h3>
-      {evolutionSlot}
-      {milestones.length ? <p className="hint">Hitos del año (anotados; no se excluyen eventos automáticamente): {milestones.map((m) => `${fdate(m.date)} · ${m.type}${m.note ? ` (${m.note})` : ""} · ${m.where}`).join(" — ")}.</p> : null}
-
-      <h3>Notas de revisión de calidad</h3>
-      {notes.length === 0 ? <p className="muted">Sin notas.</p> : <ul>{notes.map((n) => <li key={n.id}><strong>{DIAGNOSIS_LABEL[n.topic as keyof typeof DIAGNOSIS_LABEL] ?? INDICATOR_NAME[n.topic as keyof typeof INDICATOR_NAME] ?? n.topic}</strong> · {n.month}/{n.year}{n.evidence ? ` · evidencia: ${n.evidence}` : ""} — {n.text} <small>({n.author}, {fdate(n.createdAt.slice(0, 10))})</small></li>)}</ul>}
-      {isAdmin ? (
-        <ActionForm action={addNoteAction} hidden={{ scope: q.scope, entityId: r.id, year: q.base.date.slice(0, 4), month: Number(q.base.date.slice(5, 7)) }}>
-          <SelectField name="topic" label="Tema" initial="CONFIGURACION" options={[...DIAGNOSIS_FAMILIES.map((f) => ({ value: f, label: DIAGNOSIS_LABEL[f] })), ...INDICATOR_KEYS.map((k) => ({ value: k, label: INDICATOR_NAME[k] }))]} />
-          <TextField name="evidence" label="Evidencia (IDs de ticket, PAP…)" />
-          <TextAreaField name="text" label="Nota de revisión" help="Una hipótesis de QA confirmada o descartada; no crea tareas ni planes de pruebas." />
-          <div className="form-actions"><SubmitButton>Añadir nota</SubmitButton></div>
-        </ActionForm>
+/** Cabecera de un indicador para UN objeto: valor, estado, motivo, y sus datos básicos (el resto del apartado lo aporta el cuerpo del indicador). */
+export function EntityKpiHead({ r, k }: { r: QualityRow; k: (typeof INDICATOR_KEYS)[number] }) {
+  const i = r.evaluation.indicators[k];
+  const c = cellInfo(i, r.explain[k].observed);
+  const e = r.explain[k];
+  return (
+    <section className="ql-panel" aria-label={`${KPI_ACCESS_NAME[k]} de ${r.name}`}>
+      <h2>{r.name} · {KPI_ACCESS_NAME[k]} <small className="ql-muted">{r.parent ? `${r.parent} · ` : ""}{r.scope === "group" ? "Grupo Cliente" : "Cliente"}</small></h2>
+      <p>
+        {c.main === null ? <strong>—</strong> : <strong style={{ fontSize: "1.15em" }}>{c.kind === "PARTIAL" ? "≥ " : ""}{k === "HEALTH" ? c.main : num(c.main)}</strong>} <span className="ql-u">{KPI_RATE_UNIT[k]}</span>{" "}
+        {c.color ? <StateTag color={c.color} /> : i.alert && i.value !== null ? <StateTag color="red" text="Alerta parcial" /> : <NeutralTag partial={c.kind === "PARTIAL"}>{c.label || "Sin dato"}</NeutralTag>}
+        {k !== "HEALTH" && e.observed !== null ? <> <span className="ql-obs">Observado: {num(e.observed, 1)}</span></> : null}
+      </p>
+      {c.color === null ? <p className="ql-note">{reasonOf(i)}</p> : null}
+      {r.users.stock === null ? <p className="ql-note">Usuarios del mes sin informar en la matriz: no se calculan tasas; los conteos se conservan.</p> : null}
+      {k === "HEALTH" ? (
+        <p className="ql-note">{r.health.state && r.health.state !== "NONE" ? <>{HEALTH_DB_LABEL[r.health.state as HealthDbState]}{r.health.comment ? <> — «{r.health.comment}»</> : null} <small>(versión {r.health.version}; {r.health.use?.note})</small></> : "Sin feedback en el mes (celda en blanco)."}</p>
       ) : null}
-      <p className="hint">Mapeo de Client Health {cfg.health.confirmed ? "confirmado" : "sin confirmar"} · plantilla del global {cfg.global.enabled ? "activada" : "sin elegir"}.</p>
     </section>
   );
 }
 
+/** Evolución mensual de la ficha (valor, color o motivo por mes; recalculada con la revisión indicada). */
 export function Evo({ e }: { e: Evolution }) {
   const rows = e.points;
   const COLOR_TEXT: Record<string, string> = { green: "verde", yellow: "amarillo", red: "rojo" };
@@ -109,51 +111,42 @@ export function Evo({ e }: { e: Evolution }) {
     const v = p.indicators[k].numerator;
     return v === null || Number.isNaN(Number(v)) ? null : Number(v);
   };
-  const pts = (k: (typeof INDICATOR_KEYS)[number], label: string, unit: string) => rows.map((p) => ({ x: p.month - 1, y: numOf(p, k), tip: `${MONTH_SHORT[p.month - 1]} ${e.year}: ${numOf(p, k) ?? "sin dato"} ${unit} (${label})` }));
+  const pts = (k: (typeof INDICATOR_KEYS)[number], label: string, unit: string) => rows.map((p) => ({ x: p.month, y: numOf(p, k), tip: `${MONTH_SHORT[p.month - 1]} ${e.year}: ${numOf(p, k) ?? "sin dato"} ${unit} (${label})` }));
   const lines = [
     { name: "Incidentes y problemas (altas)", color: color(0), marker: "circle" as const, points: pts("INCIDENTS_PROBLEMS", "altas por creación", "tickets") },
-    { name: "Escalados N3", color: color(1), marker: "square" as const, points: pts("N3_ESCALATIONS", "tickets únicos", "tickets") },
+    { name: "Escalados a N3", color: color(1), marker: "square" as const, points: pts("N3_ESCALATIONS", "tickets únicos", "tickets") },
     { name: "PAP correctivos", color: color(2), marker: "circle" as const, points: pts("PAP_CORRECTIVE", "PAP únicos", "PAP") },
-    { name: "Bugs/estándar", color: color(3), marker: "square" as const, points: pts("BUGS_STANDARD", "problemas únicos", "problemas") },
+    { name: "Problemas con bug o estándar", color: color(3), marker: "square" as const, points: pts("BUGS_STANDARD", "problemas únicos", "problemas") },
   ];
   return (
-    <>
-      <p className="hint" role="note">
-        Serie <strong>recalculada</strong> con la revisión de Calidad {e.series.qualityRevision}{e.series.qualityPersisted ? "" : " (inicial)"}{e.series.simulated ? " (borrador: simulación, no publicado)" : ""} y de Pulse {e.series.pulseRevision}; referencia de serie <code>{e.series.reference}</code>. No es el color publicado históricamente.
-      </p>
-      <Legend items={lines.map((l) => ({ label: l.name, color: l.color, marker: l.marker }))} />
-      <LineChart title="Numeradores mensuales de los indicadores (conteos, no tasas)" unit="conteos por mes" lines={lines} />
-      <details open>
-        <summary>Tabla equivalente: seis indicadores, global y estado de cada mes</summary>
-        <div className="table-wrap" tabIndex={0} role="region" aria-label="Evolución mensual (desplazable)">
-          <table>
-            <caption className="visually-hidden">Evolución mensual de {e.year}: valor, color o motivo, muestra de referencia y backlog observado</caption>
-            <thead><tr><th scope="col">Mes</th><th scope="col">Usuarios (corte / mes)</th>{INDICATOR_KEYS.map((k) => <th key={k} scope="col">{INDICATOR_NAME[k]}</th>)}<th scope="col">Global</th><th scope="col">Backlog observado</th></tr></thead>
+    <details className="ql-calc" open>
+      <summary>Evolución mensual {e.year}</summary>
+      <div className="ql-cols">
+        <div className="ql-chart">
+          <Legend items={lines.map((l) => ({ label: l.name, color: l.color, marker: l.marker }))} />
+          <LineChart title="Numeradores mensuales (conteos, no tasas)" unit="conteos por mes" lines={lines} />
+        </div>
+        <div className="ql-wrap" tabIndex={0} role="region" aria-label="Evolución mensual (desplazable)">
+          <table className="ql-table">
+            <caption className="visually-hidden">Evolución mensual de {e.year}: estado de cada indicador y global</caption>
+            <thead><tr><th scope="col">Mes</th><th scope="col" className="ql-r">Usuarios</th>{INDICATOR_KEYS.map((k) => <th key={k} scope="col">{KPI_ACCESS_NAME[k]}</th>)}<th scope="col">Global</th></tr></thead>
             <tbody>
               {rows.map((p) => (
                 <tr key={p.month}>
-                  <th scope="row">{MONTH_SHORT[p.month - 1]}{p.period.provisional ? " (provisional)" : ""}</th>
-                  <td>{p.users.stock ?? "sin informar"} / {p.users.userMonths ?? "—"}</td>
+                  <th scope="row">{MONTH_SHORT[p.month - 1]}{p.period.provisional ? " (prov.)" : ""}</th>
+                  <td className="ql-r">{p.users.stock ?? "—"}</td>
                   {INDICATOR_KEYS.map((k) => {
                     const i = p.indicators[k];
-                    return (
-                      <td key={k}>
-                        {i.value !== null ? `${num(i.value, 2)} ${i.unit}` : "sin valor"} · {i.color ? COLOR_TEXT[i.color] : (STATUS_TEXT[i.status] ?? i.status)}
-                        {i.sampleN !== null ? ` · muestra ${i.sampleN}` : ""}
-                        {i.numerator !== null || i.denominator !== null ? <span className="muted"> (num. {i.numerator ?? "—"} / den. {i.denominator ?? "—"})</span> : null}
-                        {i.value === null && i.reason ? <span className="muted"> {i.reason}</span> : null}
-                      </td>
-                    );
+                    return <td key={k} title={i.reason}>{i.value !== null ? num(i.value, 2) : "—"} · {i.color ? COLOR_TEXT[i.color] : (STATUS_TEXT[i.status] ?? i.status)}</td>;
                   })}
-                  <td>{p.global.color ? COLOR_TEXT[p.global.color] : `sin global: ${p.global.reason}`}</td>
-                  <td>{p.backlog.observedOn ? `${p.backlog.exact ? "exacta" : "provisional"} ${fdate(p.backlog.observedOn)}` : <span className="muted">hueco: {p.backlog.note}</span>}</td>
+                  <td>{p.global.color ? COLOR_TEXT[p.global.color] : "sin global"}</td>
                 </tr>
               ))}
             </tbody>
           </table>
         </div>
-      </details>
-      <p className="hint">{e.note} CUM al {fdate(e.cum.cut)}: {Object.entries(e.cum.current).map(([k, v]) => `${k} ${v}`).join(" · ") || "—"} · mismo corte del año anterior ({fdate(e.cum.previousCut)}): {Object.entries(e.cum.previousComparable).map(([k, v]) => `${k} ${v}`).join(" · ") || "—"}.</p>
-    </>
+      </div>
+      <p className="ql-note">Serie recalculada con la revisión de Calidad {e.series.qualityRevision}{e.series.qualityPersisted ? "" : " (inicial)"} y la de Pulse {e.series.pulseRevision}; no es el color publicado históricamente. CUM al {fdate(e.cum.cut)}: {Object.entries(e.cum.current).map(([k, v]) => `${k} ${v}`).join(" · ") || "—"} · mismo corte del año anterior ({fdate(e.cum.previousCut)}): {Object.entries(e.cum.previousComparable).map(([k, v]) => `${k} ${v}`).join(" · ") || "—"}.</p>
+    </details>
   );
 }

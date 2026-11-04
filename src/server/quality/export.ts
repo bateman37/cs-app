@@ -1,7 +1,8 @@
 import { csvDocument, type CsvValue } from "@/domain/csv";
 import { COLOR_LABEL, HEALTH_LABEL, INDICATOR_KEYS, INDICATOR_NAME, QSCOPE_LABEL, UNIT_LABEL, type HealthState, METRIC_UNIT } from "@/domain/quality-config";
 import { HEALTH_DB_LABEL } from "@/domain/quality-health";
-import { QSCOPE_NAME, type QualityQuery } from "@/domain/quality-query";
+import { QSCOPE_NAME, qualityPeriod, type QualityQuery } from "@/domain/quality-query";
+import { todayMadrid } from "@/domain/vigencia";
 import { getHealthMatrix } from "./health";
 import { getQuality, type QualityRow, type QualityView } from "./engine";
 
@@ -13,11 +14,12 @@ import { getQuality, type QualityRow, type QualityView } from "./engine";
 export const QUALITY_TABLES = ["cartera", "ficha", "health"] as const;
 export type QualityTable = (typeof QUALITY_TABLES)[number];
 const n = (v: string | null | undefined): CsvValue => ({ n: v ?? null });
-const CONTEXT = ["ambito", "mes_solicitado", "corte_solicitado", "corte_efectivo", "periodo_desde", "estado_periodo", "revision_calidad", "revision_pulse", "configuracion_origen", "sello_datos", "cobertura", "fotografia_backlog", "generado"];
+const CONTEXT = ["ambito", "mes_solicitado", "corte_solicitado", "corte_efectivo", "periodo_desde", "estado_periodo", "revision_calidad", "revision_pulse", "configuracion_origen", "sello_datos", "cobertura", "fotografia_backlog", "generado", "filtro_soporte", "filtro_servidor"];
 const ctx = (v: QualityView): CsvValue[] => [
   QSCOPE_LABEL[v.query.scope === "group" ? "GRUPO" : "CLIENTE"], `${v.period.year}-${String(v.period.month).padStart(2, "0")}`, v.period.requested, v.period.cut, v.period.from, v.period.provisional ? "provisional" : "cerrado",
   String(v.config.revisionNo) + (v.config.persisted ? "" : " (inicial)"), String(v.pulseRevision), v.config.simulated ? "SIMULACIÓN, NO PUBLICADO (borrador)" : v.config.adapterNotes.length ? "leída de v1 mediante adaptador" : "activa", v.stamp,
   Object.values(v.coverage).map((c) => `${c.source}: ${c.state}`).join(" | "), v.backlog.exact ? `exacta ${v.backlog.observedOn}` : v.backlog.provisional ? `observada en ${v.backlog.observedOn} (provisional)` : "no disponible", v.readAt,
+  v.query.filters.soporte.join(" | ") || "todos", v.query.filters.servidor.join(" | ") || "todos",
 ];
 const STATUS_TEXT: Record<string, string> = { OK: "calculado", SIN_CALIBRAR: "sin calibrar", SIN_REGLA: "sin regla", SIN_REFERENCIA: "sin referencia", DATO_INVALIDO: "dato no calculable", REGLA_INVALIDA: "regla no aplicable", BLANCO: "sin feedback (blanco)", CATEGORIA: "categoría", SIN_DATO: "sin dato", PARCIAL: "parcial", INCOMPLETO: "incompleto", COMPOSICION_SIN_ELEGIR: "composición sin elegir" };
 const colorText = (c: keyof typeof COLOR_LABEL | null) => (c ? COLOR_LABEL[c] : "sin color");
@@ -30,7 +32,7 @@ function indicatorCells(r: QualityRow): CsvValue[] {
     const w = r.evaluation.weights;
     return [
       k === "HEALTH" ? (i.value ? HEALTH_LABEL[i.value as HealthState] : "") : n(i.value), UNIT_LABEL[METRIC_UNIT[k]], colorText(i.color), `${STATUS_TEXT[i.status] ?? i.status}${i.alert && !i.color ? " (alerta roja parcial)" : ""}`,
-      w ? n(w.configuredPercent[k]) : "", w ? n(w.percent[k]) : "",
+      w ? n(w.configuredPercent[k]) : "", w ? n(w.percent[k]) : "", n(r.explain[k].observed),
     ] as CsvValue[];
   });
 }
@@ -38,7 +40,7 @@ function indicatorCells(r: QualityRow): CsvValue[] {
 export async function qualityCsv(actorId: string, query: QualityQuery, table: QualityTable, opts: { now?: Date } = {}): Promise<QualityCsv> {
   if (table === "health") {
     // CSAPP-09 §3: matriz COMPLETA desde UNA lectura coherente (no páginas independientes) con sello de datos y fecha de lectura.
-    const m = await getHealthMatrix(actorId, { scope: query.scope, year: query.year, q: query.base.q, page: 1, pageSize: 100 }, { all: true });
+    const m = await getHealthMatrix(actorId, { scope: query.scope, year: query.year, q: "", page: 1, pageSize: 100, filters: query.filters, cut: qualityPeriod(query.base.date, query.base.mode, todayMadrid(opts.now ?? new Date())).cut, ...(query.sel ? { ids: [query.sel] } : {}) }, { all: true });
     const header = ["ambito", "anio", "sello_datos", "leido_el", "id", "entidad", "grupo_padre", ...Array.from({ length: 12 }, (_, i) => [`mes${i + 1}_estado`, `mes${i + 1}_comentario`, `mes${i + 1}_fecha_feedback`, `mes${i + 1}_version`]).flat()];
     const rows = m.rows.map((r) => [QSCOPE_NAME[query.scope], String(query.year), m.stamp, m.readAt, r.id, r.name, r.parent, ...Array.from({ length: 12 }, (_, i) => {
       const c = r.cells[i + 1];
@@ -47,7 +49,7 @@ export async function qualityCsv(actorId: string, query: QualityQuery, table: Qu
     return { filename: `calidad_health_${query.year}_${query.scope}.csv`, body: csvDocument(header, rows), rows: rows.length, stamp: m.stamp };
   }
   const v = await getQuality(actorId, query, { allRows: true, now: opts.now });
-  const header = [...CONTEXT, "id", "entidad", "grupo_padre", "usuarios_corte", "usuarios_mes", ...INDICATOR_KEYS.flatMap((k) => [`${k}_valor`, `${k}_unidad`, `${k}_color`, `${k}_estado`, `${k}_peso_configurado_pct`, `${k}_peso_efectivo_pct`]), "global_color", "global_indice", "global_estado", "cobertura_asignacion_pct", "alertas_rojas_parciales", "motivo_global"];
+  const header = [...CONTEXT, "id", "entidad", "grupo_padre", "usuarios_corte", "usuarios_mes", ...INDICATOR_KEYS.flatMap((k) => [`${k}_valor`, `${k}_unidad`, `${k}_color`, `${k}_estado`, `${k}_peso_configurado_pct`, `${k}_peso_efectivo_pct`, `${k}_observado`]), "global_color", "global_indice", "global_estado", "cobertura_asignacion_pct", "alertas_rojas_parciales", "motivo_global"];
   const tail = (r: QualityRow): CsvValue[] => [colorText(r.evaluation.global.color), n(r.evaluation.global.score), STATUS_TEXT[r.evaluation.global.status] ?? r.evaluation.global.status, n(r.coveragePercent), r.evaluation.global.partialAlerts.map((k) => INDICATOR_NAME[k]).join(" | "), r.evaluation.global.reason];
   if (table === "ficha") {
     const r = v.rows.find((x) => x.id === query.sel);

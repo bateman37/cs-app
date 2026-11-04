@@ -75,6 +75,8 @@ export type EconomicInput = {
   unpaged?: boolean;
   /** Entidad para la que se preparan las series mensuales (año seleccionado y comparable anterior). Sin ella no se calculan series por entidad. */
   detailFor?: string;
+  /** Años anteriores (< año del corte) de los que `detailFor` devuelve el año completo y el CUM comparable (gráficos anuales de la ficha). */
+  historyYears?: number[];
 };
 
 export type Amount = { value: string | null; status: ResultStatus; reason: string | null; known: string; validated: boolean };
@@ -127,6 +129,8 @@ export type EntityResult = {
   monthly: PeriodSeries[];
   /** Serie mensual del año anterior COMPARABLE (mismos meses, último mes cortado según el modo); solo para `detailFor`. */
   prevMonthly: PeriodSeries[];
+  /** Año completo y CUM comparable (mismo corte del año) de cada año de `historyYears`, con las mismas fórmulas; solo para `detailFor`. */
+  history: { year: number; full: PeriodSeries; cum: PeriodSeries }[];
 };
 
 export type PortfolioPeriod = PortfolioPeriodResult;
@@ -167,17 +171,46 @@ const na = (unit: string, status: ResultStatus, reason: string, code: string): F
 
 // ---------------------------------------------------------------- SQL de servicio (compartido con el detalle)
 
-/** Servicio económico de una actividad: evidencias (administración delegada del ticket, valor exacto de Entorno y Tipología, proyecto Wrike asignado). */
-export const SERVICE_EVIDENCE_SQL = Prisma.sql`
+/**
+ * Versión de la regla de clasificación del servicio (HOTFIX-02 §5). Se versiona porque cambia lo que la ausencia de configuración manual significa.
+ *  - servicio-v1 (CSAPP-05): solo evidencias explícitas; sin ninguna, SIN_CLASIFICAR.
+ *  - servicio-v2 (HOTFIX-02): las explícitas se conservan intactas; solo SIN evidencia explícita se aplican los dos rellenos documentados.
+ */
+export const SERVICE_RULES_VERSION = "servicio-v2";
+
+/** Evidencias EXPLÍCITAS (nunca se sobrescriben): Administración Delegada del ticket, asignación manual por Entorno y Tipología y por proyecto Wrike. */
+export const SERVICE_EXPLICIT_SQL = Prisma.sql`
   SELECT 'ADMIN_DELEGADA'::text AS service, 'TICKET_ADMIN_DELEGADA'::text AS origin WHERE a."ticketAdminDelegada" IS TRUE
   UNION ALL
   SELECT sa.service, 'ENTORNO' FROM "ServiceAssignment" sa
-   WHERE sa."isActive" AND sa."matchKind" = 'ENTORNO' AND a."ticketEntorno" IS NOT NULL AND sa."searchValue" = lower(a."ticketEntorno")
+   WHERE sa."isActive" AND sa."matchKind" = 'ENTORNO' AND a."ticketEntorno" IS NOT NULL AND sa."searchValue" = csapp_norm_name(a."ticketEntorno")
      AND (sa."validFrom" IS NULL OR sa."validFrom" <= a."workDate") AND (sa."validTo" IS NULL OR a."workDate" < sa."validTo")
   UNION ALL
   SELECT sa.service, 'WRIKE_PROJECT' FROM "ServiceAssignment" sa
-   WHERE sa."isActive" AND sa."matchKind" = 'WRIKE_PROJECT' AND a.source = 'WRIKE' AND a."projectName" IS NOT NULL AND sa."searchValue" = lower(a."projectName")
+   WHERE sa."isActive" AND sa."matchKind" = 'WRIKE_PROJECT' AND a.source = 'WRIKE' AND a."projectName" IS NOT NULL AND sa."searchValue" = csapp_norm_name(a."projectName")
      AND (sa."validFrom" IS NULL OR sa."validFrom" <= a."workDate") AND (sa."validTo" IS NULL OR a."workDate" < sa."validTo")`;
+
+/**
+ * Rellenos documentados (solo si NO hay ninguna evidencia explícita, y por tanto nunca contradicen una asignación ni un conflicto real):
+ *  1. Ticket con Entorno y Tipología informado que no es Administración Delegada → SOPORTE ordinario (regla original del Excel; no exige catalogar cada entorno).
+ *  2. Wrike del perfil de mantenimiento/soporte N3 (único perfil Wrike vigente), con proyecto reconocido en Clientes (Cliente o Grupo atribuido) y persona
+ *     PMO elegible (desde el corte PMO), sin ticket de Administración Delegada → SOPORTE de mantenimiento. Su procedencia queda en `origin`.
+ * Sin evidencia ni relleno aplicable queda SIN_CLASIFICAR: lo desconocido no se convierte en soporte.
+ */
+export const SERVICE_FALLBACK_SQL = Prisma.sql`
+  SELECT 'SOPORTE'::text AS service, 'ENTORNO_ORDINARIO'::text AS origin
+   WHERE a."ticketEntorno" IS NOT NULL AND btrim(a."ticketEntorno") <> '' AND a."ticketAdminDelegada" IS NOT TRUE
+     AND NOT EXISTS (SELECT 1 FROM (${SERVICE_EXPLICIT_SQL}) x)
+  UNION ALL
+  SELECT 'SOPORTE'::text, 'WRIKE_MANTENIMIENTO_N3'
+   WHERE a.source = 'WRIKE' AND a."isEligible" IS TRUE AND a."ticketAdminDelegada" IS NOT TRUE AND a.bucket IN ('CLIENT', 'GROUP_ONLY')
+     AND NOT EXISTS (SELECT 1 FROM (${SERVICE_EXPLICIT_SQL}) x)`;
+
+/** Todas las evidencias (explícitas y rellenos) con su origen: base del servicio económico y de «Ver cálculo». */
+export const SERVICE_EVIDENCE_SQL = Prisma.sql`
+  ${SERVICE_EXPLICIT_SQL}
+  UNION ALL
+  ${SERVICE_FALLBACK_SQL}`;
 
 export const SERVICE_OF_SQL = Prisma.sql`(
   SELECT CASE count(DISTINCT ev.service) WHEN 0 THEN 'SIN_CLASIFICAR' WHEN 1 THEN min(ev.service) ELSE 'CONFLICTO' END
@@ -224,7 +257,8 @@ async function compute(tx: Tx, input: EconomicInput, date: string, mode: CutMode
   const focus = input.detailFor ? ents.find((e) => e.id === input.detailFor) ?? null : null;
 
   // 2. Hechos financieros vigentes de los años implicados (una consulta por conjuntos).
-  const years = [cutY, cutY - 1];
+  const historyYears = [...new Set((input.historyYears ?? []).filter((y) => Number.isInteger(y) && y < cutY && y >= 2000))].sort((a, b) => a - b);
+  const years = [...new Set([cutY, cutY - 1, ...historyYears])];
   const finance = await loadFinance(tx, years, groupIds);
 
   // 3. Horas: una pasada por TimeActivity con un join de periodos (sin consulta por grupo/mes). Las series mensuales solo de la entidad en foco.
@@ -235,8 +269,13 @@ async function compute(tx: Tx, input: EconomicInput, date: string, mode: CutMode
     prevMonthlyPeriods.push({ key: `p${m}`, y: cutY - 1, m, from: ymdToIso({ y: cutY - 1, m, d: 1 }), to: m === cutP.m ? periods.prevCum.to : ymdToIso({ y: cutY - 1, m, d: lastDayOfMonth(cutY - 1, m) }) });
   }
   const periodRows = PERIOD_KEYS.map((k) => ({ key: k as string, from: periods[k].from, to: periods[k].to }));
+  // Años históricos: el año completo y el CUM comparable con el MISMO corte (mismas reglas de mes completo/febrero que buildPeriods).
+  const historyDefs = historyYears.map((y) => {
+    const eq = buildPeriods(ymdToIso({ y, m: cutP.m, d: Math.min(cutP.d, lastDayOfMonth(y, cutP.m)) }), mode, today);
+    return { year: y, full: { key: `hf${y}`, from: `${y}-01-01`, to: `${y}-12-31` }, cum: { key: `hc${y}`, from: eq.cum.from, to: eq.cum.to } };
+  });
   const hours = await loadHours(tx, input.scope, ents, periodRows, input.filters);
-  const monthlyHours = focus ? await loadHours(tx, input.scope, [focus], [...monthlyPeriods, ...prevMonthlyPeriods], input.filters) : (new Map() as HoursIndex);
+  const monthlyHours = focus ? await loadHours(tx, input.scope, [focus], [...monthlyPeriods, ...prevMonthlyPeriods, ...historyDefs.flatMap((h) => [h.full, h.cum])], input.filters) : (new Map() as HoursIndex);
   const unattributed = await loadUnattributed(tx, periods.cum);
 
   // 4. Usuarios: un único acceso a la matriz de todas las entidades y años.
@@ -432,6 +471,13 @@ async function compute(tx: Tx, input: EconomicInput, date: string, mode: CutMode
     const isFocus = focus?.id === e.id;
     const monthly = isFocus ? monthlyPeriods.map((mp) => build(e, mp.key, { from: mp.from, to: mp.to, label: `${mp.y}-${String(mp.m).padStart(2, "0")}`, provisional: mp.m === cutP.m && periods.cum.provisional }, "monthly", monthlyHours)) : [];
     const prevMonthly = isFocus ? prevMonthlyPeriods.map((mp) => build(e, mp.key, { from: mp.from, to: mp.to, label: `${mp.y}-${String(mp.m).padStart(2, "0")}`, provisional: false }, "monthly", monthlyHours)) : [];
+    const history = isFocus
+      ? historyDefs.map((h) => ({
+          year: h.year,
+          full: build(e, h.full.key, { from: h.full.from, to: h.full.to, label: `Año ${h.year} completo`, provisional: false }, "period", monthlyHours),
+          cum: build(e, h.cum.key, { from: h.cum.from, to: h.cum.to, label: `CUM ${h.year}`, provisional: false }, "period", monthlyHours),
+        }))
+      : [];
     return {
       id: e.id,
       type: e.type,
@@ -444,6 +490,7 @@ async function compute(tx: Tx, input: EconomicInput, date: string, mode: CutMode
       periods: per,
       monthly,
       prevMonthly,
+      history,
     };
   });
 
@@ -731,10 +778,10 @@ export async function bcFallbackImpact(db: Tx | typeof prisma): Promise<{ wrike:
   const r = await db.$queryRaw<{ w: bigint; p: bigint }[]>(Prisma.sql`
     SELECT
       (SELECT count(*) FROM "WrikeTimeEntry" e WHERE e."projectName" IS NOT NULL AND e."drvScopeMethod" IN ('PROJECT', 'PROJECT_TICKET') AND e."drvGroupId" IS NOT NULL
-         AND NOT EXISTS (SELECT 1 FROM "ExternalIdentity" w WHERE w.system = 'WRIKE' AND w.kind IN ('PROJECT_NAME', 'PROJECT_ID') AND w."isActive" AND w."searchValue" IN (lower(e."projectName"), e."projectName"))
-         AND EXISTS (SELECT 1 FROM "ExternalIdentity" b WHERE b.system = 'BC' AND b.kind = 'GROUP_KEY' AND b."isActive" AND b."searchValue" = lower(e."projectName"))) AS w,
+         AND NOT EXISTS (SELECT 1 FROM "ExternalIdentity" w WHERE w.system = 'WRIKE' AND w.kind IN ('PROJECT_NAME', 'PROJECT_ID') AND w."isActive" AND w."searchValue" IN (csapp_norm_name(e."projectName"), e."projectName"))
+         AND EXISTS (SELECT 1 FROM "ExternalIdentity" b WHERE b.system = 'BC' AND b.kind = 'GROUP_KEY' AND b."isActive" AND b."searchValue" = csapp_norm_name(e."projectName"))) AS w,
       (SELECT count(*) FROM "PapItem" t JOIN "PapRevision" v ON v.id = t."currentRevisionId" WHERE v.project IS NOT NULL AND t."drvScope" = 'GROUP_ONLY'
-         AND NOT EXISTS (SELECT 1 FROM "ExternalIdentity" w WHERE w.system = 'PAP' AND w.kind IN ('PROJECT_NAME', 'PROJECT_ID') AND w."isActive" AND w."searchValue" IN (lower(v.project), v.project))
-         AND EXISTS (SELECT 1 FROM "ExternalIdentity" b WHERE b.system = 'BC' AND b.kind = 'GROUP_KEY' AND b."isActive" AND b."searchValue" = lower(v.project))) AS p`);
+         AND NOT EXISTS (SELECT 1 FROM "ExternalIdentity" w WHERE w.system = 'PAP' AND w.kind IN ('PROJECT_NAME', 'PROJECT_ID') AND w."isActive" AND w."searchValue" IN (csapp_norm_name(v.project), v.project))
+         AND EXISTS (SELECT 1 FROM "ExternalIdentity" b WHERE b.system = 'BC' AND b.kind = 'GROUP_KEY' AND b."isActive" AND b."searchValue" = csapp_norm_name(v.project))) AS p`);
   return { wrike: Number(r[0].w), pap: Number(r[0].p) };
 }

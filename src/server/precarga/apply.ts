@@ -91,6 +91,23 @@ export async function ensureIdentity(
   return "created";
 }
 
+/**
+ * Un alias (Wrike/PAP) que el libro asigna a VARIOS Grupos no crea equivalencia: se guardan los Grupos candidatos para que el propio registro (ticket
+ * vinculado y su organización) pueda resolverlo cuando identifique un único candidato compatible. Idempotente; no sustituye una equivalencia ya existente.
+ */
+export async function ensureCandidates(env: Env, system: "WRIKE" | "PAP", raw: string, groupIds: string[]): Promise<void> {
+  const { tx } = env;
+  const clean = cleanText(raw);
+  const searchValue = searchValueOf("PROJECT_NAME", clean);
+  if ((await tx.externalIdentity.count({ where: { system, kind: "PROJECT_NAME", searchValue, isActive: true } })) > 0) return;
+  for (const groupId of groupIds) {
+    const key = { system_kind_searchValue_groupId: { system, kind: "PROJECT_NAME" as const, searchValue, groupId } };
+    if (await tx.aliasCandidate.findUnique({ where: key, select: { id: true } })) continue;
+    await tx.aliasCandidate.create({ data: { system, kind: "PROJECT_NAME", rawValue: clean, searchValue, groupId, batchId: env.batchId } });
+    bump(env.report.created, `candidatos.${system}`);
+  }
+}
+
 export async function ensureGroup(env: Env, name: string): Promise<Ref> {
   const { tx } = env;
   const clean = cleanText(name);
@@ -430,7 +447,10 @@ export async function activatePrecarga(tx: Tx, ctx: ActivationContext): Promise<
   const plan = await loadPlan(tx, ctx.batchId);
   const env: Env = { tx, actor, batchId: ctx.batchId, report: newReport() };
 
-  // 1. Grupos (46 denominaciones BC en el libro real) con su equivalencia BC.
+  for (const k of plan.clientConflicts) {
+    note(env, "ID_ZENDESK_EN_CONFLICTO", `El ID de organización Zendesk ${k.zdId} aparece con nombres o Grupos distintos en el libro: no se crea el Cliente ni se elige uno (créelo en Clientes con su Grupo).`);
+  }
+  // 1. Grupos (denominaciones BC del libro) con su equivalencia BC.
   const groups = new Map<string, Ref>();
   for (const g of plan.groups) groups.set(g.key, await ensureGroup(env, g.name));
 
@@ -453,6 +473,10 @@ export async function activatePrecarga(tx: Tx, ctx: ActivationContext): Promise<
 
   // 3. Alias Wrike: un único Grupo → equivalencia al Grupo (nunca al primer Cliente); varios Grupos → revisión sin asignar.
   for (const w of plan.wrike) {
+    if (w.groupKeys.length > 1) {
+      await ensureCandidates(env, "WRIKE", w.raw, w.groupKeys.map((k) => groups.get(k)).filter((g): g is Ref => !!g?.active).map((g) => g.id));
+      continue;
+    }
     if (w.groupKeys.length !== 1) continue;
     const g = groups.get(w.groupKeys[0]);
     if (!g?.active) continue;
@@ -462,6 +486,10 @@ export async function activatePrecarga(tx: Tx, ctx: ActivationContext): Promise<
 
   // 4. PAP: nombre inequívoco de un único Cliente → implantación (con alias y complejidad); de varios Clientes de un Grupo → Grupo; resto → revisión.
   for (const p of plan.pap) {
+    if (p.outcome === "AMBIGUOUS") {
+      await ensureCandidates(env, "PAP", p.raw, p.groupKeys.map((k) => groups.get(k)).filter((g): g is Ref => !!g?.active).map((g) => g.id));
+      continue;
+    }
     if (p.outcome === "IMPLEMENTATION") {
       const client = clients.get(p.clientIds[0]);
       if (!client?.active) {

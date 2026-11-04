@@ -10,6 +10,8 @@ import { getActive } from "@/server/pulse/config";
 import { readSnapshot, type Tx } from "@/server/analytics/snapshot";
 import { SERVICE_OF_SQL } from "@/server/economics/engine";
 import { loadTicketBatches } from "./coverage";
+import { hasCommonFilters } from "@/domain/filtros-comunes";
+import { loadServiceFacts, selectByFilters } from "./selection";
 import { stockSetSql, ticketFacts, validBugLinkSql, type QScopeDb } from "./facts";
 import { agePercentile, computeQuality, type BacklogInfo, type QualityRow } from "./engine";
 import { evolutionMonths, evolutionRows } from "./evolution";
@@ -22,14 +24,19 @@ import { readDataStamp } from "@/server/analytics/stamp";
  */
 const scopeOf = (q: QualityQuery): QScopeDb => (q.scope === "group" ? "group" : "client");
 
-async function entityIds(tx: Tx, q: QualityQuery): Promise<{ ids: string[]; name: string | null }> {
+/** Entidades del detalle: la elegida (`sel`) o, sin ella, la selección actual de los segmentadores Soporte/Servidor (todas si no hay filtro). */
+async function entityIds(tx: Tx, q: QualityQuery, cut?: string): Promise<{ ids: string[]; name: string | null }> {
   if (q.sel) {
     const e = q.scope === "group" ? await tx.clientGroup.findUnique({ where: { id: q.sel }, select: { id: true, name: true } }) : await tx.client.findFirst({ where: { id: q.sel, isInternal: false }, select: { id: true, name: true } });
     return e ? { ids: [e.id], name: e.name } : { ids: [], name: null };
   }
-  const all = q.scope === "group" ? await tx.clientGroup.findMany({ select: { id: true } }) : await tx.client.findMany({ where: { isInternal: false }, select: { id: true } });
-  return { ids: all.map((x) => x.id), name: null };
+  const all = q.scope === "group"
+    ? (await tx.clientGroup.findMany({ select: { id: true } })).map((x) => ({ id: x.id, groupId: x.id }))
+    : await tx.client.findMany({ where: { isInternal: false }, select: { id: true, groupId: true } });
+  const facts = hasCommonFilters(q.filters) ? await loadServiceFacts(tx, cut ?? qualityPeriod(q.base.date, q.base.mode, todayMadrid()).cut) : null;
+  return { ids: selectByFilters(all, q.scope, q.filters, facts).map((x) => x.id), name: null };
 }
+export { entityIds as selectedEntityIds };
 
 // ---------------------------------------------------------------- Diagnóstico por origen
 
@@ -54,7 +61,7 @@ const FAM_ORDER = DIAGNOSIS_FAMILIES as readonly string[];
 
 export async function diagnosisIn(tx: Tx, q: QualityQuery, cfg: QualityConfig, revisionNo: number, today = todayMadrid()): Promise<DiagnosisView> {
   const per = qualityPeriod(q.base.date, q.base.mode, today);
-  const { ids, name } = await entityIds(tx, q);
+  const { ids, name } = await entityIds(tx, q, per.cut);
   const scope = scopeOf(q);
   const empty: DiagnosisView = { period: { from: per.from, to: per.cut }, scopeName: name, entities: ids.length, typeByFamily: { rows: [], cols: [], cells: {} }, envByFamily: { rows: [], cols: [], cells: {} }, n3ByFamily: {}, hoursByFamily: {}, pending: { noCause: 0, infraNoHosting: 0, unmapped: [] }, papByOrigin: [], papTotalUnique: 0, totals: { tickets: 0 }, mappingsVersion: revisionNo, notes: [] };
   if (per.future || ids.length === 0) return { ...empty, notes: per.future ? ["El mes elegido todavía no ha empezado."] : [] };
@@ -146,7 +153,7 @@ export async function diagnosisTickets(actorId: string, q: QualityQuery, family:
   return readSnapshot(actorId, async (tx) => {
     const rev = await getActive(tx, "QUALITY", q.qrev ?? undefined);
     const per = qualityPeriod(q.base.date, q.base.mode, todayMadrid(now));
-    const { ids } = await entityIds(tx, q);
+    const { ids } = await entityIds(tx, q, per.cut);
     if (per.future || ids.length === 0) return { rows: [], total: 0, page: 1, pageCount: 1 };
     const rows = await tx.$queryRaw<{ ticket_id: string; type: string; created_on: Date; status: string; entorno: string | null; cause: string | null; hosting: string | null; n3: boolean; bug: boolean }[]>(Prisma.sql`
       SELECT x.ticket_id, x.type, x.created_on, x.status, rv.entorno, x.cause, tv.hosting, (x.destinations && ${N3_DESTINATIONS}::text[]) AS n3, ${validBugLinkSql(Prisma.sql`x.ticket_id`)} AS bug
@@ -174,6 +181,8 @@ export type BacklogView = {
   stats: { incident: TypeStats; problem: TypeStats } | null;
   other: { resolved: number; questionTask: number; unknownStatus: number; invalidDates: number };
   thresholds: { incident: number | null; problem: number | null };
+  /** Causas (familia de diagnóstico) del stock activo de incidentes y problemas, sobre TODAS las filas (no solo la página). */
+  byFamily: { family: DiagnosisFamily; incident: number; problem: number; aged: number }[];
   rows: BacklogRow[];
   total: number;
   page: number;
@@ -186,10 +195,10 @@ export async function getBacklog(actorId: string, q: QualityQuery, page: number,
     const rev = await getActive(tx, "QUALITY", q.qrev ?? undefined);
     const cfg = rev.payload;
     const per = qualityPeriod(q.base.date, q.base.mode, todayMadrid(now));
-    const { ids, name } = await entityIds(tx, q);
+    const { ids, name } = await entityIds(tx, q, per.cut);
     const batches = await loadTicketBatches(tx);
     const choice = chooseSnapshot(per.cut, batches.map((b) => ({ batchId: b.batchId, observedOn: b.observedOn, extractionKnown: b.extractionKnown, population: b.population, statusScope: b.statusScope })), cfg.snapshotPolicy);
-    const base: BacklogView = { choice, observedOn: null, usersAtD: null, scopeName: name, entities: ids.length, stats: null, other: { resolved: 0, questionTask: 0, unknownStatus: 0, invalidDates: 0 }, thresholds: cfg.incidents.concerningDays, rows: [], total: 0, page: 1, pageCount: 1, notes: [choice.note] };
+    const base: BacklogView = { choice, observedOn: null, usersAtD: null, scopeName: name, entities: ids.length, stats: null, other: { resolved: 0, questionTask: 0, unknownStatus: 0, invalidDates: 0 }, thresholds: cfg.incidents.concerningDays, byFamily: [], rows: [], total: 0, page: 1, pageCount: 1, notes: [choice.note] };
     // La fotografía «anterior» sin política elegida se muestra aparte como observada en D (nunca como R).
     const used = choice.kind === "EXACT" || choice.kind === "EARLIER" ? choice : choice.kind === "NONE" && choice.earlier ? { batchId: choice.earlier.batchId, observedOn: choice.earlier.observedOn } : null;
     if (!used || ids.length === 0 || per.future) return base;
@@ -235,6 +244,14 @@ export async function getBacklog(actorId: string, q: QualityQuery, page: number,
         per100: per100(a.length), agedPer100: per100(aged[t]),
       };
     };
+    const fam = new Map<DiagnosisFamily, { family: DiagnosisFamily; incident: number; problem: number; aged: number }>();
+    for (const r of out) {
+      const f = fam.get(r.family) ?? { family: r.family, incident: 0, problem: 0, aged: 0 };
+      if (r.type === "incident") f.incident++; else f.problem++;
+      if (r.aged) f.aged++;
+      fam.set(r.family, f);
+    }
+    const byFamily = [...fam.values()].sort((a, b) => FAM_ORDER.indexOf(a.family) - FAM_ORDER.indexOf(b.family));
     const total = out.length;
     const pageCount = Math.max(1, Math.ceil(total / pageSize));
     const p = Math.min(Math.max(1, page), pageCount);
@@ -242,7 +259,7 @@ export async function getBacklog(actorId: string, q: QualityQuery, page: number,
     if (!exact) notes.push(`Los datos del backlog son «observado en ${D}» con la edad y los usuarios de ${D}; no son el valor del ${per.cut}.`);
     if (usersAtD === null) notes.push(`Usuarios de ${String(usersMonth.m).padStart(2, "0")}/${usersMonth.y} sin informar: se muestran conteos sin tasas.`);
     if (ids.length > 1) notes.push("Cartera completa: las tasas por 100 usuarios del conjunto suman los usuarios propios de cada entidad (el grupo no suma los compartidos de sus hijos).");
-    return { ...base, observedOn: D, usersAtD, stats: { incident: stat("incident"), problem: stat("problem") }, other, rows: out.slice((p - 1) * pageSize, p * pageSize), total, page: p, pageCount, notes };
+    return { ...base, observedOn: D, usersAtD, stats: { incident: stat("incident"), problem: stat("problem") }, other, byFamily, rows: out.slice((p - 1) * pageSize, p * pageSize), total, page: p, pageCount, notes };
   });
 }
 
@@ -324,7 +341,7 @@ export async function evolutionReferenceIn(tx: Tx, q: QualityQuery, id: string, 
   for (let m = 1; m <= lastM; m++) {
     const date = m === lastM ? q.base.date : `${year}-${String(m).padStart(2, "0")}-01`;
     const mode = m === lastM ? q.base.mode : "FULL_MONTH";
-    const qm: QualityQuery = { ...q, base: { ...q.base, date, mode, q: "", page: 1, pageSize: 1, status: "todos" }, sel: id, color: "", sim: "" };
+    const qm: QualityQuery = { ...q, base: { ...q.base, date, mode, q: "", page: 1, pageSize: 1, status: "todos" }, sel: id, sim: "" };
     const v = await computeQuality(tx, qm, { now, configOverride: cfg, skipActiveCompare: true, skipStamp: true, focusIds: [id] });
     meta ??= { qualityRevision: v.config.revisionNo, qualityPersisted: v.config.persisted, pulseRevision: v.pulseRevision, simulated: q.sim === "borrador" };
     const r = v.rows.find((x) => x.id === id);

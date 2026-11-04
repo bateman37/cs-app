@@ -259,7 +259,8 @@ describe("ámbito, servicio y fuente histórica PMO", () => {
     await addTicket(t.id, { ticketId: "ADM", entorno: "Administración Delegada Cloud", adminDelegada: true });
     await addTicket(t.id, { ticketId: "SOP", entorno: "Entorno Soporte", adminDelegada: false });
     await addTicket(t.id, { ticketId: "OTR", entorno: "Entorno Otros", adminDelegada: false });
-    await addTicket(t.id, { ticketId: "UNK", entorno: "Algo sin asignar", adminDelegada: false }); // adminDelegada=false no prueba SOPORTE
+    // HOTFIX-02 (servicio-v2): un Entorno informado no administrado se clasifica como SOPORTE ordinario; sin Entorno informado no hay evidencia y queda sin clasificar.
+    await addTicket(t.id, { ticketId: "UNK", entorno: null, adminDelegada: null });
     await addTicket(t.id, { ticketId: "CON", entorno: "Entorno Soporte", adminDelegada: true }); // evidencias incompatibles
     for (const [tk, m] of [["ADM", 60], ["SOP", 120], ["OTR", 30], ["UNK", 15], ["CON", 45]] as const) await addZd({ batchId: bid, date: "2026-01-10", minutes: m, groupId: g.id, ticketId: tk });
     await addWrike({ batchId: bid, date: "2026-01-11", minutes: 90, groupId: g.id, project: "proyecto admin" }); // tiempo sin ticket con proyecto asignado
@@ -275,7 +276,7 @@ describe("ámbito, servicio y fuente histórica PMO", () => {
     expect(adm.entities[0].periods.month.perDay.status).toBe("PARTIAL");
     expect(adm.entities[0].periods.month.revenue.value).toBe("200");
   });
-  it("«otro soporte» no es OTROS financiero ni la causa del cliente decide el servicio; una asignación vencida no clasifica", async () => {
+  it("«otro soporte» no es OTROS financiero ni la causa del cliente decide el servicio; una asignación vencida no clasifica como OTROS (servicio-v2: cae al soporte ordinario)", async () => {
     const g = await addGroup("G");
     await seedFinance(admin.id, "OTROS", 2026, [{ groupId: g.id, income: "1200" }]);
     await serviceAssignment({ matchKind: "ENTORNO", matchValue: "x", service: "OTROS", validTo: "2026-01-05" });
@@ -283,7 +284,9 @@ describe("ámbito, servicio y fuente histórica PMO", () => {
     await addTicket(t.id, { ticketId: "X", entorno: "X" });
     await addZd({ batchId: bid, date: "2026-01-10", minutes: 60, groupId: g.id, ticketId: "X" });
     const r = await run([g.id], { service: "OTROS", date: "2026-01-31", mode: "FULL_MONTH" });
-    expect(r.entities[0].periods.month.hours.byService.SIN_CLASIFICAR).toBe("1");
+    // Antes de HOTFIX-02 la ausencia de asignación vigente dejaba esta hora SIN_CLASIFICAR; ahora un Entorno informado ordinario es SOPORTE.
+    expect(r.entities[0].periods.month.hours.byService.SIN_CLASIFICAR).toBe("0");
+    expect(r.entities[0].periods.month.hours.byService.SOPORTE).toBe("1");
     expect(r.entities[0].periods.month.hours.byService.OTROS).toBe("0");
   });
 });

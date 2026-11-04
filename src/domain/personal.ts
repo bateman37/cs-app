@@ -1,5 +1,5 @@
 import { z } from "zod";
-import { cleanText, isDigits } from "./normalize";
+import { cleanText, isDigits, nameKey } from "./normalize";
 import { contains, isCoherent, isIsoDate } from "./vigencia";
 
 /** Sistemas en los que una persona puede tener alias, ID o correo. */
@@ -34,7 +34,7 @@ export const CATALOG_KIND_LABEL: Record<CatalogKind, string> = { LEVEL: "Nivel",
 /** Valor de búsqueda de un alias: IDs exactos (texto); nombres y correos sin distinguir mayúsculas. No se quitan acentos. */
 export function aliasSearchValue(kind: AliasKind, raw: string): string {
   const clean = cleanText(raw);
-  return kind === "ID" ? clean : clean.toLowerCase();
+  return kind === "ID" ? clean : nameKey(clean);
 }
 
 // ---------------------------------------------------------------- Resolución temporal (pura)

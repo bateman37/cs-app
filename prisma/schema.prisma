@@ -1006,6 +1006,8 @@ model PapItem {
   drvGroupId           String?
   drvClientId          String?
   drvImplementationId  String?
+  /// HOTFIX-02: procedencia del ámbito. IDENTITY (equivalencia directa) | TICKET_ALIAS (alias de varios Grupos resuelto por el ticket vinculado) | NULL.
+  drvVia               String?
   drvVersion           Int      @default(1)
   drvAt                DateTime @default(now())
   createdAt            DateTime @default(now())
@@ -1703,4 +1705,54 @@ model HistoricUserResolution {
   decidedAt   DateTime @default(now())
 
   @@id([groupId, year])
+}
+
+// ======================================================================================================================
+// CSAPP-HOTFIX-02 · enlace automático de datos (bloque delimitado; modelos añadidos al final)
+// ======================================================================================================================
+
+/// Estado verificable de la actualización de relaciones. Una fila por ámbito (`global`). `requestedGeneration` lo incrementan disparadores de la
+/// base ante cualquier cambio de maestros (Grupos, Clientes, implantaciones, equivalencias, datos de servicio, personas, alias y tramos): no se
+/// pierde un cambio que llega durante un recálculo. El trabajador toma la generación al empezar y solo publica `completedGeneration` hasta ella.
+model RelationRefresh {
+  scope               String    @id
+  requestedGeneration BigInt    @default(0)
+  completedGeneration BigInt    @default(0)
+  /// IDLE | PENDING | RUNNING | FAILED
+  status              String    @default("IDLE")
+  reason              String?
+  requestedAt         DateTime?
+  requestedById       String?
+  startedAt           DateTime?
+  finishedAt          DateTime?
+  attempts            Int       @default(0)
+  maxAttempts         Int       @default(5)
+  runAfter            DateTime  @default(now())
+  leaseOwner          String?
+  leaseExpiresAt      DateTime?
+  fence               Int       @default(0)
+  /// Progreso visible de la ejecución en curso: {phase, step, steps}.
+  progress            Json?
+  lastError           String?
+  /// Informe de la última ejecución completa (conteos antes/después y clasificación de coincidencias; sin nombres).
+  lastReport          Json?
+  updatedAt           DateTime  @default(now()) @updatedAt
+}
+
+/// Grupos candidatos de un alias (Wrike/PAP) que el libro de Clientes asigna a VARIOS Grupos. No es una equivalencia: no atribuye por sí sola. Solo
+/// permite resolver un hecho cuando su propio registro (ticket vinculado y organización) identifica un único candidato compatible. Sin FK a propósito.
+model AliasCandidate {
+  id          String         @id @default(cuid())
+  system      ExternalSystem
+  kind        IdentityKind
+  rawValue    String
+  searchValue String
+  groupId     String
+  batchId     String?
+  isActive    Boolean        @default(true)
+  createdAt   DateTime       @default(now())
+  updatedAt   DateTime       @default(now()) @updatedAt
+
+  @@unique([system, kind, searchValue, groupId])
+  @@index([system, kind, searchValue])
 }

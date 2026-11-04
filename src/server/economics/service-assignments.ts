@@ -1,7 +1,7 @@
 import { Prisma } from "@/generated/prisma/client";
 import { z } from "zod";
 import { prisma } from "@/lib/db";
-import { cleanText } from "@/domain/normalize";
+import { cleanText, nameKey } from "@/domain/normalize";
 import { fromDbDate, isCoherent, isIsoDate, overlaps, toDbDate, describeInterval } from "@/domain/vigencia";
 import { FINANCE_CATEGORIES, CATEGORY_LABEL, Dec } from "@/domain/finance";
 import { recordAudit } from "@/server/audit";
@@ -42,7 +42,7 @@ const updateSchema = z
   .object({ ...base, expectedVersion: z.coerce.number().int().min(1) })
   .refine((v) => isCoherent({ from: v.validFrom, to: v.validTo }), { path: ["validTo"], message: "«Vigente hasta» debe ser posterior a «Vigente desde»." });
 
-const searchOf = (v: string) => cleanText(v).toLowerCase();
+const searchOf = (v: string) => nameKey(v);
 
 async function assertNoOverlap(tx: Prisma.TransactionClient, kind: string, searchValue: string, interval: { from: string | null; to: string | null }, excludeId?: string) {
   const others = await tx.serviceAssignment.findMany({ where: { matchKind: kind, searchValue, isActive: true, ...(excludeId ? { NOT: { id: excludeId } } : {}) } });
@@ -137,7 +137,7 @@ export async function previewServiceAssignmentImpact(actorId: string, raw: unkno
   await authorize(prisma, actorId, "READ");
   const input = parseInput(createSchema, raw);
   const search = searchOf(input.matchValue);
-  const col = input.matchKind === "ENTORNO" ? Prisma.sql`lower(a."ticketEntorno")` : Prisma.sql`lower(a."projectName")`;
+  const col = input.matchKind === "ENTORNO" ? Prisma.sql`csapp_norm_name(a."ticketEntorno")` : Prisma.sql`csapp_norm_name(a."projectName")`;
   const src = input.matchKind === "WRIKE_PROJECT" ? Prisma.sql`AND a.source = 'WRIKE'` : Prisma.empty;
   const r = await prisma.$queryRaw<{ n: bigint; minutes: string | null; groups: bigint; conflicting: bigint }[]>(Prisma.sql`
     SELECT count(*) AS n, sum(a.minutes)::text AS minutes, count(DISTINCT a."groupId") AS groups,

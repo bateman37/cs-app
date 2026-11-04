@@ -43,7 +43,7 @@ export function wrikeDerivationSql(src: Prisma.Sql): Prisma.Sql {
       SELECT tr.*, tcl.id AS tclient_any, tcl."isInternal" AS tclient_internal, tcl."groupId" AS tgroup_any,
         pj."clientId" AS pj_client, pj."implementationId" AS pj_impl, pj."groupId" AS pj_group, pic."clientId" AS pj_impl_client,
         pcl."groupId" AS pj_client_group,
-        pa."personId" AS person_id
+        pa."personId" AS person_id, cd.groups AS cand_groups
       FROM tr
       LEFT JOIN LATERAL (
         SELECT e."clientId" FROM "ExternalIdentity" e
@@ -51,17 +51,21 @@ export function wrikeDerivationSql(src: Prisma.Sql): Prisma.Sql {
           AND (e."validFrom" IS NULL OR e."validFrom" <= tr.work_date) AND (e."validTo" IS NULL OR tr.work_date < e."validTo") LIMIT 1) tid ON true
       LEFT JOIN "Client" tcl ON tcl.id = tid."clientId"
       LEFT JOIN LATERAL (
-        SELECT e."clientId", e."implementationId", e."groupId" FROM "ExternalIdentity" e
+        SELECT e.id AS pj_id, e."clientId", e."implementationId", e."groupId" FROM "ExternalIdentity" e
         WHERE tr.project IS NOT NULL AND e.system = 'WRIKE' AND e.kind IN ('PROJECT_NAME', 'PROJECT_ID') AND e."isActive"
-          AND e."searchValue" IN (lower(tr.project), tr.project)
+          AND e."searchValue" IN (csapp_norm_name(tr.project), tr.project)
           AND (e."validFrom" IS NULL OR e."validFrom" <= tr.work_date) AND (e."validTo" IS NULL OR tr.work_date < e."validTo") LIMIT 1) pj ON true
+      LEFT JOIN LATERAL (
+        SELECT array_agg(c."groupId" ORDER BY c."groupId") AS groups FROM "AliasCandidate" c
+        WHERE pj.pj_id IS NULL AND tr.project IS NOT NULL AND c."isActive" AND c.system = 'WRIKE' AND c.kind = 'PROJECT_NAME'
+          AND c."searchValue" = csapp_norm_name(tr.project)) cd ON true
       LEFT JOIN "Implementation" pim ON pim.id = pj."implementationId"
       LEFT JOIN LATERAL (SELECT pim."clientId" AS "clientId") pic ON true
       LEFT JOIN "Client" pcl ON pcl.id = COALESCE(pj."clientId", pic."clientId")
       LEFT JOIN LATERAL (
         SELECT a."personId" FROM "PersonAlias" a
         WHERE tr.user_name IS NOT NULL AND a.system = 'WRIKE' AND a.kind IN ('ID', 'NAME') AND a."isActive"
-          AND a."searchValue" IN (lower(tr.user_name), tr.user_name)
+          AND a."searchValue" IN (csapp_norm_name(tr.user_name), tr.user_name)
           AND (a."validFrom" IS NULL OR a."validFrom" <= tr.work_date) AND (a."validTo" IS NULL OR tr.work_date < a."validTo")
         ORDER BY (a.kind = 'ID') DESC LIMIT 1) pa ON true
     ),
@@ -74,11 +78,20 @@ export function wrikeDerivationSql(src: Prisma.Sql): Prisma.Sql {
         CASE WHEN sc.tclient_internal IS NOT TRUE THEN sc.tgroup_any END AS t_group
       FROM sc
     ),
-    cf AS (
+    -- Alias con VARIOS Grupos candidatos (libro de Clientes): no atribuye por sí solo. Solo el propio registro (ticket y su organización) lo resuelve,
+    -- y únicamente si identifica un candidato compatible; si el ticket apunta a otro Grupo es un conflicto concreto y el hecho queda sin asignar.
+    cf0 AS (
       SELECT sc2.*,
-        (   (p_client IS NOT NULL AND t_client IS NOT NULL AND p_client <> t_client)
-         OR (p_client IS NULL AND p_group IS NOT NULL AND t_client IS NOT NULL AND t_group IS DISTINCT FROM p_group)) AS conflict
+        (sc2.cand_groups IS NOT NULL) AS alias_amb,
+        (sc2.cand_groups IS NOT NULL AND sc2.t_client IS NOT NULL AND COALESCE(sc2.t_group = ANY(sc2.cand_groups), false)) AS alias_ok
       FROM sc2
+    ),
+    cf AS (
+      SELECT cf0.*,
+        (   (p_client IS NOT NULL AND t_client IS NOT NULL AND p_client <> t_client)
+         OR (p_client IS NULL AND p_group IS NOT NULL AND t_client IS NOT NULL AND t_group IS DISTINCT FROM p_group)
+         OR (alias_amb AND t_client IS NOT NULL AND NOT alias_ok)) AS conflict
+      FROM cf0
     ),
     ext AS (
       SELECT cf.*,
@@ -144,6 +157,8 @@ export function wrikeDerivationSql(src: Prisma.Sql): Prisma.Sql {
         CASE WHEN person_id IS NOT NULL AND role_id IS NULL THEN 'NO_ROLE' END,
         CASE WHEN role_name IS NOT NULL THEN 'ROLE:' || role_name END,
         CASE WHEN project IS NULL OR (p_client IS NULL AND p_group IS NULL) THEN 'NO_PROJECT' END,
+        CASE WHEN alias_amb AND NOT alias_ok THEN 'ALIAS_AMBIGUOUS' END,
+        CASE WHEN alias_ok THEN 'ALIAS_RESOLVED_BY_TICKET' END,
         CASE WHEN NOT ticket_known OR cause IS NULL THEN 'CAUSE_UNCLASSIFIED' END,
         CASE WHEN f_internal IS TRUE THEN 'INTERNAL' END,
         CASE WHEN f_client IS NOT NULL AND f_group IS NULL AND f_internal IS NOT TRUE THEN 'NO_GROUP' END
@@ -170,7 +185,7 @@ export async function lockDerivationWrike(tx: Tx) {
 }
 
 /** Recalcula lo derivado de los registros indicados; solo escribe y versiona los que cambian (idempotente). */
-export async function rederiveWrikeEntries(tx: Tx, where: Prisma.Sql, batchId: string | null): Promise<number> {
+export async function rederiveWrikeEntries(tx: Tx, where: Prisma.Sql, batchId: string | null, opts: { keepBatch?: boolean } = {}): Promise<number> {
   await tx.$executeRaw(Prisma.sql`DROP TABLE IF EXISTS "_wr_drv"`);
   await tx.$executeRaw(Prisma.sql`CREATE TEMP TABLE "_wr_drv" ON COMMIT DROP AS ${wrikeDerivationSql(wrikeEntrySource(where))}`);
   await tx.$executeRaw(Prisma.sql`CREATE INDEX ON "_wr_drv" (key)`);
@@ -181,7 +196,7 @@ export async function rederiveWrikeEntries(tx: Tx, where: Prisma.Sql, batchId: s
       "drvPmo" = d.pmo, "drvTeamId" = d.team_id, "drvLevelId" = d.level_id, "drvRoleId" = d.role_id, "drvGroupId" = d.group_id,
       "drvClientId" = d.client_id, "drvImplementationId" = d.impl_id, "drvScopeMethod" = d.scope_method, "drvConflict" = d.conflict,
       "drvCause" = d.cause_class, "drvEligibility" = d.eligibility, "drvBucket" = d.bucket, "drvFlags" = d.flags,
-      "drvVersion" = e."drvVersion" + 1, "drvAt" = now(), "drvBatchId" = ${batchId}, "updatedAt" = now()
+      "drvVersion" = e."drvVersion" + 1, "drvAt" = now(), "drvBatchId" = ${opts.keepBatch ? Prisma.sql`e."drvBatchId"` : Prisma.sql`${batchId}`}, "updatedAt" = now()
     FROM "_wr_drv" d
     WHERE e.id = d.key AND (
       e."drvTicketId", e."drvTicketMethod", e."drvTicketState", e."drvPersonId", e."drvPmo", e."drvTeamId", e."drvLevelId", e."drvRoleId",

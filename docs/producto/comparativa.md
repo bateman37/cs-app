@@ -6,10 +6,10 @@ ECO 01. El usuario selecciona fecha de análisis y ve la cobertura real de cada 
 
 | Bloque | Campos |
 | --- | --- |
-| Identificación | Cliente, soporte, servidor, producto, complejidad y usuarios a cierre |
+| Identificación | Cliente (nombre del Grupo BC), soporte y servidor (HOTFIX-02: sin producto, complejidad ni estado en la tabla) |
 | Mes seleccionado | Horas, ingreso imputado, euros por jornada, desviación sobre 550 y sobre cartera filtrada |
 | Mes anterior | Horas, ingreso imputado y euros por jornada |
-| Año actual acumulado | Horas CUM, ingreso CUM, usuarios medios y a cierre, euros por jornada CUM y ambas desviaciones |
+| Año actual acumulado | Horas CUM, ingreso CUM, usuarios al corte, tarifa anual por usuario, euros por jornada CUM y ambas desviaciones |
 | Año anterior completo | Horas, ingreso y euros por jornada de los doce meses |
 | Año anterior comparable | Horas CUM, ingreso CUM y euros por jornada hasta el mismo corte del año anterior |
 
@@ -35,20 +35,24 @@ ECO 08. Filtros aplicados afectan tabla, subtotales, media filtrada y exportaci�
 
 La columna «tarifa anual por usuario» es una aproximación económica calculada, no la tarifa contractual. Con usuarios variables se deben mostrar el denominador y el periodo, según el catálogo de cálculos.
 
-## Implementación (CSAPP-06)
+## Implementación (CSAPP-06, rediseñada por HOTFIX-02)
 
-Ruta `/comparativa`, lectura ADMIN y Consulta. Detalle técnico en [analítica CSAPP-06](../arquitectura/analitica-csapp06.md); fórmulas en el [catálogo](../calculos/catalogo.md) (CAL 31-36).
+Ruta `/comparativa`, lectura ADMIN y Consulta. Detalle técnico en [analítica CSAPP-06](../arquitectura/analitica-csapp06.md); fórmulas en el [catálogo](../calculos/catalogo.md) (CAL 31-36). Validación de este rediseño: [hotfix-02-comparativa](../validacion/hotfix-02-comparativa.md).
 
 | Aspecto | Comportamiento |
 | --- | --- |
-| Fila | **Grupo Cliente (BC)**; nunca se copia su dinero a Clientes ni implantaciones. Enlace a la ficha |
-| Bloques | Identificación (plan, CLOUD/OP, producto, complejidad, estado y cobertura del maestro) y los cinco periodos con fechas concretas; vista inicial mes + CUM, los otros tres a un clic sin perder filtros. Cabeceras agrupadas, primera columna y cabecera fijas, desplazamiento contenido |
-| Tarjetas y fila «Cartera filtrada» | Todos los grupos filtrados **antes de paginar**; ratio ΣR/ΣH×jornada; mes y CUM se calculan por separado; selector mes/CUM para las tarjetas |
-| Filtros | Búsqueda (grupo, denominación BC), plan, alojamiento, producto, complejidad, estado (por defecto **todos**, un inactivo sigue consultable), cobertura del maestro, servicio independiente del plan, fecha, modo, revisión. Seleccionan **grupos completos** («grupos que contienen…»); un grupo heterogéneo muestra todos sus valores y su cobertura (n de N Clientes) |
-| Orden y página | Servidor, orden estable por todas las métricas (los nulos siempre al final, nunca como ceros), tamaños 25/50/100/200 |
-| Contexto | Todo en la URL (contrato validado: listas permitidas, fechas, enteros, IDs); cambiar un filtro reinicia la página. Valores iniciales: hoy en Europe/Madrid, a fecha de corte, SOPORTE, última revisión. Accesos rápidos: mes completo y última mensualidad finalizada |
-| Ficha | Cada fila conserva grupo, periodo, servicio, revisión y la **cohorte filtrada**; volver conserva búsqueda, orden, página y bloques. Abierta directamente, la ficha identifica la «referencia general» usada |
-| Cartera incompleta | Con ingreso desconocido, perímetro parcial, filtro de solo horas o Silver On Demand mensual, la cartera **no se publica como completa**: se muestran componentes, grupos afectados con su ingreso, cobertura y el ratio del conjunto sin afectados rotulado como tal. Las desviaciones contra cartera quedan no calculables con el mismo motivo. Un grupo con ingreso confirmado y cero horas no bloquea y se declara aparte |
-| CSV | `/api/analitica/comparativa.csv`: **cartera completa filtrada** en el mismo orden, con columnas de contexto, estado y motivo por métrica (ver arquitectura) |
+| Ancho | El `main` padre de Comparativa, Análisis Cliente y Calidad no tiene límite de ancho (clase `main-wide` por ruta en `MainShell`); márgenes 20 px (16 px en móvil). Login, formularios de Administración y Pulse Rent conservan su ancho |
+| Encabezado | Una línea: «Comparativa», mes, objetivo vigente (inicial 550 €/jornada) y rentabilidad agregada de mes y CUM (ΣR/ΣH×jornada del filtrado; `*` si el conjunto excluye Grupos con datos pendientes). Sin introducciones, sello, método, revisión ni cobertura |
+| Filtros | **Solo dos**: Soporte (Gold, Platinum, Silver Recurrente, Silver On Demand) y Servidor (CLOUD, OP), segmentadores como enlaces, clic selecciona/deselecciona sin Ctrl. Sin selección = todos; OR dentro de un filtro y AND entre ambos **en el mismo Cliente** (un Cliente con Gold/OP y otro con Silver/CLOUD no satisface Gold+CLOUD). El Grupo incluido conserva todo su ingreso y sus horas. Valor mixto corto «Mixto», con detalle al puntero/foco |
+| Periodo | Barra pequeña: mes y año, «A fecha de hoy / Mes completo», «Último mes cerrado» y etiqueta «Provisional». No es un filtro de negocio |
+| Tabla | Una línea por Grupo BC (26-30 px, 12 px, números tabulares): Identificación (Cliente, Soporte, Servidor); Mes seleccionado (Horas, Facturación imputada, €/jornada, Desv. objetivo, Desv. media filtrada); Mes anterior (Horas, Facturación, €/jornada); Año actual CUM (Horas, Facturación, Usuarios al corte, Tarifa anual/usuario, €/jornada, ambas desviaciones); Año anterior completo y CUM anterior comparable (Horas, Facturación, €/jornada). Todos los bloques visibles. Cabeceras agrupadas de 2-3 líneas con unidades, fijas, primera columna fija, orden por cabecera (nulos siempre al final), anchos fijos que caben a 1920 px |
+| Totales | Pie fijo con TODO el filtrado (no la página): horas e ingresos suman; €/jornada = ΣR/ΣH×jornada; desviación objetivo = (objetivo−ratio)/objetivo sobre ese ratio; usuarios = Σ stocks informados; tarifa = 12×ΣR/Σ usuarios·mes de los Grupos con tarifa. Un total parcial se marca `*` y se explica. «Desv. media filtrada» no aplica al total (es su propia referencia). Positivo = peor rendimiento, en rojo; negativo en verde (no confundir con la variación interanual) |
+| Paginación | Tamaño fijo 50 sin selector; totales siempre del filtrado completo |
+| Ausentes | «—» con la razón breve al clic/foco (`details`); nunca ceros inventados. Un único indicador discreto «Datos pendientes» (solo Admin lo abre) hacia Administración › Conciliación › Diagnóstico de datos |
+| Error | Mensaje comprensible y «Reintentar»; el detalle técnico solo para Admin. No se oculta tras un cero |
+| URL | Solo `fecha`, `modo`, `soporte`, `servidor`, `orden`, `dir`, `pagina`. Cualquier otra clave (`q`, `servicio`, `complejidad`, `producto`, `estado`, `cobertura`, `revision`, `tam`, `bloques`, `ref`, `alojamiento`…) se ignora al leer y no se escribe en ningún enlace |
+| Ficha | El nombre del Grupo abre Análisis Cliente con `fecha`, `modo`, `soporte`, `servidor` y `volver` |
+| CSV | `/api/analitica/comparativa.csv`: mismo periodo, selección y orden que la pantalla; todas las filas del filtrado y las filas de cartera con los mismos totales (incluidos usuarios y tarifa); columnas `soporte`/`servidor` (valor «Mixto: …» cuando difieren) y la selección en el ámbito |
+| Información técnica | Sello, método, revisión de configuración, objetivo/jornada, cobertura financiera, reproceso pendiente y causas de cifras incompletas viven en Administración › Conciliación › «Diagnóstico de datos» (`#diagnostico`) y en el detalle «Ver cálculo» de la ficha |
 
-Pendientes que NO se aceptan aquí: ZDT 11-13, ZTM 06-08, lista de origen PAP, estados de bugs, convención de «Diferencia» y propuestas de Silver (ver [pendientes](../decisiones/pendientes.md)). IDs ECO 01-08 sin cambios; ECO 06-07 ahora se aplican también a las restricciones de las filas (CAL 31).
+Pendientes que NO se aceptan aquí: ZDT 11-13, ZTM 06-08, lista de origen PAP, estados de bugs, convención de «Diferencia» y propuestas de Silver (ver [pendientes](../decisiones/pendientes.md)). IDs ECO 01-08 sin cambios.

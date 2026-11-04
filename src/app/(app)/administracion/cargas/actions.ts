@@ -6,6 +6,7 @@ import { cancelUpload, confirmUpload, reprocessUpload, revertUpload } from "@/se
 import { decideTimeCorrection } from "@/server/zendesk/corrections";
 import { reviewWorkItemLink } from "@/server/bugs/summary";
 import { decideFinance, reviewFinanceImpact, revokeFinanceDecision } from "@/server/finance/review";
+import { requestRepair } from "@/server/relations/refresh";
 
 const BASE = "/administracion/cargas";
 type S = FormState;
@@ -110,4 +111,13 @@ import { declareCoverage } from "@/server/quality/coverage";
 /** Declaración/revisión de cobertura de un lote (CSAPP-08 §6): versión nueva con motivo y auditoría; no cambia filas, extracción original ni observaciones. */
 export async function declareCoverageAction(_: S, fd: FormData): Promise<S> {
   return runAdminAction(fd, (a, raw) => declareCoverage(a, { ...raw, batchId: raw.id }), { ok: "Cobertura declarada: versión nueva guardada y auditada.", paths: [BASE, `${BASE}/${fd.get("id")}`, "/calidad"] });
+}
+
+/** Única acción de recuperación: recalcula las relaciones de todo lo ya cargado con los maestros actuales (la ejecuta el trabajador). */
+export async function repairRelationsAction(_: S, fd: FormData): Promise<S> {
+  return runAdminAction(
+    fd,
+    (a) => requestRepair(a),
+    { ok: "Actualización de relaciones solicitada: el trabajador recalculará lo ya cargado con los maestros actuales. El estado se muestra en esta página.", paths: [BASE, "/administracion"] },
+  );
 }

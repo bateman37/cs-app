@@ -49,16 +49,19 @@ describe("reversión de un lote de tickets y su cobertura", () => {
     expect(await prisma.zdTicketObservation.count({ where: { batchId: b.id } })).toBe(1);
     expect(await prisma.zdTicketRevision.count()).toBe(1);
     expect(await prisma.zdTicket.count()).toBe(1);
-    // La cobertura declarada sobre el lote revertido ya no cuenta: el cero NO se conserva como acreditado (sin valor, con motivo).
+    // La declaración sobre el lote revertido ya no cuenta, pero (HOTFIX-02 §10) el lote B, completado y recibido por el contrato de carga amplia, aporta su propia
+    // cobertura (todos los clientes y estados hasta su extracción): el cero sigue sustentado, ahora por procedencia de contrato y no por la declaración revertida.
     const after = await flow();
-    expect(after.value).toBeNull();
-    expect(after.reason).toMatch(/no sustentado|sin cobertura/i);
+    expect(after.value).toBe("0");
     expect((await readSnapshot(admin.id, (tx) => readDataStamp(tx))).stamp).not.toBe(stampBefore); // el sello detecta la reversión
 
     // Revertir también B: el ticket queda sin sustento y desaparece; nada ajeno se borra.
     await revertUpload(admin.id, b.id);
     await drain();
     expect(await prisma.zdTicket.count()).toBe(0);
+    // Sin ningún lote completado, el cero deja de estar acreditado (sin valor, con motivo).
+    const none = await flow();
+    expect(none.value).toBeNull();
     expect(await prisma.client.count()).toBe(1);
   });
 });

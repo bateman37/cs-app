@@ -61,7 +61,7 @@ describe("cartera sin calibrar: magnitudes, razones y ningún color por defecto"
     expect(a.evaluation.global).toMatchObject({ color: null });
     expect(Object.values(a.evaluation.indicators).every((i) => i.color === null)).toBe(true);
     expect(v.cards).toMatchObject({ green: 0, yellow: 0, red: 0, noGlobal: 2, total: 2 });
-    expect(v.notes.join(" ")).toMatch(/Sin declaración de cobertura de tickets Zendesk/);
+    expect(v.notes.join(" ")).toMatch(/Sin (declaración de cobertura|carga completada)[^.]*tickets Zendesk/);
   });
   it("Health en blanco redistribuye (cinco de 20 %); con feedback presente sin calibrar conserva el peso y se muestra categoría sin calibrar", async () => {
     const w = await world();

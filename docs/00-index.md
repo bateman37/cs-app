@@ -61,6 +61,8 @@ Estado de la regla: **Confirmado** = decidido por Dennis; **Propuesto** = parám
 | HOTFIX-01: histórico económico 2022-2025 y usuarios 2025 | [Histórico económico](importaciones/historico-economico.md) | FAC, USR 02-03 | Implementado; ensayado con el libro real en base aislada |
 | HOTFIX-01: precarga de maestros (Clientes, Personal, PMO) | [Precarga de maestros](importaciones/precarga-maestros.md) | MST 03/05 | Implementado; ensayado con el libro real en base aislada |
 | Guía de actualización de HOTFIX-01 para Windows | [Guía](plan/guia-powershell-hotfix01.md) | — | Escrita, sin probar en Windows |
+| HOTFIX-02: enlace automático, servicio y cobertura | [Arquitectura](arquitectura/hotfix02-enlace-automatico.md) | IMP, PRE | Implementado; probado en Linux |
+| HOTFIX-02: validación y guía de actualización | [Validación](validacion/hotfix-02.md) · [Guía Windows](plan/guia-powershell-hotfix02.md) | — | Registro; guía sin probar en Windows |
 | Guía PowerShell y recorrido de CSAPP-08 | [Guía PowerShell](plan/guia-powershell-csapp08.md) | — | Escrita, sin probar en Windows |
 | Guía breve de Calidad | [Guía de Calidad](plan/guia-calidad-csapp08.md) | — | Referencia |
 | Resultados de validación de CSAPP-08 | [Validación](validacion/csapp-08.md) | — | Registro |

@@ -1,0 +1,54 @@
+/* Editor en tabla (HOTFIX-04): celdas compactas, celdas modificadas marcadas, barra de guardado y diálogos. */
+.ed-table { min-width: 1280px; table-layout: fixed; }
+.ed-table th:nth-child(1) { width: 14%; } .ed-table th:nth-child(2) { width: 14%; } .ed-table th:nth-child(3) { width: 9%; }
+.ed-table th:nth-child(4) { width: 15%; } .ed-table th:nth-child(5) { width: 9%; } .ed-table th:nth-child(6) { width: 7%; }
+.ed-table th:nth-child(7) { width: 14%; } .ed-table th:nth-child(8) { width: 8%; } .ed-table th:nth-child(9) { width: 10%; }
+.ed-table td { padding: 0.2rem 0.35rem; }
+.mt-group td { background: #f4f4fb; }
+.ed-cell { display: flex; flex-direction: column; gap: 2px; min-width: 0; border-radius: 4px; }
+.ed-cell.mt-dirty { background: #fff7d1; outline: 1px solid #c9a800; }
+.ed-input { width: 100%; min-width: 0; font: inherit; font-size: 12px; padding: 0.15rem 0.3rem; border: 1px solid var(--border); border-radius: 4px; background: #fff; color: var(--text); text-overflow: ellipsis; }
+.ed-input:disabled { background: transparent; border-color: transparent; color: var(--text); opacity: 1; padding-left: 0; }
+.mt-group .ed-input[data-col="A"] { font-weight: 600; }
+.ed-alias { display: flex; gap: 2px; align-items: center; }
+.ed-mini { font: inherit; font-size: 11px; padding: 0 0.3rem; border: 1px solid var(--border); border-radius: 4px; background: #fff; color: var(--blue, #2a2ac8); cursor: pointer; width: fit-content; }
+.ed-mini:hover { background: #eef; }
+.ed-add { align-self: flex-start; }
+.ed-check { display: inline-flex; align-items: center; gap: 0.3rem; font-size: 12px; white-space: nowrap; }
+.ed-chips { display: flex; flex-wrap: wrap; gap: 2px; }
+.ed-na > summary { font-size: 11px; cursor: pointer; color: var(--muted); }
+/* El panel se expande dentro de la propia celda (sin posición absoluta): un contenedor con scroll no lo recorta ni lo deja fuera de vista. */
+.ed-na-box { display: flex; flex-direction: column; gap: 3px; padding: 0.3rem; margin-top: 2px; background: #fff; border: 1px solid var(--border); border-radius: 6px; }
+.mt-err { color: #8a1010; font-size: 11px; line-height: 1.25; }
+.mt-err-conf { color: #7a4a00; }
+.ed-bar { position: sticky; top: 0; z-index: 8; display: flex; flex-wrap: wrap; align-items: center; gap: 0.4rem 0.6rem; padding: 0.4rem 0.6rem; margin: 0 0 0.4rem; background: #fffdf0; border: 1px solid #e6d98a; border-radius: 6px; }
+.ed-spacer { flex: 1 1 auto; }
+.ed-count { font-size: 13px; font-weight: 600; }
+.ed-toast { margin: 0.4rem 0; }
+.ed-dialog { border: 1px solid var(--border); border-radius: 10px; padding: 1rem 1.2rem; max-width: min(34rem, 94vw); width: 100%; box-shadow: 0 10px 40px rgba(0,0,0,.35); }
+.ed-dialog-wide { max-width: min(52rem, 96vw); }
+.ed-dialog::backdrop { background: rgba(10, 10, 30, 0.45); }
+.ed-dialog h2 { font-size: 1.1rem; margin: 0 0 0.6rem; }
+.ed-dialog-body { max-height: 60vh; overflow: auto; }
+.ed-dialog-foot { display: flex; flex-wrap: wrap; justify-content: flex-end; gap: 0.5rem; margin-top: 0.8rem; }
+.ed-review { margin: 0; padding: 0; list-style: none; display: flex; flex-direction: column; gap: 0.5rem; }
+.ed-review li { padding: 0.4rem 0.5rem; border: 1px solid var(--border); border-radius: 6px; font-size: 13px; }
+.ed-diff { margin: 0.15rem 0; }
+.ed-before { color: #7a1a1a; text-decoration: line-through; }
+.ed-after { color: #0f5223; font-weight: 600; }
+@media (max-width: 700px) { .ed-bar { gap: 0.3rem; } .ed-count { flex-basis: 100%; } .ed-dialog { padding: 0.8rem; } }
+
+/* Matriz de usuarios contratados editable */
+.ed-matrix { width: 100%; min-width: 1100px; }
+.ed-matrix td, .ed-matrix th { padding: 0.25rem 0.3rem; }
+.ed-month { white-space: nowrap; text-align: right; }
+.ed-month.mt-dirty { background: #fff7d1; outline: 1px solid #c9a800; }
+.ed-num { width: 3.5rem; text-align: right; font-variant-numeric: tabular-nums; }
+.ed-kind { color: var(--muted); margin-left: 1px; }
+.ed-name { min-width: 13rem; max-width: 17rem; }
+.ed-row-dirty .ed-name { box-shadow: inset 3px 0 0 #c9a800; }
+.ed-tools { margin-top: 2px; }
+.ed-tools .ed-na-box { min-width: 12rem; }
+.ed-months { margin: 0.2rem 0 0.2rem 1rem; padding: 0; list-style: disc; font-size: 12.5px; }
+.ed-months li { border: 0; padding: 0; }
+@media (max-width: 700px) { .ed-matrix { min-width: 900px; } }

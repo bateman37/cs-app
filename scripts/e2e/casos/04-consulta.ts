@@ -1,20 +1,24 @@
 import type { BrowserContext } from "playwright";
 import type { Ctx } from "../nucleo";
 import { login, sessionToken } from "./util";
+import { saveFromTable } from "./03-maestros";
 
 /** Cabecera Cookie de un contexto para peticiones directas. */
 async function cookieHeader(context: BrowserContext, base: string): Promise<string> {
   return (await context.cookies(base)).map((c) => `${c.name}=${c.value}`).join("; ");
 }
 
-/** Reproduce el POST de formulario de una Server Action con un ID real y las cookies dadas. */
-async function forgedCreate(ctx: Ctx, fields: [string, string][], cookie: string, name: string): Promise<number> {
-  const body = new FormData();
-  for (const [k, v] of fields) body.set(k, v);
-  body.set("name", name);
-  const r = await fetch(`${ctx.base}/administracion/clientes/grupos/nuevo`, {
+type Captured = { id: string; type: string; body: string };
+
+/** Reproduce una Server Action REAL (capturada del navegador del Administrador) con otra cookie y un destino distinto: la petición forjada de Consulta o anónima. */
+async function replay(ctx: Ctx, cap: Captured, cookie: string, name: string): Promise<number> {
+  const body = cap.body
+    .replace(/"operationId":"[^"]+"/, `"operationId":"forjado-${Math.random().toString(36).slice(2)}-${Date.now()}"`)
+    .replace(/,"digest":"[^"]*"/, "")
+    .replace(/"name":"[^"]*"/, `"name":"${name}"`);
+  const r = await fetch(`${ctx.base}/administracion/clientes`, {
     method: "POST",
-    headers: { Cookie: cookie, Origin: ctx.base },
+    headers: { Cookie: cookie, Origin: ctx.base, "Next-Action": cap.id, "Content-Type": cap.type, Accept: "text/x-component" },
     body,
     redirect: "manual",
   });
@@ -22,25 +26,25 @@ async function forgedCreate(ctx: Ctx, fields: [string, string][], cookie: string
 }
 
 export async function consulta(ctx: Ctx): Promise<void> {
-  // El ID real de una Server Action se lee de un formulario renderizado para el Administrador.
+  // La Server Action de guardado se captura de una alta real del Administrador (HOTFIX-04): su ID es el de producción.
   const adm = await login(ctx, ctx.accounts.adminEmail, ctx.accounts.adminPassword);
-  await adm.page.goto(`${ctx.base}/administracion/clientes/grupos/nuevo`);
-  const html = await adm.page.content();
-  void html;
-  // Campos ocultos reales del formulario (`$ACTION_REF_1`, `$ACTION_1:0`...): se reproducen tal cual.
-  const actionFields = await adm.page.evaluate(() =>
-    Array.from(document.querySelectorAll<HTMLInputElement>("main form input[type=hidden]"))
-      .filter((i) => i.name.startsWith("$ACTION"))
-      .map((i) => [i.name, i.value] as [string, string]),
-  );
-  const actionId = actionFields.length > 0 ? "ok" : undefined;
-  ctx.check("Se obtiene el ID de una Server Action real desde la página del Administrador", Boolean(actionId));
+  const captured: Captured[] = [];
+  adm.page.on("request", (r) => {
+    const id = r.headers()["next-action"];
+    if (r.method() === "POST" && id) captured.push({ id, type: r.headers()["content-type"] ?? "text/plain;charset=UTF-8", body: r.postData() ?? "" });
+  });
+  await adm.page.goto(`${ctx.base}/administracion/clientes`);
+  await adm.page.getByRole("button", { name: "Nuevo grupo" }).click();
+  await adm.page.getByLabel("Nuevo Grupo: nombre").fill("Grupo control admin");
+  await saveFromTable(adm.page);
+  const save = captured[captured.length - 1];
+  ctx.check("Se captura la Server Action de guardado real desde la página del Administrador", Boolean(save) && captured.length >= 2, String(captured.length));
   const adminCookie = await cookieHeader(adm.context, ctx.base);
 
-  // Control positivo: con la cookie del Administrador la misma petición sí crea; así el rechazo posterior es significativo.
-  if (actionId) {
-    await forgedCreate(ctx, actionFields, adminCookie, "Grupo control admin");
-    ctx.check("Control: la petición forjada con sesión de Administrador crea el grupo", (await ctx.prisma.clientGroup.count({ where: { name: "Grupo control admin" } })) === 1);
+  // Control positivo: con la cookie del Administrador la misma petición sí guarda; así el rechazo posterior es significativo.
+  if (save) {
+    await replay(ctx, save, adminCookie, "Grupo control admin 2");
+    ctx.check("Control: la petición forjada con sesión de Administrador guarda el grupo", (await ctx.prisma.clientGroup.count({ where: { name: "Grupo control admin 2" } })) === 1);
   }
   await adm.context.close();
 
@@ -48,10 +52,11 @@ export async function consulta(ctx: Ctx): Promise<void> {
   ctx.check("Login real de Consulta", rd.ok && (await sessionToken(rd.context)) !== null);
   const B = `${ctx.base}/administracion/clientes`;
   await rd.page.goto(`${B}/grupos`);
-  ctx.check("Consulta lee la lista de grupos", (await rd.page.getByText("Grupo E2E Alfa").count()) > 0);
-  ctx.check("Consulta no ve el botón «Nuevo grupo»", (await rd.page.getByRole("link", { name: "Nuevo grupo" }).count()) === 0);
+  ctx.check("Consulta: la lista antigua de grupos redirige al editor de solo lectura y ve los datos", new URL(rd.page.url()).pathname === "/administracion/clientes" && (await rd.page.locator('input[value="Grupo E2E Alfa"]').count()) > 0, rd.page.url());
+  ctx.check("Consulta no ve botones de guardado ni de alta", (await rd.page.getByRole("button", { name: /Guardar cambios|Nuevo grupo|Añadir Cliente/ }).count()) === 0);
+  ctx.check("Consulta no tiene celdas editables", (await rd.page.locator(".ed-input:not([disabled])").count()) === 0);
   await rd.page.goto(`${B}/grupos/nuevo`);
-  ctx.check("Consulta no llega al formulario de alta (redirige a la lista)", new URL(rd.page.url()).pathname === "/administracion/clientes/grupos", rd.page.url());
+  ctx.check("Consulta que abre el alta antigua llega a la tabla sin borrador ni formulario", new URL(rd.page.url()).pathname === "/administracion/clientes" && (await rd.page.getByLabel("Nuevo Grupo: nombre").count()) === 0, rd.page.url());
   const g = await ctx.prisma.clientGroup.findFirstOrThrow({ where: { name: "Grupo E2E Alfa" } });
   await rd.page.goto(`${B}/grupos/${g.id}`);
   ctx.check("Consulta ve la ficha sin controles de edición ni historial", (await rd.page.locator('main input[name="expectedVersion"], main input[name^="$ACTION"]').count()) === 0 && (await rd.page.getByText(/Historial de cambios/i).count()) === 0);
@@ -59,14 +64,11 @@ export async function consulta(ctx: Ctx): Promise<void> {
   // Mutación forjada como Consulta: rechazada en servidor, sin datos ni auditoría nuevos.
   const groups = await ctx.prisma.clientGroup.count();
   const audits = await ctx.prisma.auditEvent.count();
-  if (actionId) {
-    const status = await forgedCreate(ctx, actionFields, await cookieHeader(rd.context, ctx.base), "Grupo forjado");
+  if (save) {
+    const status = await replay(ctx, save, await cookieHeader(rd.context, ctx.base), "Grupo forjado");
     ctx.check("Mutación forjada como Consulta: no crea el grupo", (await ctx.prisma.clientGroup.count({ where: { name: "Grupo forjado" } })) === 0, `estado ${status}`);
-    ctx.check(
-      "Mutación forjada como Consulta: no cambia el nº de grupos ni la auditoría",
-      (await ctx.prisma.clientGroup.count()) === groups && (await ctx.prisma.auditEvent.count()) === audits,
-    );
-    await forgedCreate(ctx, actionFields, "", "Grupo forjado anónimo");
+    ctx.check("Mutación forjada como Consulta: no cambia el nº de grupos ni la auditoría", (await ctx.prisma.clientGroup.count()) === groups && (await ctx.prisma.auditEvent.count()) === audits);
+    await replay(ctx, save, "", "Grupo forjado anónimo");
     ctx.check("Mutación forjada sin sesión: no crea nada", (await ctx.prisma.clientGroup.count({ where: { name: "Grupo forjado anónimo" } })) === 0);
   }
 

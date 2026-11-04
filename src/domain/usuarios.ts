@@ -230,3 +230,56 @@ export type CellStatus = "sin informar" | "cero confirmado" | "informado";
 export function statusOf(value: number | null): CellStatus {
   return value === null ? "sin informar" : value === 0 ? "cero confirmado" : "informado";
 }
+
+// ----------------------------------------------------------------------- Lote de celdas (HOTFIX-04 §6)
+
+/**
+ * Pasos de edición de UNA matriz en un guardado por lote: se aplican EN ORDEN sobre el estado del año y el resultado final se compara con el original.
+ *  - SET: un mes. `value = null` lo deja SIN INFORMAR (distinto de 0). Igual al valor actual = sin cambio: no se reclasifica un dato heredado.
+ *  - APPLY_FROM: «Aplicar desde este mes» (mismas reglas de siempre: no pisa ajustes explícitos posteriores).
+ *  - COPY: copia del año anterior solo a meses sin informar (vista previa y confirmación como cualquier otro cambio).
+ * Función pura: la usan el servidor (autoridad) y el navegador (para mostrar el borrador con las mismas reglas).
+ */
+export type MatrixStep =
+  | { type: "SET"; month: number; value: number | null }
+  | { type: "APPLY_FROM"; month: number; value: number }
+  | { type: "COPY"; mode: "SAME_MONTH" | "DECEMBER" };
+
+export type BatchOutcome = {
+  after: YearState;
+  /** Por mes: cambia, igual o protegido por una operación «desde este mes» / copia. */
+  rows: { month: number; before: MonthState | null; after: MonthState | null; status: "changed" | "unchanged" | "protected" }[];
+  protectedMonths: number[];
+  errors: { month: number | null; message: string }[];
+};
+
+const sameFull = (a: MonthState | null, b: MonthState | null) => a === b || (a !== null && b !== null && a.value === b.value && a.kind === b.kind && a.isLocked === b.isLocked);
+
+export function applySteps(original: YearState, steps: readonly MatrixStep[], ctx: { year: number; previous: YearState }): BatchOutcome {
+  let state: YearState = original.map((s) => (s ? { ...s } : null));
+  const errors: BatchOutcome["errors"] = [];
+  const protectedSet = new Set<number>();
+  for (const st of steps) {
+    if (st.type === "SET") {
+      const before = state[st.month - 1];
+      if (before?.isLocked) { errors.push({ month: st.month, message: `${MONTH_NAMES[st.month - 1]} está bloqueado y no se edita en la operación ordinaria.` }); continue; }
+      if (st.value === null) state = state.map((s, i) => (i === st.month - 1 ? null : s));
+      else if (!before || before.value !== st.value) state = state.map((s, i) => (i === st.month - 1 ? { value: st.value as number, kind: "ADJUSTED" as const, isLocked: false, source: "Ajuste explícito del mes" } : s));
+    } else if (st.type === "APPLY_FROM") {
+      const mm = String(st.month).padStart(2, "0");
+      const plan = planApplyFrom(state, st.month, st.value);
+      state = plan.rows.map((r) => (r.status === "changed" && r.after ? { ...r.after, source: r.month === st.month ? `Aplicado desde ${ctx.year}-${mm}` : `Propagado desde ${ctx.year}-${mm}` } : r.after));
+      for (const m of plan.protectedMonths) protectedSet.add(m);
+    } else {
+      const plan = st.mode === "DECEMBER" ? planCopyDecember(state, ctx.previous, ctx.year - 1) : planCopyFromPrevious(state, ctx.previous, ctx.year - 1);
+      if (plan.changedCount === 0) { errors.push({ month: null, message: st.mode === "DECEMBER" && !ctx.previous[11] ? `No hay dato de diciembre de ${ctx.year - 1} para este ámbito: no hay nada que copiar.` : ctx.previous.some((s) => s !== null) ? "Todos los meses con origen ya tienen valor: no se pisa nada y no hay nada que copiar." : `No hay datos de ${ctx.year - 1} para este ámbito: no hay nada que copiar.` }); continue; }
+      state = plan.rows.map((r) => r.after);
+    }
+  }
+  const rows = MONTHS.map((m) => {
+    const before = original[m - 1];
+    const after = state[m - 1];
+    return { month: m, before, after, status: (sameFull(before, after) ? (protectedSet.has(m) ? "protected" : "unchanged") : "changed") as "changed" | "unchanged" | "protected" };
+  });
+  return { after: state, rows, protectedMonths: [...protectedSet].sort((a, b) => a - b), errors };
+}

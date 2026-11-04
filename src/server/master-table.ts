@@ -2,7 +2,7 @@ import { Prisma } from "@/generated/prisma/client";
 import { prisma } from "@/lib/db";
 import { LINK_LABEL, LINK_STATE_LABEL, LINK_SYSTEMS, type LinkState, type LinkSystem } from "@/domain/master-links";
 import { groupEffectiveActive, matchesEstado, clientEffectiveActive, type Estado } from "@/domain/estado";
-import { todayMadrid } from "@/domain/vigencia";
+import { fromDbDate, todayMadrid } from "@/domain/vigencia";
 import { recordAudit } from "@/server/audit";
 import { authorize } from "@/server/authorize";
 import { DomainError } from "@/server/errors";
@@ -38,8 +38,20 @@ export type MasterRow = {
   inherited: Partial<Record<LinkSystem, boolean>>;
   /** Cuántos sistemas relevantes siguen pendientes (Sin informar o En conflicto). */
   pending: number;
+  /** HOTFIX-04: valores EDITABLES de esta fila en su propio ámbito (sin los heredados) y decisiones «No aplica» propias. */
+  own: {
+    wrike: string[];
+    pap: string[];
+    zdIds: string[];
+    support: string | null;
+    hosting: string | null;
+    complexity: string | null;
+    /** Atributos con más de un valor vigente a la vez (conflicto que debe resolverse en la ficha). */
+    multi: ("SUPPORT" | "HOSTING" | "COMPLEXITY")[];
+    na: LinkSystem[];
+  };
 };
-export type MasterTableQuery = { q?: string; estado?: Estado; onlyPending?: boolean };
+export type MasterTableQuery = { q?: string; estado?: Estado; onlyPending?: boolean; groupId?: string };
 export type MasterTable = {
   rows: MasterRow[];
   totals: { groups: number; clients: number; pendingRows: number; conflicts: number };
@@ -52,10 +64,10 @@ const norm = (s: string) => s.normalize("NFD").replace(/[̀-ͯ]/g, "").toLowerCa
 export async function loadMasterTable(actorId: string, query: MasterTableQuery = {}): Promise<MasterTable> {
   await authorize(prisma, actorId, "READ");
   const today = todayMadrid();
-  const [groups, clients, identities, terms, decisions, fin, hours] = await Promise.all([
+  const [groups, clients, identitiesAll, terms, decisions, fin, hours] = await Promise.all([
     prisma.clientGroup.findMany({ select: { id: true, name: true, bcDenomination: true, isActive: true, version: true }, orderBy: [{ name: "asc" }, { id: "asc" }] }),
     prisma.client.findMany({ where: { isInternal: false }, select: { id: true, name: true, groupId: true, isActive: true, version: true }, orderBy: [{ name: "asc" }, { id: "asc" }] }),
-    prisma.externalIdentity.findMany({ where: { isActive: true, system: { in: ["WRIKE", "ZENDESK", "PAP"] } }, select: { system: true, kind: true, rawValue: true, searchValue: true, groupId: true, clientId: true, implementationId: true } }),
+    prisma.externalIdentity.findMany({ where: { isActive: true, system: { in: ["WRIKE", "ZENDESK", "PAP"] } }, select: { system: true, kind: true, rawValue: true, searchValue: true, groupId: true, clientId: true, implementationId: true, validFrom: true, validTo: true } }),
     prisma.$queryRaw<{ attribute: string; value: string; groupId: string | null; clientId: string | null }[]>(Prisma.sql`
       SELECT attribute::text AS attribute, value, "groupId", "clientId" FROM "ServiceTerm"
       WHERE attribute::text IN ('SUPPORT', 'HOSTING', 'COMPLEXITY') AND "implementationId" IS NULL AND ("validFrom" IS NULL OR "validFrom" <= ${today}::date) AND ("validTo" IS NULL OR ${today}::date < "validTo")`),
@@ -63,6 +75,8 @@ export async function loadMasterTable(actorId: string, query: MasterTableQuery =
     prisma.$queryRaw<{ n: bigint }[]>(Prisma.sql`SELECT count(*) AS n FROM "FinanceScope" s JOIN "FinanceRow" r ON r."batchId" = s."activeBatchId" WHERE r."groupId" IS NULL`),
     prisma.$queryRaw<{ m: string | null }[]>(Prisma.sql`SELECT (COALESCE(sum(minutes), 0) / 60)::numeric(14,2)::text AS m FROM "TimeActivity" WHERE "isEligible" AND "groupId" IS NULL AND bucket NOT IN ('INTERNAL')`).catch(() => [{ m: null }]),
   ]);
+  // HOTFIX-04: solo cuentan las equivalencias vigentes hoy (retirar una clave cierra su vigencia; no se borra).
+  const identities = identitiesAll.filter((i) => (i.validFrom === null || (fromDbDate(i.validFrom) as string) <= today) && (i.validTo === null || today < (fromDbDate(i.validTo) as string)));
   const clientsByGroup = new Map<string, typeof clients>();
   for (const c of clients) if (c.groupId) (clientsByGroup.get(c.groupId) ?? clientsByGroup.set(c.groupId, []).get(c.groupId)!).push(c);
   const groupOfClient = new Map(clients.map((c) => [c.id, c.groupId]));
@@ -111,6 +125,16 @@ export async function loadMasterTable(actorId: string, query: MasterTableQuery =
         pap: [...new Set(pap.map((i) => i.rawValue))], support, hosting, complexity: termVals("COMPLEXITY", col, id), state,
         inherited: kind === "client" ? { WRIKE: own.every((i) => i.system !== "WRIKE") && wrikeG.length > 0, PAP: own.every((i) => i.system !== "PAP") && papG.length > 0 } : {},
         pending: relevant.filter((s) => state[s] === "MISSING" || state[s] === "CONFLICT").length,
+        own: {
+          wrike: own.filter((i) => i.system === "WRIKE" && i.kind === "PROJECT_NAME").map((i) => i.rawValue),
+          pap: own.filter((i) => i.system === "PAP" && i.kind === "PROJECT_NAME").map((i) => i.rawValue),
+          zdIds: zd.filter((i) => i.kind === "ORG_ID").map((i) => i.rawValue),
+          support: support.length === 1 ? support[0] : null,
+          hosting: hosting.length === 1 ? hosting[0] : null,
+          complexity: termVals("COMPLEXITY", col, id).length === 1 ? termVals("COMPLEXITY", col, id)[0] : null,
+          multi: (["SUPPORT", "HOSTING", "COMPLEXITY"] as const).filter((a) => termVals(a, col, id).length > 1),
+          na: LINK_SYSTEMS.filter((s) => na.has(`${key}|${s}`)),
+        },
       };
     };
     rows.push(base("group", g.id, g.name, g.isActive, effective, g.version, gIds, "groupId"));
@@ -127,6 +151,7 @@ export async function loadMasterTable(actorId: string, query: MasterTableQuery =
     const head = list[0];
     const matchText = (r: MasterRow) => needle === "" || [r.name, r.groupName, r.bcDenomination ?? "", ...r.wrike, ...r.zendeskIds, ...r.zendeskNames, ...r.pap].some((x) => norm(x).includes(needle));
     // Un Grupo figura en «Activos» si su estado EFECTIVO es activo (aunque algún hijo esté inactivo: se muestra con su estado); en «Inactivos», si todo él lo está.
+    if (query.groupId && head.groupId !== query.groupId) continue;
     if (!matchesEstado(head.effectiveActive, estado)) continue;
     if (!list.some(matchText)) continue;
     if (query.onlyPending && !list.some((r) => r.pending > 0)) continue;

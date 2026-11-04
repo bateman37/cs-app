@@ -1,3 +1,4 @@
+import { editorHref } from "@/domain/clientes-rutas";
 import type { Metadata } from "next";
 import Link from "next/link";
 import { notFound } from "next/navigation";
@@ -25,7 +26,7 @@ export default async function ClientePage({ params, searchParams }: { params: Pr
   const isAdmin = user.role === "ADMIN";
   const volver = first(sp.volver);
   const back = sanitizeBack(volver, ["q", "status", "groupId", "internal", "pending", "sort", "dir", "page"]);
-  const backHref = `/administracion/clientes/clientes${back ? `?${back}` : ""}`;
+  const backHref = editorHref(Object.fromEntries(new URLSearchParams(back)));
   const fecha = isIsoDate(first(sp.fecha)) ? first(sp.fecha) : todayMadrid();
   const hp = Math.max(Number(first(sp.hp)) || 1, 1);
   const [groups, products, history] = await Promise.all([
@@ -44,7 +45,7 @@ export default async function ClientePage({ params, searchParams }: { params: Pr
   const baseQs = `?${new URLSearchParams({ ...(volver ? { volver } : {}), ...(sp.fecha ? { fecha } : {}) }).toString()}`;
   return (
     <>
-      <p><Link href={backHref}>← Volver a la lista de clientes</Link></p>
+      <p><Link href={backHref}>← Volver a la tabla de Clientes</Link> <span className="badge badge-off" title="La edición habitual está en la tabla de Clientes">Ficha de historial y gestión excepcional</span></p>
       <h1>{client.name} <StatusBadge active={client.isActive} /> {client.isInternal ? <span className="badge badge-int">Organización interna</span> : null}</h1>
       {first(sp.creado) ? <p className="notice notice-ok" role="status">Cliente creado. Añada ahora sus equivalencias y datos de servicio.</p> : null}
       {!client.isActive ? <p className="notice notice-info">Cliente inactivo: se conserva con sus relaciones e historial, pero no admite nuevas asignaciones hasta reactivarlo.</p> : null}

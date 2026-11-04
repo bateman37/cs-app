@@ -69,7 +69,7 @@ async function Selector({ userId, nav, sp }: { userId: string; nav: Nav; sp: Sea
         {ESTADO_VALUES.map((v) => <a key={v} href={`${BASE}${qs({ ...keep, estado: v === DEFAULT_ESTADO ? undefined : v, buscar: text || undefined })}`} aria-current={nav.filters.estado === v}>{ESTADO_LABEL[v]}</a>)}
       </p>
       {!r ? <Notice kind="error">No se pudo leer la lista. <Link href={BASE}>Reintentar</Link></Notice> : r.total === 0 ? (
-        <p className="fc-note">{text ? <>Sin coincidencias para «{text}».</> : <>Todavía no hay Grupos Cliente, Clientes ni implantaciones. Un Administrador puede crearlos en <Link href="/administracion/clientes/grupos">Administración › Clientes</Link>.</>}</p>
+        <p className="fc-note">{text ? <>Sin coincidencias para «{text}».</> : <>Todavía no hay Grupos Cliente, Clientes ni implantaciones. Un Administrador puede crearlos en <Link href="/administracion/clientes">Administración › Clientes</Link>.</>}</p>
       ) : (
         <>
           <div className="fc-tcard">

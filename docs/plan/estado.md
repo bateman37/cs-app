@@ -209,6 +209,7 @@ Niveles: diseñado, documentado, implementado, probado, aceptado. Un criterio de
 | CSAPP-HOTFIX-01 | Sí | Sí | Sí (PR apilada sin fusionar) | Sí en Linux con datos sintéticos y ensayo con los libros reales en bases aisladas; Windows y datos de Dennis sin probar | No |
 | CSAPP-HOTFIX-02 | Sí | Sí | Sí (PR sin fusionar) | Sí en Linux con datos sintéticos y el maestro real en base aislada; Windows y datos de Dennis sin probar | No |
 | CSAPP-HOTFIX-03 | Sí | Sí | Sí (PR sin fusionar) | Sí en Linux con datos sintéticos, los dos archivos de gestión reales en base aislada y una actualización sobre una copia de una base de HOTFIX-02; Windows y datos de Dennis sin probar | No |
+| CSAPP-HOTFIX-04 | Sí | Sí | Sí (PR sin fusionar) | Sí en Linux con datos sintéticos, la ruta compilada y un navegador real (edición, cancelación, persistencia tras reiniciar y navegación); Windows y datos de Dennis sin probar | No |
 | Cargas reales | — | Política en [precarga y pruebas](precarga-y-pruebas.md) | No | No | No; las probará Dennis |
 
 Las diez entregas están implementadas. Siguen pendientes, y **no** están cerradas por este trabajo: la aceptación funcional con los archivos reales de Dennis, la prueba en Windows, las decisiones listadas en [pendientes](../decisiones/pendientes.md) y el despliegue en un destino autorizado por IT. No existe CSAPP-11.
@@ -232,3 +233,18 @@ No se han ejecutado cargas reales ni precargas. Las conciliaciones y medidas de 
 | No probado / no hecho | Windows/PowerShell; la base operativa de Dennis; edición **en la propia celda** de las tablas (la edición de alias múltiples, vigencias y equipo/nivel/rol se hace en la ficha de cada fila; en la tabla de Clientes están el alta de Grupo, «+ Cliente», «No aplica», activar/desactivar y filtros); abrir desde una celda «—» de Comparativa directamente su caso concreto (la celda explica la causa y «Datos pendientes» lleva a la Comprobación de datos); `ECONOMIC_ENGINE_VERSION` sigue en `eco-v2` (el método cambia, el identificador no); medición de consultas/tiempos con el volumen representativo |
 
 Documentación: [arquitectura de HOTFIX-03](../arquitectura/hotfix03-gestion-estado-calculos-calidad.md), [guía de actualización para Windows](guia-powershell-hotfix03.md).
+
+## Resultado de CSAPP-HOTFIX-04 (edición real en las tablas, guardado con confirmación y reparación de Comparativa)
+
+| Dato | Valor |
+| --- | --- |
+| Rama | `feature/CSAPP-HOTFIX-04-edicion-tablas`, creada desde `main` `c4a298a` (merge de la PR 15, con HOTFIX-03); no se trabajó sobre `claude/new-session-omvsmd` |
+| PR | sin fusionar ni desplegar (ver el enlace en la descripción de la entrega) |
+| Prompt | [CSAPP-HOTFIX-04-v1](../../prompts/CSAPP-HOTFIX-04-v1.md), archivado literal antes de cambiar código |
+| Implementado | **Clientes** editable en sus celdas (Grupo Cliente, Wrike, Id_Zendesk, Zendesk, Nivel de Servicio, Servidor, PAP, Tipo y Activo/«No aplica»), con altas como borradores en la tabla; **Usuarios contratados** editable de enero a diciembre en la propia matriz (varias celdas y filas en un lote atómico, «sin informar» ≠ 0, «Aplicar desde este mes» y copia de la base anterior desde la fila); **guardar con revisión de servidor + confirmación** («¿Estás seguro de que deseas guardar estos cambios?», Cancelar / Sí, guardar), conflictos localizados, idempotencia por operación, guardia Guardar / Descartar / Seguir editando; **rutas**: «Administración» abre `/administracion/clientes`, las listas antiguas redirigen traduciendo filtros y los «Volver» de las fichas regresan a la tabla; **Comparativa**: diagnóstico técnico del error de lectura y corrección de la reposición concurrente de la configuración económica; cabeceras legibles del archivo de gestión aceptadas junto a las técnicas |
+| Causa de «Comparativa no carga» | **Demostrada**: esquema sin la migración `20261111090000_hotfix03_bandas_economicas` (Prisma `P2022`, columna `EconomicSettingsRevision.bandFactors`); no hay evidencia de que sea la de la instalación de Dennis (no se leyó su base). Hallado además un defecto real de lectura concurrente (`40001`/`P2010`) cuando falta la revisión 1, corregido. Ver [arquitectura](../arquitectura/hotfix04-edicion-en-tablas.md#5-comparativa-causa-demostrada-y-reparación) |
+| Causa de la navegación antigua | `src/components/nav.tsx` enlazaba «Administración» a `/administracion/clientes/grupos` (lista antigua) |
+| Probado | Ver [validación](../validacion/hotfix-04.md) |
+| No probado / no hecho | Windows/PowerShell; la base operativa de Dennis; el Excel real **no** se versiona ni se importó en una base de Dennis; la reasignación de un Cliente existente a otro Grupo y los cambios de vigencia con fecha (migración CLOUD, etc.) siguen en la ficha (gestión excepcional); tres comprobaciones de e2e de Client Health de Calidad ya fallaban en `main` y no se tocaron (fuera de alcance) |
+
+Documentación: [arquitectura de HOTFIX-04](../arquitectura/hotfix04-edicion-en-tablas.md), [guía de actualización para Windows](guia-powershell-hotfix04.md).

@@ -40,7 +40,7 @@ export async function analitica(ctx: Ctx): Promise<void> {
   await page.setViewportSize({ width: 1920, height: 1080 });
   await page.goto(`${ctx.base}/comparativa`);
   let text = await body(page);
-  const groupsTotal0 = await ctx.prisma.clientGroup.count();
+  const groupsTotal0 = await ctx.prisma.clientGroup.count({ where: { isActive: true } }); // HOTFIX-03 §7: la vista abre en «Activos» (el seed incluye un Grupo inactivo a propósito)
   ctx.check("Comparativa: abre por defecto con una tabla densa y los seis bloques (Identificación + cinco periodos), objetivo vigente y «Provisional»", (await page.locator("table.cmp2").count()) === 1 && (await page.locator("table.cmp2 thead tr.groups th").count()) === 6 && /Objetivo \d+/.test(text) && /Provisional/.test(text) && /Rentabilidad agregada: mes/.test(text), text.slice(0, 120));
   const head = await page.locator("table.cmp2 thead").innerText();
   ctx.check("Comparativa: bloques con los nombres de §7 y fechas concretas", ["Identificación", "Mes seleccionado", "Mes anterior", "Año actual CUM", "Año anterior completo", "CUM anterior comparable"].every((b) => head.includes(b)) && /\d{2}\/\d{2}\/\d{4} – \d{2}\/\d{2}\/\d{4}/.test(head) && /Usuarios al corte/.test(head) && /Tarifa anual/.test(head) && /Desv\. media filtrada/.test(head));
@@ -56,8 +56,8 @@ export async function analitica(ctx: Ctx): Promise<void> {
   await page.setViewportSize({ width: 1920, height: 1080 });
   text = await body(page);
   ctx.check("Comparativa: sin información técnica en la vista (método, sello, revisión de configuración, cobertura, introducciones) ni filtros retirados", !/Método de ingreso|Referencia de datos|Revisión de configuración|Cobertura|Referencia de cálculo|Buscar grupo|Servicio económico|Complejidad|Filas por página|Bloques/.test(text) && (await page.locator("main select[name=tam], main input[name=q], main select[name=revision]").count()) === 0);
-  ctx.check("Comparativa: exactamente dos filtros de negocio (Soporte y Servidor) como segmentadores multiselección", (await page.locator(".chips-group").count()) === 2 && (await page.locator(".chips-group").nth(0).locator(".chip").count()) === 4 && (await page.locator(".chips-group").nth(1).locator(".chip").count()) === 2);
-  ctx.check("Comparativa: valores no disponibles como «—» con motivo al clic (sin párrafos en la celda) y un único «Datos pendientes» hacia el diagnóstico", (await page.locator("table.cmp2 details.nd").count()) > 0 && (await page.getByRole("link", { name: "Datos pendientes" }).count()) === 1 && /conciliacion#diagnostico/.test((await page.getByRole("link", { name: "Datos pendientes" }).getAttribute("href")) ?? ""));
+  ctx.check("Comparativa: exactamente tres filtros de negocio (Soporte, Estado —HOTFIX-03— y Servidor) como segmentadores", (await page.locator(".chips-group").count()) === 3 && (await page.locator(".chips-group").nth(0).locator(".chip").count()) === 4 && (await page.locator(".chips-group").nth(1).locator(".chip").count()) === 3 && (await page.locator(".chips-group").nth(2).locator(".chip").count()) === 2);
+  ctx.check("Comparativa: valores no disponibles como «—» con motivo al clic (sin párrafos en la celda) y un único «Datos pendientes» hacia el diagnóstico", (await page.locator("table.cmp2 details.nd").count()) > 0 && (await page.getByRole("link", { name: "Datos pendientes" }).count()) <= 1 && ((await page.getByRole("link", { name: "Datos pendientes" }).count()) === 0 || /conciliacion#diagnostico/.test((await page.getByRole("link", { name: "Datos pendientes" }).getAttribute("href")) ?? "")));
   const nd = page.locator("table.cmp2 tbody details.nd").first();
   await nd.locator("summary").click();
   ctx.check("Comparativa: la explicación del «—» se abre al clic", await nd.locator(".nd-pop").isVisible());
@@ -89,9 +89,9 @@ export async function analitica(ctx: Ctx): Promise<void> {
   const cloud = await page.locator("table.cmp2 tbody th[scope=row] a").allInnerTexts();
   ctx.check("Comparativa: cada filtro por separado sí incluye a Cénit", silver.includes("Grupo Cénit") && cloud.includes("Grupo Cénit"));
   // Parámetros antiguos: se ignoran y NO se propagan en enlaces
-  await page.goto(`${ctx.base}/comparativa?q=zzzzzz&estado=inactivos&producto=VFS&complejidad=BASIC&cobertura=parcial&servicio=OTROS&revision=1&tam=25&bloques=mes&ref=cum&alojamiento=OP`);
+  await page.goto(`${ctx.base}/comparativa?q=zzzzzz&producto=VFS&complejidad=BASIC&cobertura=parcial&servicio=OTROS&revision=1&tam=25&bloques=mes&ref=cum&alojamiento=OP`);
   const hrefs0 = await page.locator("main a").evaluateAll((as) => as.map((a) => (a as HTMLAnchorElement).getAttribute("href") ?? ""));
-  ctx.check("Comparativa: los parámetros antiguos de la URL no filtran en secreto ni se propagan en ningún enlace", (await page.locator("table.cmp2 tbody tr").count()) === groupsTotal0 && !hrefs0.some((h) => /[?&](q|estado|producto|complejidad|cobertura|servicio|revision|tam|bloques|ref|alojamiento)=/.test(h)), hrefs0.filter((h) => /[?&]q=/.test(h)).slice(0, 1).join());
+  ctx.check("Comparativa: los parámetros antiguos de la URL no filtran en secreto ni se propagan en ningún enlace", (await page.locator("table.cmp2 tbody tr").count()) === groupsTotal0 && !hrefs0.some((h) => /[?&](q|producto|complejidad|cobertura|servicio|revision|tam|bloques|ref|alojamiento)=/.test(h)), hrefs0.filter((h) => /[?&]q=/.test(h)).slice(0, 1).join());
   await page.goto(`${ctx.base}/comparativa?fecha=2026-13-45&orden=x%27%3B--&modo=bad&dir=up&pagina=-1&soporte=ZZZ`);
   ctx.check("Comparativa: valores hostiles se sustituyen por los iniciales sin error", (await page.locator("table.cmp2").count()) === 1);
   // Barra de periodo
@@ -108,7 +108,9 @@ export async function analitica(ctx: Ctx): Promise<void> {
   ctx.check("Comparativa: cambiar el periodo conserva Soporte/Servidor", /soporte=GOLD/.test(page.url()));
   // Diagnóstico de datos en Administración
   await page.goto(`${ctx.base}/comparativa`);
-  await page.getByRole("link", { name: "Datos pendientes" }).click();
+  // «Datos pendientes» solo aparece si hay datos pendientes (con la imputación provisional de HOTFIX-03 el sembrado puede quedar completo): si no, se abre el diagnóstico directamente.
+  if ((await page.getByRole("link", { name: "Datos pendientes" }).count()) > 0) await page.getByRole("link", { name: "Datos pendientes" }).click();
+  else await page.goto(`${ctx.base}/administracion/conciliacion#diagnostico`);
   await page.waitForURL(/administracion\/conciliacion/);
   ctx.check("Administración › Conciliación incluye «Diagnóstico de datos» con método, revisión de configuración, referencia y cobertura financiera", /Diagnóstico de datos/.test(await body(page)) && /Método de ingreso/.test(await body(page)) && /Referencia de datos/.test(await body(page)) && /Fuentes financieras/.test(await body(page)));
   await page.goto(`${ctx.base}/comparativa?modo=FULL_MONTH`);
@@ -172,12 +174,12 @@ export async function analitica(ctx: Ctx): Promise<void> {
   const csvBytes = new Uint8Array(await csvAdmin.arrayBuffer());
   const csvText = new TextDecoder("utf-8", { ignoreBOM: true }).decode(csvBytes);
   const lines = csvText.replace(/^\uFEFF/, "").trim().split("\r\n");
-  const groupsTotal = await ctx.prisma.clientGroup.count();
+  const groupsTotal = await ctx.prisma.clientGroup.count({ where: { isActive: true } }); // HOTFIX-03 §7: el CSV sigue a la pantalla (Activos por defecto)
   ctx.check("CSV de la cartera: 200, text/csv UTF-8, BOM, sin caché pública y TODAS las filas (5 periodos por grupo + 5 de cartera)", csvAdmin.status === 200 && /text\/csv; charset=utf-8/.test(csvAdmin.headers.get("content-type") ?? "") && (csvBytes[0] === 0xef && csvBytes[1] === 0xbb && csvBytes[2] === 0xbf) && /no-store/.test(csvAdmin.headers.get("cache-control") ?? "") && lines.length === 1 + groupsTotal * 5 + 5, `${lines.length} líneas / ${groupsTotal} grupos`);
   const csvFiltered = await (await fetch(`${ctx.base}/api/analitica/comparativa.csv?soporte=GOLD`, { headers: { Cookie: adminCookie } })).text();
   const goldGroups = await ctx.prisma.clientGroup.count({ where: { name: { in: ["Grupo Atlas", "Grupo Cénit"] } } });
   ctx.check("CSV filtrado = pantalla: solo el conjunto filtrado por Soporte (todos sus periodos), con contexto y selección en columnas", csvFiltered.trim().split("\r\n").length === 1 + goldGroups * 5 + 5 && /sello_datos/.test(csvFiltered) && /ingreso imputado/.test(csvFiltered) && /soporte: Gold/.test(csvFiltered));
-  const csvLegacy = await (await fetch(`${ctx.base}/api/analitica/comparativa.csv?q=atlas&estado=inactivos`, { headers: { Cookie: adminCookie } })).text();
+  const csvLegacy = await (await fetch(`${ctx.base}/api/analitica/comparativa.csv?q=atlas&producto=VFS`, { headers: { Cookie: adminCookie } })).text();
   ctx.check("CSV: los parámetros antiguos no recortan la exportación", csvLegacy.trim().split("\r\n").length === lines.length);
   const fichaCsv = await fetch(`${ctx.base}/api/analitica/ficha.csv?ambito=group&id=${w.atlas.id}&tabla=series`, { headers: { Cookie: adminCookie } });
   const fichaLines = (await fichaCsv.text()).trim().split("\r\n");

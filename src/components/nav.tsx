@@ -23,7 +23,7 @@ export function MainNav() {
           </li>
         ))}
         <li className="sep">
-          <Link href="/administracion/clientes/grupos" aria-current={current("/administracion")}>Administración</Link>
+          <Link href="/administracion/clientes" aria-current={current("/administracion")}>Administración</Link>
         </li>
       </ul>
     </nav>

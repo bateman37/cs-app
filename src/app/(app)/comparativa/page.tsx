@@ -6,6 +6,7 @@ import { todayMadrid } from "@/domain/vigencia";
 import { type SearchParams, qs } from "@/lib/format";
 import { formatDecimalEs } from "@/lib/money";
 import { getPortfolio, type PortfolioView } from "@/server/analytics/portfolio";
+import { diagnoseReadFailure, type ReadFailure } from "@/server/analytics/read-failure";
 import { FiltrosComunes } from "@/components/filtros-comunes";
 import { PeriodBar } from "./period-bar";
 import { ComparativeTable } from "./table";
@@ -23,11 +24,12 @@ export default async function Page({ searchParams }: { searchParams: Promise<Sea
   const sp = await searchParams;
   const { query, filters } = parseComparativaQuery(sp);
   let view: PortfolioView | null = null;
-  let error: string | null = null;
+  let error: ReadFailure | null = null;
   try {
     view = await getPortfolio(user.id, query);
   } catch (e) {
-    error = e instanceof Error ? e.message : "Error inesperado al leer la cartera.";
+    // HOTFIX-04 §8: la excepción real se clasifica y se registra en el servidor; no se sustituye por una cartera vacía ni de ceros.
+    error = await diagnoseReadFailure("comparativa", e, user.role === "ADMIN");
   }
   const params = comparativaParams(query);
   const today = todayMadrid();
@@ -73,15 +75,22 @@ export default async function Page({ searchParams }: { searchParams: Promise<Sea
       </div>
       {error ? (
         <div className="cmp-error" role="alert">
-          <strong>No se pudo cargar la comparativa.</strong> <span>La lectura de los datos ha fallado; no se muestra ningún valor para no dar un cero falso. Inténtelo de nuevo y, si persiste, avise a un Administrador.</span>{" "}
+          <strong>No se pudo cargar la comparativa.</strong>{" "}
+          <span>{isAdmin ? error.title : "La lectura de los datos ha fallado; no se muestra ningún valor para no dar un cero falso. Inténtelo de nuevo y, si persiste, avise a un Administrador."}</span>{" "}
           <Link href={`${BASE}${qs(params)}`} className="btn btn-secondary btn-sm" prefetch={false}>Reintentar</Link>
-          {isAdmin ? <details className="cmp-error-detail"><summary>Detalle técnico</summary><code>{error}</code></details> : null}
+          {isAdmin ? (
+            <details className="cmp-error-detail" open>
+              <summary>Detalle técnico</summary>
+              {error.detail.map((l) => <code key={l} style={{ display: "block" }}>{l}</code>)}
+              <p><strong>Qué hacer:</strong> {error.action}</p>
+            </details>
+          ) : null}
         </div>
       ) : null}
       {view && view.totalGroups === 0 ? (
         <div className="empty">
           <p><strong>Aún no hay Grupos Cliente.</strong> Esta vista se rellena con los maestros y las cargas.</p>
-          {isAdmin ? <p><Link href="/administracion/clientes/grupos">Crear o importar maestros</Link> · <Link href="/administracion/cargas">Cargas</Link></p> : <p className="muted">Pida a un Administrador que cargue los maestros y las fuentes.</p>}
+          {isAdmin ? <p><Link href="/administracion/clientes">Crear o importar maestros</Link> · <Link href="/administracion/cargas">Cargas</Link></p> : <p className="muted">Pida a un Administrador que cargue los maestros y las fuentes.</p>}
         </div>
       ) : null}
       {view && view.totalGroups > 0 && view.filteredGroups === 0 ? (

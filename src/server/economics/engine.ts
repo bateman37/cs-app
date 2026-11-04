@@ -32,7 +32,7 @@ import { authorize } from "@/server/authorize";
 import { DomainError } from "@/server/errors";
 import { financeMasterStamp } from "@/server/finance/resolve";
 import { readDataStamp, type DataStamp } from "@/server/analytics/stamp";
-import { getSettings, type EconomicSettings } from "./settings";
+import { ensureInitialSettings, getSettings, type EconomicSettings } from "./settings";
 
 type Tx = Prisma.TransactionClient;
 
@@ -225,6 +225,7 @@ type HoursIndex = Map<string, Map<string, Map<string, MinutesCell>>>; // periodK
 
 export async function runEconomics(actorId: string, input: EconomicInput): Promise<EconomicResult> {
   await authorize(prisma, actorId, "READ");
+  await ensureInitialSettings(prisma); // fuera de la instantánea: una escritura dentro de REPEATABLE READ falla con 40001 si otra lectura la hace a la vez
   // Una única transacción de lectura consistente: un cambio concurrente no mezcla el ingreso de un lote con su predecesor.
   return prisma.$transaction((tx) => economicsInTx(tx, input), { isolationLevel: "RepeatableRead", maxWait: 10_000, timeout: 120_000 });
 }

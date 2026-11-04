@@ -10,6 +10,7 @@ Estado: **implementado y probado con PostgreSQL real** (HOTFIX-01; ajustes de HO
 | --- | --- |
 | Identificador | `precarga-maestros` («Precarga de maestros (hojas de carga)»), solo XLSX |
 | Formulario | Solo el archivo. Sin año, hoja, vista ni declaraciones (`metadataFields = []`) |
+| Cabeceras legibles (HOTFIX-04) | La hoja CLIENTES de ocho columnas se reconoce también con las cabeceras **Grupo Cliente, Wrike, Id_Zendesk, Zendesk, Nivel de Servicio, SERVIDOR, PAP, TIPO** (mismas posiciones que las técnicas `organization_*`); el resultado es idéntico para datos equivalentes. El archivo es referencia del editor y fuente importable; no se aplica solo al actualizar el código. |
 | Hojas | Las tres hojas **del mismo libro en un solo lote**: CLIENTES, PERSONAL y PERSONAL PMO. Cada hoja se reconoce por sus cabeceras y **posiciones** (no por el nombre de la pestaña ni por el orden de las hojas); el staging guarda la hoja y la fila de origen como procedencia, no como clave |
 | Política | `INCORPORATE`: la activación es idempotente (crea lo ausente, reutiliza lo inequívoco, no borra ni recrea) |
 | Revertir | **No se ofrece.** Lo creado puede haberse editado, usado en hechos o desactivado después; deshacerlo sería destructivo o falso. Se deshace desactivando en el maestro (Clientes, Grupos, Personal). La auditoría de cada alta lleva el lote |

@@ -9,6 +9,7 @@ import { first, sanitizeBack, type SearchParams } from "@/lib/format";
 import { todayMadrid, isIsoDate } from "@/domain/vigencia";
 import { ActionForm, SubmitButton, TextField } from "@/components/form-kit";
 import { StatusBadge } from "@/components/list";
+import { editorHref } from "@/domain/clientes-rutas";
 import { updateGroupAction } from "../../actions";
 import { ToggleActive } from "../../toggle-active";
 import { HistorySection, IdentitiesSection, MilestonesSection, SituationAt, TermsSection } from "../../_sections/sections";
@@ -24,7 +25,7 @@ export default async function GrupoPage({ params, searchParams }: { params: Prom
   const isAdmin = user.role === "ADMIN";
   const volver = first(sp.volver);
   const back = sanitizeBack(volver, ["q", "status", "sort", "dir", "page"]);
-  const backHref = `/administracion/clientes/grupos${back ? `?${back}` : ""}`;
+  const backHref = editorHref(Object.fromEntries(new URLSearchParams(back)));
   const fecha = isIsoDate(first(sp.fecha)) ? first(sp.fecha) : todayMadrid();
   const hp = Math.max(Number(first(sp.hp)) || 1, 1);
   const [products, history] = await Promise.all([
@@ -35,7 +36,7 @@ export default async function GrupoPage({ params, searchParams }: { params: Prom
   const baseQs = `?${new URLSearchParams({ ...(volver ? { volver } : {}), ...(sp.fecha ? { fecha } : {}) }).toString()}`;
   return (
     <>
-      <p><Link href={backHref}>← Volver a la lista de grupos</Link></p>
+      <p><Link href={backHref}>← Volver a la tabla de Clientes</Link> <span className="badge badge-off" title="La edición habitual está en la tabla de Clientes">Ficha de historial y gestión excepcional</span></p>
       <h1>{group.name} {" "}<StatusBadge active={group.isActive} /></h1>
       {first(sp.creado) ? <p className="notice notice-ok" role="status">Grupo creado. Añada ahora sus Clientes y equivalencias.</p> : null}
       {!group.isActive ? <p className="notice notice-info">Grupo inactivo: se conserva con sus relaciones e historial, pero no se ofrece para nuevas asignaciones.</p> : null}
@@ -77,7 +78,7 @@ export default async function GrupoPage({ params, searchParams }: { params: Prom
             </table>
           </div>
         )}
-        {isAdmin && group.isActive ? <p><Link className="btn btn-primary" href={`/administracion/clientes/clientes/nuevo?groupId=${group.id}`}>Añadir cliente a este grupo</Link></p> : null}
+        {isAdmin && group.isActive ? <p><Link className="btn btn-primary" href={`/administracion/clientes?nuevo=cliente&grupo=${group.id}`}>Añadir Cliente en la tabla</Link></p> : null}
       </section>
 
       <section className="card" aria-labelledby="sec-situacion">

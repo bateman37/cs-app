@@ -1,5 +1,6 @@
 import type { Metadata } from "next";
 import Link from "next/link";
+import { redirect } from "next/navigation";
 import { requirePageAdmin } from "@/lib/session";
 import { listAssignableGroups } from "@/server/groups";
 import { first, type SearchParams } from "@/lib/format";
@@ -11,6 +12,8 @@ export const metadata: Metadata = { title: "Nuevo cliente" };
 export default async function NuevoCliente({ searchParams }: { searchParams: Promise<SearchParams> }) {
   const user = await requirePageAdmin();
   const sp = await searchParams;
+  // HOTFIX-04 §9: el alta ordinaria de un Cliente es un borrador en la tabla; este formulario queda solo para la gestión excepcional (organización interna: ?interno=1).
+  if (first(sp.interno) !== "1") redirect(`/administracion/clientes?nuevo=cliente${first(sp.groupId) ? `&grupo=${encodeURIComponent(first(sp.groupId))}` : ""}`);
   const groups = (await listAssignableGroups(user.id)).filter((g) => g.isActive);
   return (
     <>
@@ -29,7 +32,7 @@ export default async function NuevoCliente({ searchParams }: { searchParams: Pro
           <CheckboxField name="isInternal" label="Organización interna" help="Marque solo VINCLE, VINCLE BUGS, VINCLE INFRAESTRUCTURAS u organizaciones de pruebas." />
           <div className="form-actions">
             <SubmitButton>Crear cliente</SubmitButton>
-            <Link href="/administracion/clientes/clientes">Cancelar</Link>
+            <Link href="/administracion/clientes">Cancelar</Link>
           </div>
         </ActionForm>
         <p className="muted">El ID de organización Zendesk y las demás equivalencias se añaden en la ficha. Si aún no se conoce, el Cliente queda con la equivalencia pendiente.</p>

@@ -53,7 +53,7 @@ export type HealthReport = {
 /** Minimiza lo público: solo si la web responde y la base está disponible. */
 export type PublicHealth = { status: "ok" | "degradado" | "caido" };
 
-async function schemaState(): Promise<HealthReport["schema"]> {
+export async function schemaState(): Promise<HealthReport["schema"]> {
   const b = buildInfo();
   let expected = b.migrations;
   if (expected.length === 0) {

@@ -1,6 +1,7 @@
 import { Prisma } from "@/generated/prisma/client";
 import { prisma } from "@/lib/db";
 import { authorize } from "@/server/authorize";
+import { ensureInitialSettings } from "@/server/economics/settings";
 
 /**
  * Lectura coherente de las pantallas analíticas (CSAPP-06 §10): todo lo que una respuesta muestra (cartera, series, cohortes y desgloses)
@@ -10,6 +11,9 @@ import { authorize } from "@/server/authorize";
 export type Tx = Prisma.TransactionClient;
 
 export async function readSnapshot<T>(actorId: string, fn: (tx: Tx) => Promise<T>): Promise<T> {
+  // HOTFIX-04 §8: la reposición de la revisión 1 de la configuración económica es una ESCRITURA y no puede ocurrir dentro de la lectura REPEATABLE READ: dos lecturas
+  // simultáneas fallaban con 40001 («could not serialize access…», P2010 en Prisma). Se garantiza antes, fuera de la instantánea (autocommit e idempotente).
+  await ensureInitialSettings(prisma);
   return prisma.$transaction(
     async (tx) => {
       // La primera sentencia fija la instantánea; el permiso se comprueba contra la base en ella.

@@ -72,7 +72,7 @@ export default async function Page({ searchParams }: { searchParams: Promise<Sea
         <>
           <KpiAccessGrid access={view.access} q={query} basePath={BASE} />
           {view.totalEntities === 0 ? (
-            <div className="ql-empty"><p><strong>No hay entidades.</strong></p><p>{isAdmin ? <>Cree Grupos Cliente y Clientes en <Link href="/administracion/clientes/grupos">Administración › Clientes</Link> y cargue las fuentes. No hay datos demostrativos.</> : "Un Administrador debe cargar los maestros y las fuentes. No hay datos demostrativos."}</p></div>
+            <div className="ql-empty"><p><strong>No hay entidades.</strong></p><p>{isAdmin ? <>Cree Grupos Cliente y Clientes en <Link href="/administracion/clientes">Administración › Clientes</Link> y cargue las fuentes. No hay datos demostrativos.</> : "Un Administrador debe cargar los maestros y las fuentes. No hay datos demostrativos."}</p></div>
           ) : kpi === "" && query.sel === "" ? (
             <Resumen v={view} q={query} isAdmin={isAdmin} userId={user.id} />
           ) : kpi === "" ? (

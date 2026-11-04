@@ -28,7 +28,7 @@ export async function requirePageUser() {
 /** Para páginas de gestión: sin sesión redirige; sin permiso, a la portada. */
 export async function requirePageAdmin() {
   const user = await requirePageUser();
-  if (user.role !== "ADMIN") redirect("/administracion/clientes/grupos");
+  if (user.role !== "ADMIN") redirect("/administracion/clientes");
   return user;
 }
 

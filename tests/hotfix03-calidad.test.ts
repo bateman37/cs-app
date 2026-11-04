@@ -35,7 +35,7 @@ async function world(users: number | null = 10) {
       await setUsers(admin.id, { groupId: g.id }, 2026, Array(12).fill(users));
       await setUsers(admin.id, { clientId: c.id }, 2026, Array(12).fill(users));
     }
-    for (let k = 1; k <= i; k++) await seedPap(pb.id, { id: `${i}-${k}`, groupId: g.id, clientId: c.id, date: `2026-10-${String(k).padStart(2, "0")}`, state: "CORRECTIVE", causes: [{ category: "CORRECTIVE", origin: "STANDARD" }] });
+    for (let k = 1; k <= i; k++) await seedPap(pb.id, { id: String(i * 100 + k), groupId: g.id, clientId: c.id, date: `2026-10-${String(k).padStart(2, "0")}`, state: "CORRECTIVE", causes: [{ category: "CORRECTIVE", origin: "STANDARD" }] });
     out.push({ g, c, n: i });
   }
   await declareAllSources(admin.id, "2026-01-01", "2026-10-31");
@@ -131,11 +131,11 @@ describe("PAP: del maestro a Calidad (§10)", () => {
     const c1 = await addClient("Solo Uno", g.id);
     const c2 = await addClient("Solo Dos", g.id);
     const pb = await batchOf(admin.id, "pap");
-    await seedPap(pb.id, { id: "A", groupId: g.id, clientId: c1.id, date: "2026-10-05", state: "CORRECTIVE", causes: [{ category: "CORRECTIVE", origin: "STANDARD" }, { category: "CORRECTIVE", origin: "CONFIG_DATA" }, { category: "CLIENT_REQUEST" }], result: "KO" });
-    await seedPap(pb.id, { id: "B", groupId: g.id, clientId: c2.id, date: "2026-10-06", state: "NON_CORRECTIVE", causes: [{ category: "CLIENT_REQUEST" }] }); // Petición cliente: no es correctivo
-    await seedPap(pb.id, { id: "C", groupId: g.id, clientId: c2.id, date: null, state: "CORRECTIVE", causes: [{ category: "CORRECTIVE", origin: "STANDARD" }] }); // sin fecha: se localiza
+    await seedPap(pb.id, { id: "1001", groupId: g.id, clientId: c1.id, date: "2026-10-05", state: "CORRECTIVE", causes: [{ category: "CORRECTIVE", origin: "STANDARD" }, { category: "CORRECTIVE", origin: "CONFIG_DATA" }, { category: "CLIENT_REQUEST" }], result: "KO" });
+    await seedPap(pb.id, { id: "1002", groupId: g.id, clientId: c2.id, date: "2026-10-06", state: "NON_CORRECTIVE", causes: [{ category: "CLIENT_REQUEST" }] }); // Petición cliente: no es correctivo
+    await seedPap(pb.id, { id: "1003", groupId: g.id, clientId: c2.id, date: null, state: "CORRECTIVE", causes: [{ category: "CORRECTIVE", origin: "STANDARD" }] }); // sin fecha: se localiza
     // PAP solo del Grupo (sin Cliente probado): drvClientId nulo.
-    const it = await prisma.papItem.create({ data: { listKey: "L1", papId: "D", firstBatchId: pb.id, drvScope: "GROUP", drvGroupId: g.id, drvClientId: null } });
+    const it = await prisma.papItem.create({ data: { listKey: "L1", papId: "1004", firstBatchId: pb.id, drvScope: "GROUP_ONLY", drvGroupId: g.id, drvClientId: null } });
     const rev = await prisma.papRevision.create({ data: { itemId: it.id, fingerprint: "pf-D", revisionNo: 1, title: "PAP D", result: "OK", productionDate: new Date("2026-10-07T00:00:00Z"), correctiveState: "CORRECTIVE", data: {}, batchId: pb.id } });
     await prisma.papItem.update({ where: { id: it.id }, data: { currentRevisionId: rev.id } });
     await prisma.papCause.create({ data: { revisionId: rev.id, rawToken: "t", normalized: "n", category: "CORRECTIVE", origin: "STANDARD" } });

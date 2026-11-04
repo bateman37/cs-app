@@ -9,7 +9,7 @@ import {
 import { activateDraft, discardDraft, getActive, getDraft, getManifest, listRevisions, rollbackTo, saveDraft } from "@/server/pulse/config";
 import { readDataStamp } from "@/server/analytics/stamp";
 import { defaultPulseConfig } from "@/domain/pulse-catalog";
-import { resetDatabase, makeUsers, useUncalibratedQuality } from "./helpers";
+import { resetDatabase, makeUsers } from "./helpers";
 
 const D = (v: string | number) => Dec.parse(String(v)) as Dec;
 const custom = (v: number[]) => ({ mode: "CUSTOM" as const, custom: Object.fromEntries(INDICATOR_KEYS.map((k, i) => [k, String(v[i])])) as Record<IndicatorKey, string> });
@@ -100,8 +100,10 @@ describe("reglas de umbral deterministas", () => {
     expect(validateRule(rule({ method: "PERCENTILE", a: "10", b: "101", referenceId: "x" }))[0]).toMatch(/\[0, 100\]/);
     expect(validateRule(rule({ method: "PERCENTILE", a: "10", b: "20", referenceId: null }))[0]).toMatch(/referencia explícita/);
     const same = evaluateRule(p, D(5), [5, 5, 5, 5].map(D));
-    expect(same.cuts).toEqual({ a: "5", b: "5" }); // cortes iguales: sin epsilon
-    expect(same.color).toBe("green");
+    expect(same.cuts).toMatchObject({ a: "5", b: "5" }); // cortes iguales: sin epsilon
+    // HOTFIX-03 §12: todos los valores iguales y positivos → amarillo relativo (no un verde colectivo por caer justo en P25); todo cero confirmado → verde.
+    expect(same.color).toBe("yellow");
+    expect(evaluateRule(p, D(0), [0, 0, 0, 0].map(D)).color).toBe("green");
   });
   it("referencia insuficiente (muestra mínima elegida) o vacía: sin referencia, nunca verde", () => {
     const p = rule({ method: "PERCENTILE", a: "25", b: "75", referenceId: "todos", minSample: 5 });
@@ -186,7 +188,6 @@ let reader: { id: string };
 beforeEach(async () => {
   await resetDatabase();
   ({ admin, reader } = await makeUsers());
-  await useUncalibratedQuality(admin.id);
 });
 const withWeights = (v: number[]): QualityConfig => ({ ...defaultQualityConfig(), weights: custom(v) });
 

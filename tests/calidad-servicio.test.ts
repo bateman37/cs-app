@@ -57,8 +57,8 @@ describe("cartera sin calibrar: magnitudes, razones y ningún color por defecto"
     const v = await run();
     const a = row(v, "Atlas");
     expect(a.users.userMonths).toBe("100"); // 100 usuarios propios del grupo, mes completo (peso 31/31)
-    // 4 incidentes / 100 usuarios·mes × 100 = 4 por 100 (flujo): sin cobertura declarada → cota inferior (parcial), sin color
-    expect(V(a, "INCIDENTS_PROBLEMS").components?.[0]).toMatchObject({ id: "flow", value: "4", color: null });
+    // 4 incidentes / 100 usuarios·mes = 0,04 por usuario (flujo; HOTFIX-03: por UN usuario, no por 100): sin cobertura declarada → cota inferior (parcial), sin color
+    expect(V(a, "INCIDENTS_PROBLEMS").components?.[0]).toMatchObject({ id: "flow", value: "0.04", color: null });
     expect(a.evaluation.global).toMatchObject({ color: null });
     expect(Object.values(a.evaluation.indicators).every((i) => i.color === null)).toBe(true);
     expect(v.cards).toMatchObject({ green: 0, yellow: 0, red: 0, noGlobal: 2, total: 2 });
@@ -154,8 +154,8 @@ describe("sexto indicador: COUNT DISTINCT(S ∪ B)", () => {
     // Unión = {P1 (S+B), P2, P3, P4 (B), S1 (S)} = 5. Por causa = {P1, S1} = 2; por vínculo = {P1, P2, P3, P4} = 4; ambas = {P1} = 1; incidentes vinculados = 1.
     expect(ex.numerator).toBe("5");
     expect(ex.breakdown).toMatchObject({ "por causa (S)": "2", "por vínculo (B)": "4", ambas: "1", "total único": "5", "incidentes vinculados (adicional, no numerador)": "1" });
-    // 5 problemas × 100 / 100 usuarios·mes = 5 por 100
-    expect(V(a, "BUGS_STANDARD").value).toBe("5");
+    // 5 problemas / 100 usuarios·mes = 0,05 por usuario
+    expect(V(a, "BUGS_STANDARD").value).toBe("0.05");
     expect(V(a, "BUGS_STANDARD").status).toBe("PARCIAL"); // sin cobertura declarada y con vínculos sin resolver: afectación conocida, cota inferior
   });
   it("ejemplo mínimo del contrato: P1(S+B) y P2(B) con un único Bug_ → 2, no 3", async () => {
@@ -176,7 +176,7 @@ describe("escalados N3 y PAP", () => {
     const a = row(await run(), "Atlas");
     expect(a.explain.N3_ESCALATIONS.numerator).toBe("1");
     expect(a.explain.N3_ESCALATIONS.breakdown).toMatchObject({ "PMO N3": "1", "IT N3": "1" });
-    expect(V(a, "N3_ESCALATIONS").value).toBe("1");
+    expect(V(a, "N3_ESCALATIONS").value).toBe("0.01"); // 1 / 100 usuarios·mes
   });
   it("PAP: identidad única con correctivo + otra causa cuenta una vez; estándar y origen cliente solapan sin sumarse; no OK y sin fecha no desaparecen", async () => {
     const w = await world();
@@ -190,7 +190,7 @@ describe("escalados N3 y PAP", () => {
     const e = a.explain.PAP_CORRECTIVE;
     expect(e.numerator).toBe("2");
     expect(e.breakdown).toMatchObject({ estándar: "1", "origen cliente": "1", "total PAP del periodo": "4", "sin fecha": "1", "sin causa": "1" });
-    expect(V(a, "PAP_CORRECTIVE").value).toBe("2"); // 2 × 100 / 100 usuarios·mes
+    expect(V(a, "PAP_CORRECTIVE").value).toBe("0.02"); // 2 / 100 usuarios·mes
     expect(V(a, "PAP_CORRECTIVE").status).toBe("PARCIAL"); // sin cobertura declarada, un PAP sin fecha y otro sin causa
   });
 });
@@ -215,9 +215,9 @@ describe("backlog por observación y fotografías", () => {
     expect(v.backlog).toMatchObject({ exact: true, observedOn: "2026-10-31" });
     const ex = a.explain.INCIDENTS_PROBLEMS.breakdown;
     expect(ex).toMatchObject({ "stock incidentes activos": "3", "stock incidentes envejecidos": "2", "stock problemas activos": "1", "stock problemas envejecidos": "1" }); // B1 (365) y B3 (31) envejecidos; B2 (30) no
-    // 2 envejecidos / 100 usuarios al corte × 100 = 2 por 100 (stock, sin dividir por la exposición del mes)
-    expect(a.evaluation.indicators.INCIDENTS_PROBLEMS.components?.find((c) => c.id === "backlog_incident")?.value).toBe("2");
-    expect(a.evaluation.indicators.INCIDENTS_PROBLEMS.components?.find((c) => c.id === "backlog_problem")?.value).toBe("1");
+    // 2 envejecidos / 100 usuarios al corte = 0,02 por usuario (stock, sin dividir por la exposición del mes)
+    expect(a.evaluation.indicators.INCIDENTS_PROBLEMS.components?.find((c) => c.id === "backlog_incident")?.value).toBe("0.02");
+    expect(a.evaluation.indicators.INCIDENTS_PROBLEMS.components?.find((c) => c.id === "backlog_problem")?.value).toBe("0.01");
     expect(w.g.id).toBeTruthy();
   });
   it("fotografía enero (open) y febrero (solved): cada fecha conserva su estado; sin foto del día no se inventa; una foto futura no se usa; anterior se muestra como observada en D, no como R", async () => {
@@ -320,8 +320,8 @@ describe("ámbitos, usuarios y consistencia", () => {
     const a = row(v, "Atlas");
     expect(v.period).toMatchObject({ partial: true, provisional: true, cut: "2026-10-10" });
     expect(Dec.parse(a.users.userMonths as string)?.toFixed(6)).toBe("32.258065"); // 100 × 10/31
-    // 1 incidente × 100 / 32,258065 = 3,1 por 100 usuarios·mes
-    expect(Number(V(a, "INCIDENTS_PROBLEMS").value)).toBeCloseTo(3.1, 5);
+    // 1 incidente / 32,258065 = 0,031 por usuario·mes
+    expect(Number(V(a, "INCIDENTS_PROBLEMS").value)).toBeCloseTo(0.031, 5);
   });
   it("un mes futuro no inventa datos y un corte posterior a hoy se limita a hoy", async () => {
     await world();
@@ -414,11 +414,11 @@ describe("referencias por percentiles de la métrica de Calidad", () => {
     const color = (name: string) => V(row(v, name), "N3_ESCALATIONS");
     // valores por 100 usuarios·mes: G1=0, G2=1, G3=2, G4=3, G5=4 → P25 = 1, P75 = 3, N = 5 (G6 no calculable queda fuera)
     expect([color("G1").color, color("G2").color, color("G3").color, color("G4").color, color("G5").color]).toEqual(["green", "green", "yellow", "yellow", "red"]);
-    expect(color("G3")).toMatchObject({ cuts: { a: "1", b: "3" }, n: 5 });
+    expect(color("G3")).toMatchObject({ cuts: { a: "0.01", b: "0.03" }, n: 5 });
     expect(V(row(v, "G6"), "N3_ESCALATIONS").value).toBeNull();
     // filtros de presentación y página: mismos cortes y mismo N
     const filtered = await run({ q: "G5", pagina: "1", tam: "25" });
-    expect(V(row(filtered, "G5"), "N3_ESCALATIONS")).toMatchObject({ color: "red", cuts: { a: "1", b: "3" }, n: 5 });
+    expect(V(row(filtered, "G5"), "N3_ESCALATIONS")).toMatchObject({ color: "red", cuts: { a: "0.01", b: "0.03" }, n: 5 });
     // referencia inexistente en la revisión de Pulse: sin referencia, nunca verde
     const bad = { ...cfg, indicators: { ...cfg.indicators, N3_ESCALATIONS: { ...cfg.indicators.N3_ESCALATIONS, rules: { ...cfg.indicators.N3_ESCALATIONS.rules, GRUPO: { ...cfg.indicators.N3_ESCALATIONS.rules.GRUPO, referenceId: "no_existe" } } } } };
     const sim = await run({ sim: "" }, { configOverride: bad as QualityConfig });

@@ -67,7 +67,7 @@ describe("backlog y flujo de Calidad (casos 4, 7 y 10)", () => {
     const e = row.explain.INCIDENTS_PROBLEMS;
     expect(e.breakdown["stock incidentes activos"]).toBe("3");
     expect(e.breakdown["stock incidentes envejecidos"]).toBe("2");
-    expect(row.evaluation.indicators.INCIDENTS_PROBLEMS.components?.find((c) => c.id === "backlog_incident")?.value).toBe("20"); // 2 × 100 ÷ 10
+    expect(row.evaluation.indicators.INCIDENTS_PROBLEMS.components?.find((c) => c.id === "backlog_incident")?.value).toBe("0.2"); // 2 ÷ 10 usuarios al corte (por un usuario)
     expect(e.breakdown.incidentes).toBe("1"); // flujo de octubre: solo A3 (los antiguos no son altas del mes)
     expect(v.backlog).toMatchObject({ exact: true, observedOn: "2026-10-31" });
   });

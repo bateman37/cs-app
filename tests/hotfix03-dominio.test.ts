@@ -190,7 +190,8 @@ describe("regla por percentiles P25/P75 (§12)", () => {
     const legacy: ThresholdRule = { method: "ABSOLUTE", direction: "LOWER_BETTER", a: "10", b: "30", referenceId: null, minSample: null, calibration: "CALIBRADO", unit: "PER_100_USER_MONTHS" };
     const o = evaluateRule(legacy, d("0.2"), null, "PER_USER_MONTH");
     expect(o.cuts).toEqual({ a: "0.1", b: "0.3" });
-    expect(o.color).toBe("red");
+    expect(o.color).toBe("yellow"); // 0,1 < 0,2 ≤ 0,3 (los límites 10/30 por 100 usuarios equivalen a 0,1/0,3 por usuario)
+    expect(evaluateRule(legacy, d("0.35"), null, "PER_USER_MONTH").color).toBe("red");
     expect(o.converted).toContain("÷100");
     expect(evaluateRule(legacy, d(5), null, "TOTAL_COUNT").status).toBe("REGLA_INVALIDA");
   });

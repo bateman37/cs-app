@@ -57,7 +57,8 @@ const HEADERS: Record<SheetKind, string[][]> = {
  */
 export type SheetLayout = "v1" | "v2";
 const HEADERS_V2: Partial<Record<SheetKind, string[][]>> = {
-  CLIENTES: [["grupo cliente vincle"], ["organization_wrike"], ["organization_id_zendesk"], ["organization_name_zendesk"], ["nivel_servicio_acutal", "nivel_servicio_actual"], ["servidor"], ["organization_name_pap"], ["tipo"]],
+  // HOTFIX-04 §3: se admiten también las cabeceras legibles del editor (Grupo Cliente, Wrike, Id_Zendesk, Zendesk, Nivel de Servicio, SERVIDOR, PAP, TIPO), en las MISMAS posiciones que las técnicas.
+  CLIENTES: [["grupo cliente vincle", "grupo cliente"], ["organization_wrike", "wrike"], ["organization_id_zendesk", "id_zendesk"], ["organization_name_zendesk", "zendesk"], ["nivel_servicio_acutal", "nivel_servicio_actual", "nivel de servicio"], ["servidor"], ["organization_name_pap", "pap"], ["tipo"]],
   PERSONAL: [["persona pap"], ["persona zendesk"], ["nivel"], ["equipo"], ["pmo"], ["persona wrike"]],
 };
 export const ROLE_PMO_HEADERS = ["rol pmo", "perfil pmo"];

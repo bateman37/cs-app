@@ -1,4 +1,5 @@
 import { SUPPORT_VALUES } from "./catalogs";
+import { DEFAULT_ESTADO, parseEstado, type Estado } from "./estado";
 
 /**
  * Filtros de negocio comunes de Comparativa y Calidad (HOTFIX-02 §6): SOLO Soporte y Servidor, multiselección sin Ctrl.
@@ -8,9 +9,10 @@ import { SUPPORT_VALUES } from "./catalogs";
 export const SERVER_VALUES = ["CLOUD", "OP"] as const;
 export type SupportValue = (typeof SUPPORT_VALUES)[number];
 export type ServerValue = (typeof SERVER_VALUES)[number];
-export type CommonFilters = { soporte: SupportValue[]; servidor: ServerValue[] };
+/** `estado` (HOTFIX-03 §7): Activos (predeterminado) / Inactivos / Todos; no recorta cifras de un Grupo, decide su pertenencia. */
+export type CommonFilters = { soporte: SupportValue[]; servidor: ServerValue[]; estado: Estado };
 
-export const EMPTY_FILTERS: CommonFilters = { soporte: [], servidor: [] };
+export const EMPTY_FILTERS: CommonFilters = { soporte: [], servidor: [], estado: DEFAULT_ESTADO };
 
 const SUPPORT_SHORT: Record<SupportValue, string> = { GOLD: "Gold", PLATINUM: "Platinum", SILVER_RECURRENTE: "Silver Recurrente", SILVER_ON_DEMAND: "Silver On Demand" };
 export const supportChipLabel = (v: SupportValue) => SUPPORT_SHORT[v];
@@ -26,6 +28,7 @@ export function parseCommonFilters(raw: Raw): CommonFilters {
   return {
     soporte: SUPPORT_VALUES.filter((x) => s.has(x)),
     servidor: SERVER_VALUES.filter((x) => v.has(x)),
+    estado: parseEstado(raw.estado),
   };
 }
 
@@ -34,10 +37,11 @@ export function commonFiltersToParams(f: CommonFilters): Record<string, string> 
   const out: Record<string, string> = {};
   if (f.soporte.length) out.soporte = f.soporte.join(",");
   if (f.servidor.length) out.servidor = f.servidor.join(",");
+  if (f.estado !== DEFAULT_ESTADO) out.estado = f.estado;
   return out;
 }
 
-export const hasCommonFilters = (f: CommonFilters) => f.soporte.length > 0 || f.servidor.length > 0;
+export const hasCommonFilters = (f: CommonFilters) => f.soporte.length > 0 || f.servidor.length > 0 || f.estado !== DEFAULT_ESTADO;
 
 /** Alterna un valor (clic selecciona, otro clic deselecciona). */
 export function toggleFilter(f: CommonFilters, kind: "soporte" | "servidor", value: string): CommonFilters {

@@ -1,5 +1,6 @@
 import { Prisma } from "@/generated/prisma/client";
 import { Dec, effectiveCut, tariffRun } from "@/domain/finance";
+import { groupEffectiveActive, matchesEstado, type Estado } from "@/domain/estado";
 import { BLOCK_PERIOD, SELECT_MIXED, SELECT_NONE, type AnalysisQuery } from "@/domain/analytics-query";
 import { economicsInTx, PERIOD_KEYS, type EconomicResult, type EntityResult, type PeriodKey, type PeriodSeries } from "@/server/economics/engine";
 import { readSnapshot, snapshotPoint, type Tx } from "./snapshot";
@@ -25,7 +26,12 @@ export type GroupMeta = {
   id: string;
   name: string;
   bcDenomination: string | null;
+  /** Estado propio del Grupo (explícito). */
   isActive: boolean;
+  /** Estado efectivo (HOTFIX-03 §7): Grupo activo y, si tiene Clientes externos, al menos uno activo. Decide las listas Activos/Inactivos. */
+  effectiveActive: boolean;
+  /** Clientes externos activos / total (detalle del estado). */
+  externalClients: { total: number; active: number };
   clients: number;
   implementations: number;
   support: MetaCell;
@@ -37,17 +43,19 @@ export type GroupMeta = {
    * Unidades de coincidencia (HOTFIX-02 §6): cada Cliente con atributos propios y, si el Grupo tiene valores propios, una unidad de Grupo. Soporte y Servidor
    * seleccionados a la vez deben coincidir EN LA MISMA unidad; nunca el soporte de un Cliente con el servidor de otro.
    */
-  units: { support: string[]; hosting: string[] }[];
+  units: { support: string[]; hosting: string[]; /** Unidad activa efectiva: Cliente activo con su Grupo activo; la unidad propia del Grupo, según su estado efectivo. */ active: boolean }[];
 };
 
 const fold = (s: string) => s.normalize("NFD").replace(/[̀-ͯ]/g, "").toLowerCase();
 
-type GroupRow = { id: string; name: string; bc: string | null; active: boolean; clients: number; impls: number };
-type TermRow = { attr: string; value: string; gid: string | null; cgid: string | null; cid: string | null };
+type GroupRow = { id: string; name: string; bc: string | null; active: boolean; clients: number; impls: number; extTotal: number; extActive: number };
+type TermRow = { attr: string; value: string; gid: string | null; cgid: string | null; cid: string | null; cactive: boolean | null };
 const groupRowsSql = (ids?: string[]): Prisma.Sql => Prisma.sql`
       SELECT g.id, g.name, g."bcDenomination" AS bc, g."isActive" AS active,
         (SELECT count(*) FROM "Client" c WHERE c."groupId" = g.id)::int AS clients,
-        (SELECT count(*) FROM "Implementation" i JOIN "Client" c ON c.id = i."clientId" WHERE c."groupId" = g.id)::int AS impls
+        (SELECT count(*) FROM "Implementation" i JOIN "Client" c ON c.id = i."clientId" WHERE c."groupId" = g.id)::int AS impls,
+        (SELECT count(*) FROM "Client" c WHERE c."groupId" = g.id AND NOT c."isInternal")::int AS "extTotal",
+        (SELECT count(*) FROM "Client" c WHERE c."groupId" = g.id AND NOT c."isInternal" AND c."isActive")::int AS "extActive"
       FROM "ClientGroup" g ${ids ? Prisma.sql`WHERE g.id = ANY(${ids})` : Prisma.empty} ORDER BY g.name, g.id`;
 
 /**
@@ -58,7 +66,7 @@ export async function loadGroupMeta(tx: Tx, cut: string, ids?: string[]): Promis
   const onlyT = ids ? Prisma.sql`AND (t."groupId" = ANY(${ids}) OR c."groupId" = ANY(${ids}))` : Prisma.empty;
   const groups = await tx.$queryRaw<GroupRow[]>(groupRowsSql(ids));
   const terms = await tx.$queryRaw<TermRow[]>(Prisma.sql`
-      SELECT t.attribute::text AS attr, t.value, t."groupId" AS gid, c."groupId" AS cgid, c.id AS cid
+      SELECT t.attribute::text AS attr, t.value, t."groupId" AS gid, c."groupId" AS cgid, c.id AS cid, c."isActive" AS cactive
       FROM "ServiceTerm" t
       LEFT JOIN "Implementation" i ON i.id = t."implementationId"
       LEFT JOIN "Client" c ON c.id = COALESCE(t."clientId", i."clientId")
@@ -76,7 +84,7 @@ export async function loadGroupMetaForCuts(tx: Tx, cuts: string[]): Promise<Map<
   if (distinct.length === 0) return out;
   const groups = await tx.$queryRaw<GroupRow[]>(groupRowsSql());
   const terms = await tx.$queryRaw<(TermRow & { cut: string })[]>(Prisma.sql`
-      SELECT to_char(p.cut, 'YYYY-MM-DD') AS cut, t.attribute::text AS attr, t.value, t."groupId" AS gid, c."groupId" AS cgid, c.id AS cid
+      SELECT to_char(p.cut, 'YYYY-MM-DD') AS cut, t.attribute::text AS attr, t.value, t."groupId" AS gid, c."groupId" AS cgid, c.id AS cid, c."isActive" AS cactive
       FROM unnest(${distinct}::date[]) AS p(cut)
       JOIN "ServiceTerm" t ON (t."validFrom" IS NULL OR t."validFrom" <= p.cut) AND (t."validTo" IS NULL OR p.cut < t."validTo")
       LEFT JOIN "Implementation" i ON i.id = t."implementationId"
@@ -90,7 +98,8 @@ export async function loadGroupMetaForCuts(tx: Tx, cuts: string[]): Promise<Map<
 /** Construcción pura de los maestros de cada grupo a partir de sus filas y de los atributos vigentes (compartida por todos los cargadores). */
 function groupMetaFrom(groups: GroupRow[], terms: TermRow[]): GroupMeta[] {
   type Acc = { own: Set<string>; child: Set<string>; kids: Set<string> };
-  const perClient = new Map<string, Map<string, { support: Set<string>; hosting: Set<string> }>>();
+  const perClient = new Map<string, Map<string, { support: Set<string>; hosting: Set<string>; active: boolean }>>();
+  const groupActive = new Map(groups.map((g) => [g.id, groupEffectiveActive({ isActive: g.active }, Array.from({ length: g.extTotal }, (_, i) => ({ isActive: i < g.extActive })))]));
   const acc = new Map<string, Acc>();
   const cell = (gid: string, attr: string): Acc => {
     const k = `${gid}|${attr}`;
@@ -107,7 +116,7 @@ function groupMetaFrom(groups: GroupRow[], terms: TermRow[]): GroupMeta[] {
       if (t.cid && (t.attr === "SUPPORT" || t.attr === "HOSTING")) {
         const byClient = perClient.get(t.cgid) ?? new Map();
         perClient.set(t.cgid, byClient);
-        const u = byClient.get(t.cid) ?? { support: new Set<string>(), hosting: new Set<string>() };
+        const u = byClient.get(t.cid) ?? { support: new Set<string>(), hosting: new Set<string>(), active: t.cactive !== false };
         byClient.set(t.cid, u);
         (t.attr === "SUPPORT" ? u.support : u.hosting).add(t.value);
       }
@@ -116,8 +125,9 @@ function groupMetaFrom(groups: GroupRow[], terms: TermRow[]): GroupMeta[] {
   const unitsOf = (gid: string): GroupMeta["units"] => {
     const ownS = [...(acc.get(`${gid}|SUPPORT`)?.own ?? [])].sort();
     const ownH = [...(acc.get(`${gid}|HOSTING`)?.own ?? [])].sort();
-    const units: GroupMeta["units"] = [...(perClient.get(gid)?.values() ?? [])].map((u) => ({ support: u.support.size ? [...u.support].sort() : ownS, hosting: u.hosting.size ? [...u.hosting].sort() : ownH }));
-    if (ownS.length > 0 || ownH.length > 0) units.push({ support: ownS, hosting: ownH });
+    const gActive = groups.find((g) => g.id === gid)?.active ?? true;
+    const units: GroupMeta["units"] = [...(perClient.get(gid)?.values() ?? [])].map((u) => ({ support: u.support.size ? [...u.support].sort() : ownS, hosting: u.hosting.size ? [...u.hosting].sort() : ownH, active: u.active && gActive }));
+    if (ownS.length > 0 || ownH.length > 0) units.push({ support: ownS, hosting: ownH, active: groupActive.get(gid) ?? gActive });
     return units;
   };
   const mk = (gid: string, attr: string, clientsTotal: number): MetaCell => {
@@ -144,6 +154,8 @@ function groupMetaFrom(groups: GroupRow[], terms: TermRow[]): GroupMeta[] {
       name: g.name,
       bcDenomination: g.bc,
       isActive: g.active,
+      effectiveActive: groupActive.get(g.id) ?? g.active,
+      externalClients: { total: g.extTotal, active: g.extActive },
       clients: g.clients,
       implementations: g.impls,
       support,
@@ -172,9 +184,10 @@ function matchesSelection(cell: MetaCell, selected: string[]): boolean {
  * Soporte/Servidor de HOTFIX-02: OR dentro de cada filtro y AND entre ambos EN EL MISMO Cliente (unidad). Sin selección = todos. Un Grupo incluido
  * conserva todo su ingreso y sus horas: el filtro decide la pertenencia del Grupo, no recorta sus cifras.
  */
-export function matchesCommon(g: Pick<GroupMeta, "units">, soporte: readonly string[], servidor: readonly string[]): boolean {
+export function matchesCommon(g: Pick<GroupMeta, "units">, soporte: readonly string[], servidor: readonly string[], estado: Estado = "todos"): boolean {
   if (soporte.length === 0 && servidor.length === 0) return true;
-  return g.units.some((u) => (soporte.length === 0 || u.support.some((v) => soporte.includes(v))) && (servidor.length === 0 || u.hosting.some((v) => servidor.includes(v))));
+  // HOTFIX-03 §7: con «Activos» el Soporte/Servidor debe justificarse en un Cliente compatible ACTIVO; con «Inactivos», en uno inactivo; con «Todos», en cualquiera.
+  return g.units.filter((u) => estado === "todos" || (estado === "activos") === u.active).some((u) => (soporte.length === 0 || u.support.some((v) => soporte.includes(v))) && (servidor.length === 0 || u.hosting.some((v) => servidor.includes(v))));
 }
 
 /** Conjunto filtrado de grupos (los filtros de identificación seleccionan grupos económicos completos). */
@@ -182,9 +195,9 @@ export function filterGroups(all: GroupMeta[], q: AnalysisQuery): GroupMeta[] {
   const needle = fold(q.q);
   return all.filter(
     (g) =>
-      (q.status === "todos" || (q.status === "activos" ? g.isActive : !g.isActive)) &&
+      matchesEstado(g.effectiveActive, q.status) &&
       (needle === "" || fold(g.name).includes(needle) || fold(g.bcDenomination ?? "").includes(needle)) &&
-      matchesCommon(g, q.support.filter((v) => v !== SELECT_NONE && v !== SELECT_MIXED), q.hosting.filter((v) => v !== SELECT_NONE && v !== SELECT_MIXED)) &&
+      matchesCommon(g, q.support.filter((v) => v !== SELECT_NONE && v !== SELECT_MIXED), q.hosting.filter((v) => v !== SELECT_NONE && v !== SELECT_MIXED), q.status) &&
       matchesSpecial(g, q) &&
       matchesSelection(g.complexity, q.complexity) &&
       (q.product === "" || (q.product === SELECT_NONE ? g.product.contains.length === 0 : g.product.contains.includes(q.product))) &&

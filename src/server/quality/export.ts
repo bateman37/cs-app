@@ -1,5 +1,5 @@
 import { csvDocument, type CsvValue } from "@/domain/csv";
-import { COLOR_LABEL, HEALTH_LABEL, INDICATOR_KEYS, INDICATOR_NAME, QSCOPE_LABEL, UNIT_LABEL, type HealthState, METRIC_UNIT } from "@/domain/quality-config";
+import { COLOR_LABEL, HEALTH_LABEL, INDICATOR_KEYS, INDICATOR_NAME, QSCOPE_LABEL, UNIT_LABEL, type HealthState } from "@/domain/quality-config";
 import { HEALTH_DB_LABEL } from "@/domain/quality-health";
 import { QSCOPE_NAME, qualityPeriod, type QualityQuery } from "@/domain/quality-query";
 import { todayMadrid } from "@/domain/vigencia";
@@ -14,14 +14,14 @@ import { getQuality, type QualityRow, type QualityView } from "./engine";
 export const QUALITY_TABLES = ["cartera", "ficha", "health"] as const;
 export type QualityTable = (typeof QUALITY_TABLES)[number];
 const n = (v: string | null | undefined): CsvValue => ({ n: v ?? null });
-const CONTEXT = ["ambito", "mes_solicitado", "corte_solicitado", "corte_efectivo", "periodo_desde", "estado_periodo", "revision_calidad", "revision_pulse", "configuracion_origen", "sello_datos", "cobertura", "fotografia_backlog", "generado", "filtro_soporte", "filtro_servidor"];
+const CONTEXT = ["ambito", "mes_solicitado", "corte_solicitado", "corte_efectivo", "periodo_desde", "estado_periodo", "revision_calidad", "revision_pulse", "configuracion_origen", "sello_datos", "cobertura", "fotografia_backlog", "generado", "filtro_soporte", "filtro_servidor", "filtro_estado", "medida"];
 const ctx = (v: QualityView): CsvValue[] => [
   QSCOPE_LABEL[v.query.scope === "group" ? "GRUPO" : "CLIENTE"], `${v.period.year}-${String(v.period.month).padStart(2, "0")}`, v.period.requested, v.period.cut, v.period.from, v.period.provisional ? "provisional" : "cerrado",
   String(v.config.revisionNo) + (v.config.persisted ? "" : " (inicial)"), String(v.pulseRevision), v.config.simulated ? "SIMULACIÓN, NO PUBLICADO (borrador)" : v.config.adapterNotes.length ? "leída de v1 mediante adaptador" : "activa", v.stamp,
   Object.values(v.coverage).map((c) => `${c.source}: ${c.state}`).join(" | "), v.backlog.exact ? `exacta ${v.backlog.observedOn}` : v.backlog.provisional ? `observada en ${v.backlog.observedOn} (provisional)` : "no disponible", v.readAt,
-  v.query.filters.soporte.join(" | ") || "todos", v.query.filters.servidor.join(" | ") || "todos",
+  v.query.filters.soporte.join(" | ") || "todos", v.query.filters.servidor.join(" | ") || "todos", v.query.filters.estado, v.query.measure === "total" ? "Total" : "Por usuario",
 ];
-const STATUS_TEXT: Record<string, string> = { OK: "calculado", SIN_CALIBRAR: "sin calibrar", SIN_REGLA: "sin regla", SIN_REFERENCIA: "sin referencia", DATO_INVALIDO: "dato no calculable", REGLA_INVALIDA: "regla no aplicable", BLANCO: "sin feedback (blanco)", CATEGORIA: "categoría", SIN_DATO: "sin dato", PARCIAL: "parcial", INCOMPLETO: "incompleto", COMPOSICION_SIN_ELEGIR: "composición sin elegir" };
+const STATUS_TEXT: Record<string, string> = { OK: "calculado", SIN_CALIBRAR: "sin calibrar", SIN_REGLA: "sin regla", SIN_REFERENCIA: "muestra insuficiente", DATO_INVALIDO: "dato no calculable", REGLA_INVALIDA: "regla no aplicable", BLANCO: "sin feedback (blanco)", CATEGORIA: "categoría", SIN_DATO: "sin dato", PARCIAL: "parcial", INCOMPLETO: "incompleto", COMPOSICION_SIN_ELEGIR: "composición sin elegir" };
 const colorText = (c: keyof typeof COLOR_LABEL | null) => (c ? COLOR_LABEL[c] : "sin color");
 
 export type QualityCsv = { filename: string; body: string; rows: number; stamp: string };
@@ -31,7 +31,7 @@ function indicatorCells(r: QualityRow): CsvValue[] {
     const i = r.evaluation.indicators[k];
     const w = r.evaluation.weights;
     return [
-      k === "HEALTH" ? (i.value ? HEALTH_LABEL[i.value as HealthState] : "") : n(i.value), UNIT_LABEL[METRIC_UNIT[k]], colorText(i.color), `${STATUS_TEXT[i.status] ?? i.status}${i.alert && !i.color ? " (alerta roja parcial)" : ""}`,
+      k === "HEALTH" ? (i.value ? HEALTH_LABEL[i.value as HealthState] : "") : n(i.value), UNIT_LABEL[i.unit], colorText(i.color), `${STATUS_TEXT[i.status] ?? i.status}${i.alert && !i.color ? " (alerta roja parcial)" : ""}`,
       w ? n(w.configuredPercent[k]) : "", w ? n(w.percent[k]) : "", n(r.explain[k].observed),
     ] as CsvValue[];
   });

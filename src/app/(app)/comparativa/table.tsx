@@ -2,12 +2,13 @@ import Link from "next/link";
 import type { ReactNode } from "react";
 import { BLOCK_PERIOD, PERIOD_BLOCKS, type PeriodBlock } from "@/domain/analytics-query";
 import { comparativaParams } from "@/domain/comparativa-query";
-import { Dec, deviationTargetParts, type Formula } from "@/domain/finance";
+import { type Formula } from "@/domain/finance";
 import { label } from "@/components/analytics/ui";
 import type { Amount, PeriodKey } from "@/server/economics/engine";
 import type { MetaCell, PortfolioRow, PortfolioView } from "@/server/analytics/portfolio";
 import { formatDecimalEs, formatPercentEs } from "@/lib/money";
 import { qs } from "@/lib/format";
+import { BAND_LABEL, economicBand, type BandFactors } from "@/domain/economic-bands";
 
 /** Bloques y columnas de §7: Identificación + cinco periodos, todos visibles. Cabeceras de dos/tres líneas con unidades. */
 const BLOCK_TITLE: Record<PeriodBlock, string> = { mes: "Mes seleccionado", anterior: "Mes anterior", cum: "Año actual CUM", anioant: "Año anterior completo", cumant: "CUM anterior comparable" };
@@ -45,22 +46,30 @@ function Money({ a, exact }: { a: Amount; exact?: boolean }) {
   if (a.value === null) return <Dash reason={a.reason ?? "Sin ingreso conocido para este periodo."} />;
   return <span title={exact ? undefined : `${formatDecimalEs(a.value, 2)} €`}>{f0(a.value)}</span>;
 }
-function Ratio({ f, digits = 0 }: { f: Formula; digits?: number }) {
-  if (f.value === null) return <Dash reason={FORMULA_REASON(f, "No calculable con los datos cargados.")} />;
-  return <span title={`${formatDecimalEs(f.value, 2)}`}>{formatDecimalEs(f.value, digits)}</span>;
+/** €/jornada con su banda económica (color + etiqueta accesible) y el asterisco de cifra provisional (HOTFIX-03 §8-§9). */
+function Ratio({ f, digits = 0, target, factors }: { f: Formula; digits?: number; target?: string; factors?: BandFactors }) {
+  if (f.value === null) return <Dash reason={FORMULA_REASON(f, "No calculable con los datos cargados.")} partial={f.status === "PARTIAL"} />;
+  const band = target ? economicBand(f.value, target, factors) : null;
+  const prov = f.provisional === true;
+  const label = [band ? BAND_LABEL[band] : null, prov ? `Cifra provisional: ${f.reason ?? ""}` : null, f.imputed ? "Imputación económica anual prorrateada" : null].filter(Boolean).join(". ");
+  return (
+    <span className={`${band ? `band band-${band}` : ""}${prov ? " prov-val" : ""}`.trim() || undefined} title={`${formatDecimalEs(f.value, 2)}${label ? ` — ${label}` : ""}`} aria-label={label ? `${formatDecimalEs(f.value, digits)}. ${label}` : undefined}>
+      {formatDecimalEs(f.value, digits)}{prov ? "*" : ""}
+    </span>
+  );
 }
 function Dev({ f }: { f: Formula | null }) {
   if (!f) return <Dash reason="No calculable para este periodo." />;
-  if (f.value === null) return <Dash reason={FORMULA_REASON(f, "No calculable con los datos cargados.")} />;
-  return <span className={devClass(f.value)} title="Positivo = peor rendimiento que la referencia">{pct(f.value)}</span>;
+  if (f.value === null) return <Dash reason={FORMULA_REASON(f, "No calculable con los datos cargados.")} partial={f.status === "PARTIAL"} />;
+  return <span className={devClass(f.value)} title={f.provisional ? `Provisional. ${f.reason ?? ""}` : "Positivo = peor rendimiento que la referencia"}>{pct(f.value)}{f.provisional ? "*" : ""}</span>;
 }
 
-function Cell({ r, pk, col }: { r: PortfolioRow; pk: PeriodKey; col: ColKey }): ReactNode {
+function Cell({ r, pk, col, target, factors }: { r: PortfolioRow; pk: PeriodKey; col: ColKey; target: string; factors: BandFactors }): ReactNode {
   const p = r.periods[pk];
   switch (col) {
     case "hours": return <span title={`${formatDecimalEs(p.hours.inPerimeter, 2)} h`}>{fh(p.hours.inPerimeter)}</span>;
     case "revenue": return <Money a={p.revenue} />;
-    case "perDay": return <Ratio f={p.perDay} />;
+    case "perDay": return <Ratio f={p.perDay} target={target} factors={factors} />;
     case "devTarget": return <Dev f={p.deviationVsTarget} />;
     case "devPortfolio": return <Dev f={p.deviationVsPortfolio} />;
     case "stock": return p.users.stock.value === null ? <Dash reason="Usuarios del corte sin informar en la matriz de usuarios." /> : <>{formatDecimalEs(String(p.users.stock.value), 0)}</>;
@@ -82,7 +91,8 @@ export function ComparativeTable({ view, base }: { view: PortfolioView; base: st
   const q = view.query;
   const defs = view.economics.periodsDefinition;
   const pf = view.economics.portfolio;
-  const target = Dec.parse(view.economics.settings.targetEurosPerDay) as Dec;
+  const targetStr = view.economics.settings.targetEurosPerDay;
+  const factors = view.economics.settings.bandFactors;
   const sortHref = (key: string) => `${base}${qs(comparativaParams({ ...q, page: 1, sort: key, dir: q.sort === key && q.dir === "asc" ? "desc" : "asc" }))}`;
   const arrow = (key: string) => (q.sort === key ? (q.dir === "asc" ? " ▲" : " ▼") : "");
   const ariaSort = (key: string): "ascending" | "descending" | "none" => (q.sort === key ? (q.dir === "asc" ? "ascending" : "descending") : "none");
@@ -100,16 +110,10 @@ export function ComparativeTable({ view, base }: { view: PortfolioView; base: st
       case "hours": return <span title={`${formatDecimalEs(p.hours, 2)} h`}>{fh(p.hours)}</span>;
       case "revenue": return p.revenue === null ? <Dash reason="Ningún Grupo del filtrado tiene ingreso conocido." /> : p.groupsUnknownIncome > 0 ? <span title={`${formatDecimalEs(p.revenue, 2)} € · ${p.groupsUnknownIncome} grupo(s) sin ingreso conocido no suman`}>{f0(p.revenue)}*</span> : <span title={`${formatDecimalEs(p.revenue, 2)} €`}>{f0(p.revenue)}</span>;
       case "perDay":
-        if (p.perDay.value !== null) return <span title={`ΣR/ΣH × jornada = ${formatDecimalEs(p.perDay.value, 2)}`}>{formatDecimalEs(p.perDay.value, 0)}</span>;
-        return p.knownSet.perDay ? <span title={`Ratio ponderado del conjunto sin los ${p.coverage.blocked} grupo(s) afectados (${p.knownSet.groups} grupos). No es la cartera completa.`}>{formatDecimalEs(p.knownSet.perDay, 0)}*</span> : <Dash reason={p.perDay.reason ?? "Sin ratio de cartera."} />;
-      case "devTarget": {
-        if (p.deviationVsTarget.value !== null) return <Dev f={p.deviationVsTarget} />;
-        if (p.knownSet.perDay) {
-          const d = deviationTargetParts(target, Dec.parse(p.knownSet.perDay) as Dec);
-          return <span className={devClass(d.value.toString())} title="Desviación del ratio ponderado del conjunto sin los grupos afectados; no es la cartera completa.">{pct(d.value.toString())}*</span>;
-        }
-        return <Dash reason={p.deviationVsTarget.reason ?? "Sin ratio de cartera."} />;
-      }
+        if (p.perDay.value !== null) return <span title={`ΣR/ΣH × jornada = ${formatDecimalEs(p.perDay.value, 2)}${p.complete ? "" : ` — ${p.perDay.reason ?? ""}`}`}>{formatDecimalEs(p.perDay.value, 0)}{p.complete ? "" : "*"}</span>;
+        return <Dash reason={p.perDay.reason ?? "Sin ratio de cartera."} />;
+      case "devTarget":
+        return p.deviationVsTarget.value !== null ? <span className={devClass(p.deviationVsTarget.value)} title={p.deviationVsTarget.reason ?? undefined}>{pct(p.deviationVsTarget.value)}{p.complete ? "" : "*"}</span> : <Dash reason={p.deviationVsTarget.reason ?? "Sin ratio de cartera."} />;
       case "devPortfolio": return <Dash reason="La media filtrada es la propia referencia del total: no se compara consigo misma." />;
       case "stock": return t.users === null ? <Dash reason="Ningún Grupo del filtrado tiene usuarios informados al corte." /> : t.usersMissing > 0 ? <span title={`Suma de los usuarios informados; ${t.usersMissing} grupo(s) sin dato no suman.`}>{formatDecimalEs(t.users, 0)}*</span> : <>{formatDecimalEs(t.users, 0)}</>;
       case "tariff": return t.tariff === null ? <Dash reason="Ningún Grupo del filtrado tiene tarifa calculable." /> : <span title={t.tariffMissing > 0 ? `12 × ΣR / Σ usuarios·mes de los ${t.groups - t.tariffMissing} grupos con tarifa; ${t.tariffMissing} no aportan.` : "12 × ΣR / Σ usuarios·mes"}>{f0(t.tariff)}{t.tariffMissing > 0 ? "*" : ""}</span>;
@@ -148,7 +152,7 @@ export function ComparativeTable({ view, base }: { view: PortfolioView; base: st
               <td className="meta"><Meta c={r.meta.hosting} /></td>
               {blocks.flatMap((b) => {
                 const k = BLOCK_PERIOD[b];
-                return COLS[k].map((c, i) => <td key={`${b}-${c}`} className={`num${i === 0 ? " blk-start" : ""}`}><Cell r={r} pk={k} col={c} /></td>);
+                return COLS[k].map((c, i) => <td key={`${b}-${c}`} className={`num${i === 0 ? " blk-start" : ""}`}><Cell r={r} pk={k} col={c} target={targetStr} factors={factors} /></td>);
               })}
             </tr>
           ))}

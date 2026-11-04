@@ -5,7 +5,7 @@ import { PMO_CUTOFF } from "@/domain/zendesk";
 import { PROFILE_KEYS, referenceMembership, type PulseReference, type CriteriaMeta } from "@/domain/pulse-catalog";
 import { percentileInc, sortDec } from "@/domain/pulse-stats";
 import {
-  BACKLOG_UNIT, INDICATOR_KEYS, INDICATOR_NAME, METRIC_UNIT, UNIT_LABEL, ageDays, backlogStockRate, evaluateEntity, flowRate, hoursPerUserMonth, isAged,
+  INDICATOR_KEYS, INDICATOR_NAME, METRIC_UNIT, UNIT_LABEL, QUALITY_COHORT_REFERENCE, QUALITY_COHORT_REFERENCE_ALL, ageDays, backlogUnitFor, evaluateEntity, hoursPerUserMonth, isAged, metricUnitFor, perUserRate,
   type ComponentInput, type EntityEvaluation, type EntityInput, type IndicatorKey, type QScope, type QualityConfig,
 } from "@/domain/quality-config";
 import { chooseSnapshot, coverageOf, type Coverage, type CoverageSource, type Declaration, type SnapshotChoice } from "@/domain/quality-coverage";
@@ -15,11 +15,12 @@ import { loadGroupMeta, type GroupMeta } from "@/server/analytics/portfolio";
 import { readSnapshot, snapshotPoint, type Tx } from "@/server/analytics/snapshot";
 import { readDataStamp } from "@/server/analytics/stamp";
 import { getActive, getManifest } from "@/server/pulse/config";
-import { selectorsOf } from "@/server/pulse/sql";
+import { qualitySelectors } from "./selectors";
 import { loadDeclarations, loadTicketBatches } from "./coverage";
 import { hourFacts, papFacts, stockSetSql, ticketFacts, type HourRow, type PapFacts, type TicketFacts } from "./facts";
 import { loadHealthForMonth } from "./health";
 import { hasCommonFilters } from "@/domain/filtros-comunes";
+import { clientEffectiveActive } from "@/domain/estado";
 import { loadServiceFacts, selectByFilters } from "./selection";
 
 /**
@@ -30,15 +31,17 @@ const ZERO = Dec.ZERO;
 export type Scope = "group" | "client";
 const QSC: Record<Scope, QScope> = { group: "GRUPO", client: "CLIENTE" };
 
-export type Ent = { id: string; name: string; parent: string | null; groupId: string | null; isActive: boolean };
+/** `isActive` = estado propio; `effectiveActive` = estado efectivo (HOTFIX-03 §7): el del Grupo según sus Clientes externos, o el del Cliente con su Grupo. */
+export type Ent = { id: string; name: string; parent: string | null; groupId: string | null; isActive: boolean; effectiveActive: boolean };
 
 const toCriteria = (m: GroupMeta): CriteriaMeta => ({ support: m.support, hosting: m.hosting, complexity: m.complexity, product: { ...m.product, contains: m.product.contains } });
 
 export async function loadEntities(tx: Tx, scope: Scope, groups: GroupMeta[]): Promise<Ent[]> {
-  if (scope === "group") return groups.map((g) => ({ id: g.id, name: g.name, parent: null, groupId: g.id, isActive: g.isActive }));
+  if (scope === "group") return groups.map((g) => ({ id: g.id, name: g.name, parent: null, groupId: g.id, isActive: g.isActive, effectiveActive: g.effectiveActive }));
   const gn = new Map(groups.map((g) => [g.id, g.name]));
+  const gAct = new Map(groups.map((g) => [g.id, g.isActive]));
   const rows = await tx.client.findMany({ where: { isInternal: false }, select: { id: true, name: true, isActive: true, groupId: true }, orderBy: [{ name: "asc" }, { id: "asc" }] });
-  return rows.map((c) => ({ id: c.id, name: c.name, parent: c.groupId ? (gn.get(c.groupId) ?? null) : null, groupId: c.groupId, isActive: c.isActive }));
+  return rows.map((c) => ({ id: c.id, name: c.name, parent: c.groupId ? (gn.get(c.groupId) ?? null) : null, groupId: c.groupId, isActive: c.isActive, effectiveActive: clientEffectiveActive(c, c.groupId ? { isActive: gAct.get(c.groupId) ?? true } : null) }));
 }
 
 // ---------------------------------------------------------------- Usuarios (propios de cada ámbito)
@@ -239,6 +242,10 @@ export function evaluateMonth(f: MonthFacts, q: QualityQuery, cfg: QualityConfig
   const hoursBy = new Map<string, HourRow[]>();
   for (const r of hourRows) (hoursBy.get(r.entity) ?? hoursBy.set(r.entity, []).get(r.entity)!).push(r);
   const selConfigured = profileSel.length > 0 && cfg.dedication.selectionConfirmed;
+  // HOTFIX-03 §11: «total» usa el numerador observado sin denominador; «usuario» divide por la exposición (por UN usuario, no por 100).
+  const measure = q.measure ?? "usuario";
+  const isTotal = measure === "total";
+  const perUser = perUserRate;
 
   type Raw = { input: Omit<EntityInput, "scope" | "health">; explain: Record<IndicatorKey, Explain>; users: Users };
   const rawOf = new Map<string, Raw>();
@@ -263,8 +270,8 @@ export function evaluateMonth(f: MonthFacts, q: QualityQuery, cfg: QualityConfig
     const ex = (formula: string, numerator: string | null, denominator: string | null, unit: string, sources: string[], notes: string[], breakdown: Record<string, string>, covs: Coverage[], observed: string | null = numerator): Explain => ({
       formula, numerator, denominator, observed, unit, period: `${from} – ${to}`, sources, notes, breakdown, coverage: covs.map((c) => ({ source: c.source, state: c.state, reason: c.reason })),
     });
-    const per100 = (n: number) => (n === 0 && u.userMonths === null ? null : flowRate(n, u.userMonths));
-    const usersNote = u.reason ? [u.reason] : u.estimated ? ["Denominador de usuarios estimado a partir de 2025 (no es un dato observado ese mes); no es evidencia de calidad histórica medida."] : [];
+    const per100 = (n: number): Dec | null => (isTotal ? Dec.int(n) : perUser(n, u.userMonths));
+    const usersNote = isTotal ? [] : u.reason ? [u.reason] : u.estimated ? ["Denominador de usuarios estimado a partir de 2025 (no es un dato observado ese mes); no es evidencia de calidad histórica medida."] : [];
 
     // Dedicación
     const eligible = hr.filter((r) => r.bucketClass === "ELIGIBLE");
@@ -286,7 +293,7 @@ export function evaluateMonth(f: MonthFacts, q: QualityQuery, cfg: QualityConfig
     let ded: ComponentInput;
     if (!selConfigured) ded = { value: null, reason: "Selección de perfiles sin configurar (Administración › Configuración › Calidad): se muestran las magnitudes por servicio y perfil." };
     else {
-      const rate = hoursPerUserMonth(hours, u.userMonths);
+      const rate = isTotal ? hours : hoursPerUserMonth(hours, u.userMonths);
       ded = rate === null ? { value: null, reason: u.reason ?? "Sin denominador." } : withCoverage(rate, dedCovs, dedNotes.find((n) => n.includes("h con") || n.includes("h sin")) ?? null, null);
     }
     // PAP
@@ -311,20 +318,23 @@ export function evaluateMonth(f: MonthFacts, q: QualityQuery, cfg: QualityConfig
       const s = st?.[type] ?? emptyStock();
       if (s.invalidDates > 0) return { value: null, reason: `${s.invalidDates} tickets con creación posterior a la observación: error de fecha, no edad cero.` };
       if ((st?.unknownStatus ?? 0) > 0) return { value: null, reason: `${st?.unknownStatus} tickets con estado desconocido: la cobertura del stock queda limitada.` };
-      const r = backlogStockRate(s.aged, uD);
+      const r = isTotal ? Dec.int(s.aged) : perUser(s.aged, uD === null ? null : Dec.int(uD));
       if (r === null) return { value: null, reason: uD === 0 ? "Usuarios al corte observado = 0: sin denominador del stock." : `Usuarios del mes de la observación (${observedOn}) sin informar.` };
       return choice.kind === "EARLIER" ? { value: r, partial: true, reason: choice.note } : { value: r, reason: null };
     };
     const incidents = { flow, backlogIncident: backlogComp("incident"), backlogProblem: backlogComp("problem") };
     const mkNum = (n: number) => String(n);
+    const DEN = isTotal ? " (total observado del periodo, sin denominador)" : " ÷ usuarios·mes (por un usuario)";
+    const DENSTOCK = isTotal ? " (total observado en la fotografía)" : " ÷ usuarios al corte observado (por un usuario)";
+    const uMonths = isTotal ? null : u.userMonths?.toString() ?? null;
     const explain = {} as Record<IndicatorKey, Explain>;
     if (focus && !focus.has(e.id)) { rawOf.set(e.id, { input: { dedication: ded, pap, n3, bugs, incidents }, explain, users: u }); continue; } // fuera del foco: solo magnitudes para la cohorte
     explain.HEALTH = ex("Categoría mensual propia del ámbito (positivo / mixto / negativo / sin feedback).", null, null, "categoría", ["Client Health (matriz mensual)"], [], {}, []);
-    explain.DEDICATION = ex("Σ horas elegibles de los perfiles elegidos (servicio " + svcFilter + ") ÷ usuarios·mes", selConfigured ? hours.toString() : null, u.userMonths?.toString() ?? null, UNIT_LABEL.HOURS_PER_USER_MONTH, ["Tiempos Zendesk / Wrike (TimeActivity)"], dedNotes, { ...byProfile, ...bySvc, "selección": selConfigured ? profileSel.join(", ") : "sin configurar" }, dedCovs, (selConfigured ? hours : eligible.filter(inScope).reduce((acc, r) => acc.add(r.minutes), ZERO).divInt(60)).toString());
-    explain.PAP_CORRECTIVE = ex("PAP únicos por lista+ID con alguna causa correctiva y producción en el periodo × 100 ÷ usuarios·mes", p ? mkNum(p.corrective) : "0", u.userMonths?.toString() ?? null, UNIT_LABEL.PER_100_USER_MONTHS, ["PAP"], [...usersNote, ...papNote], { estándar: mkNum(p?.standard ?? 0), "proyecto (config./personalización/procesos/infra.)": mkNum(p?.project ?? 0), "origen cliente": mkNum(p?.clientOrigin ?? 0), "total PAP del periodo": mkNum(p?.total ?? 0), "sin fecha": mkNum(p?.noDate ?? 0), "sin causa": mkNum(p?.unknownState ?? 0), "nota": "Las pertenencias pueden solaparse; el total correctivo no las suma." }, papCovs);
-    explain.N3_ESCALATIONS = ex("Tickets únicos creados en el periodo con destino PMO N3 o IT N3 (unión) × 100 ÷ usuarios·mes", mkNum(t?.n3 ?? 0), u.userMonths?.toString() ?? null, UNIT_LABEL.PER_100_USER_MONTHS, ["Tickets Zendesk (tags exactos)"], usersNote, { "PMO N3": mkNum(t?.n3pmo ?? 0), "IT N3": mkNum(t?.n3it ?? 0), nota: "Dos tags N3 cuentan uno; la fecha es la de creación del ticket." }, [coverage.tickets]);
-    explain.INCIDENTS_PROBLEMS = ex("Flujo: tickets incident/problem creados en el periodo × 100 ÷ usuarios·mes. Stock: envejecidos (edad > umbral) × 100 ÷ usuarios al corte observado, por tipo.", mkNum((t?.inc ?? 0) + (t?.prob ?? 0)), u.userMonths?.toString() ?? null, `${UNIT_LABEL.PER_100_USER_MONTHS} (flujo) / ${UNIT_LABEL[BACKLOG_UNIT]} (stock)`, ["Tickets Zendesk", "Fotografías de tickets"], [...usersNote, backlog.note], { incidentes: mkNum(t?.inc ?? 0), problemas: mkNum(t?.prob ?? 0), "stock incidentes activos": mkNum(st?.incident.count ?? 0), "stock incidentes envejecidos": mkNum(st?.incident.aged ?? 0), "stock problemas activos": mkNum(st?.problem.count ?? 0), "stock problemas envejecidos": mkNum(st?.problem.aged ?? 0), "usuarios al corte observado": uD === null ? "sin informar" : String(uD), nota: "Flujo y stock se presentan separados; no se suman como tickets adicionales." }, [coverage.tickets]);
-    explain.BUGS_STANDARD = ex("COUNT DISTINCT(problemas externos con causa estándar ∪ con vínculo válido a Bug_) × 100 ÷ usuarios·mes", mkNum(t?.union ?? 0), u.userMonths?.toString() ?? null, UNIT_LABEL.PER_100_USER_MONTHS, ["Tickets Zendesk", "Work Items (vínculos)"], [...usersNote, ...(bugExtra ? [bugExtra] : []), "Mide afectación conocida: un cero sustentado es cero evidencia registrada, no ausencia probada de defectos."], { "por causa (S)": mkNum(t?.s ?? 0), "por vínculo (B)": mkNum(t?.b ?? 0), ambas: mkNum(t?.both ?? 0), "total único": mkNum(t?.union ?? 0), "incidentes vinculados (adicional, no numerador)": mkNum(t?.incLinked ?? 0) }, bugCovs);
+    explain.DEDICATION = ex("Σ horas elegibles de los perfiles elegidos (servicio " + svcFilter + ")" + DEN, selConfigured ? hours.toString() : null, uMonths, UNIT_LABEL[metricUnitFor("DEDICATION", measure)], ["Tiempos Zendesk / Wrike (TimeActivity)"], dedNotes, { ...byProfile, ...bySvc, "selección": selConfigured ? profileSel.join(", ") : "sin configurar" }, dedCovs, (selConfigured ? hours : eligible.filter(inScope).reduce((acc, r) => acc.add(r.minutes), ZERO).divInt(60)).toString());
+    explain.PAP_CORRECTIVE = ex("PAP únicos por lista+ID con alguna causa correctiva y producción en el periodo" + DEN, p ? mkNum(p.corrective) : "0", uMonths, UNIT_LABEL[metricUnitFor("PAP_CORRECTIVE", measure)], ["PAP"], [...usersNote, ...papNote], { estándar: mkNum(p?.standard ?? 0), "proyecto (config./personalización/procesos/infra.)": mkNum(p?.project ?? 0), "origen cliente": mkNum(p?.clientOrigin ?? 0), "total PAP del periodo": mkNum(p?.total ?? 0), "sin fecha": mkNum(p?.noDate ?? 0), "sin causa": mkNum(p?.unknownState ?? 0), "nota": "Las pertenencias pueden solaparse; el total correctivo no las suma." }, papCovs);
+    explain.N3_ESCALATIONS = ex("Tickets únicos creados en el periodo con destino PMO N3 o IT N3 (unión)" + DEN, mkNum(t?.n3 ?? 0), uMonths, UNIT_LABEL[metricUnitFor("N3_ESCALATIONS", measure)], ["Tickets Zendesk (tags exactos)"], usersNote, { "PMO N3": mkNum(t?.n3pmo ?? 0), "IT N3": mkNum(t?.n3it ?? 0), nota: "Dos tags N3 cuentan uno; la fecha es la de creación del ticket." }, [coverage.tickets]);
+    explain.INCIDENTS_PROBLEMS = ex("Flujo: tickets incident/problem creados en el periodo" + DEN + ". Stock: envejecidos (edad > umbral)" + DENSTOCK + ", por tipo.", mkNum((t?.inc ?? 0) + (t?.prob ?? 0)), uMonths, `${UNIT_LABEL[metricUnitFor("INCIDENTS_PROBLEMS", measure)]} (flujo) / ${UNIT_LABEL[backlogUnitFor(measure)]} (stock)`, ["Tickets Zendesk", "Fotografías de tickets"], [...usersNote, backlog.note], { incidentes: mkNum(t?.inc ?? 0), problemas: mkNum(t?.prob ?? 0), "stock incidentes activos": mkNum(st?.incident.count ?? 0), "stock incidentes envejecidos": mkNum(st?.incident.aged ?? 0), "stock problemas activos": mkNum(st?.problem.count ?? 0), "stock problemas envejecidos": mkNum(st?.problem.aged ?? 0), "usuarios al corte observado": uD === null ? "sin informar" : String(uD), nota: "Flujo y stock se presentan separados; no se suman como tickets adicionales." }, [coverage.tickets]);
+    explain.BUGS_STANDARD = ex("COUNT DISTINCT(problemas externos con causa estándar ∪ con vínculo válido a Bug_)" + DEN, mkNum(t?.union ?? 0), uMonths, UNIT_LABEL[metricUnitFor("BUGS_STANDARD", measure)], ["Tickets Zendesk", "Work Items (vínculos)"], [...usersNote, ...(bugExtra ? [bugExtra] : []), "Mide afectación conocida: un cero sustentado es cero evidencia registrada, no ausencia probada de defectos."], { "por causa (S)": mkNum(t?.s ?? 0), "por vínculo (B)": mkNum(t?.b ?? 0), ambas: mkNum(t?.both ?? 0), "total único": mkNum(t?.union ?? 0), "incidentes vinculados (adicional, no numerador)": mkNum(t?.incLinked ?? 0) }, bugCovs);
     rawOf.set(e.id, { input: { dedication: ded, pap, n3, bugs, incidents }, explain, users: u });
   }
 
@@ -338,6 +348,18 @@ export function evaluateMonth(f: MonthFacts, q: QualityQuery, cfg: QualityConfig
   const refCache = new Map<string, Set<string>>();
   const sampleFor = (referenceId: string | null, pickValue: (id: string) => ComponentInput): readonly Dec[] | null => {
     if (!referenceId) return null;
+    // HOTFIX-03 §12: referencia PROPIA de Calidad (no depende de Pulse). Cohorte = entidades externas del mismo ámbito, activas por defecto, con valor válido y
+    // cobertura compatible; los filtros visuales, la búsqueda, el orden y la paginación NO la modifican (se evalúa sobre `all`, no sobre `visible`).
+    if (referenceId === QUALITY_COHORT_REFERENCE || referenceId === QUALITY_COHORT_REFERENCE_ALL) {
+      const only = referenceId === QUALITY_COHORT_REFERENCE;
+      const vals: Dec[] = [];
+      for (const e of all) {
+        if (only && !e.effectiveActive) continue;
+        const c = pickValue(e.id);
+        if (c.value !== null && !c.partial) vals.push(c.value);
+      }
+      return vals;
+    }
     const r = pulseRefs.find((x) => x.id === referenceId);
     if (!r) return [];
     let m = refCache.get(referenceId);
@@ -378,7 +400,7 @@ export function evaluateMonth(f: MonthFacts, q: QualityQuery, cfg: QualityConfig
       const ev = evaluateEntity(config, {
         scope: sc, health: effective, dedication: withRef(r.input.dedication, sDed), pap: withRef(r.input.pap, sPap), n3: withRef(r.input.n3, sN3), bugs: withRef(r.input.bugs, sBug),
         incidents: { flow: withRef(r.input.incidents.flow, sFlow), backlogIncident: withRef(r.input.incidents.backlogIncident, sBi), backlogProblem: withRef(r.input.incidents.backlogProblem, sBp) },
-      });
+      }, measure);
       const uncal = INDICATOR_KEYS.some((k) => ["SIN_CALIBRAR", "SIN_REFERENCIA", "REGLA_INVALIDA", "SIN_REGLA"].includes(ev.indicators[k].status) || (ev.indicators[k].components ?? []).some((c) => c.status === "SIN_CALIBRAR" || c.status === "SIN_REGLA"));
       const pending = INDICATOR_KEYS.some((k) => ["SIN_DATO", "PARCIAL"].includes(ev.indicators[k].status) || ev.indicators[k].availability === "MISSING" && ["SIN_DATO", "PARCIAL", "INCOMPLETO"].includes(ev.indicators[k].status));
       rows.set(e.id, {
@@ -455,7 +477,7 @@ export async function computeQuality(tx: Tx, q: QualityQuery, opts: QualityOptio
   await snapshotPoint("quality:after-tickets");
   const pFacts: Map<string, PapFacts> = period.future ? new Map() : await papFacts(tx, scope, ids, from, to);
   const profileSel = cfg.dedication.profiles.filter((k) => (PROFILE_KEYS as readonly string[]).includes(k));
-  const hourRows: HourRow[] = period.future ? [] : await hourFacts(tx, scope, ids, from, to, selectorsOf(pulse.payload));
+  const hourRows: HourRow[] = period.future ? [] : await hourFacts(tx, scope, ids, from, to, await qualitySelectors(tx, pulse.payload));
   await snapshotPoint("quality:after-hours");
   const healthMap = await loadHealthForMonth(tx, scope, ids, period.year, period.month);
 

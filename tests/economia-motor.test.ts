@@ -267,13 +267,13 @@ describe("ámbito, servicio y fuente histórica PMO", () => {
     const r = await run([g.id], { date: "2026-01-31", mode: "FULL_MONTH" });
     const h = r.entities[0].periods.month.hours;
     expect(h.byService).toEqual({ SOPORTE: "2", ADMIN_DELEGADA: "2.5", OTROS: "0.5", SIN_CLASIFICAR: "0.25", CONFLICTO: "0.75" });
-    // soporte: ratio no completo por horas sin clasificar/conflicto, pero con sus magnitudes conocidas
+    // soporte: HOTFIX-03: ratio PROVISIONAL del conjunto observado (2 h de Soporte), con las horas por clasificar fuera del denominador; no se presenta como completo
     const p = r.entities[0].periods.month.perDay;
-    expect(p).toMatchObject({ value: null, status: "PARTIAL", numerator: "1000", denominator: "2" });
+    expect(p).toMatchObject({ value: "4000", status: "PARTIAL", provisional: true, numerator: "1000", denominator: "2" });
     expect(p.reason).toMatch(/sin servicio|conflicto/);
     // sin horas por clasificar el ratio es completo
     const adm = await run([g.id], { service: "ADMIN_DELEGADA", date: "2026-01-31", mode: "FULL_MONTH" });
-    expect(adm.entities[0].periods.month.perDay.status).toBe("PARTIAL");
+    expect(adm.entities[0].periods.month.perDay).toMatchObject({ status: "PARTIAL", provisional: true });
     expect(adm.entities[0].periods.month.revenue.value).toBe("200");
   });
   it("«otro soporte» no es OTROS financiero ni la causa del cliente decide el servicio; una asignación vencida no clasifica como OTROS (servicio-v2: cae al soporte ordinario)", async () => {
@@ -292,7 +292,7 @@ describe("ámbito, servicio y fuente histórica PMO", () => {
 });
 
 describe("consistencia, configuración y autorización", () => {
-  it("devuelve la referencia de lotes, versiones y configuración usadas; Silver On Demand no activa rentabilidad mensual", async () => {
+  it("devuelve la referencia de lotes, versiones y configuración usadas; Silver On Demand ya no veta el ratio mensual (ECO 08 retirado, HOTFIX-03)", async () => {
     const g = await addGroup("G");
     await seedFinance(admin.id, "SOPORTE", 2026, [{ groupId: g.id, income: "12000" }]);
     await prisma.serviceTerm.create({ data: { attribute: "SUPPORT", value: "SILVER_ON_DEMAND", groupId: g.id } });
@@ -301,7 +301,8 @@ describe("consistencia, configuración y autorización", () => {
     expect(r.reference.finance.filter((f) => f.batchId)).toHaveLength(1);
     expect(r.reference.engineVersion).toBe("eco-v2");
     expect(r.entities[0].eco08).toBe(true);
-    expect(r.entities[0].periods.month.perDay.reason).toMatch(/ECO 08/);
+    expect(r.entities[0].periods.month.perDay.reason ?? "").not.toMatch(/ECO 08/); // sin horas: «sin horas», no un veto por plan
+    expect(r.entities[0].periods.month.perDay.code).not.toBe("SILVER_ON_DEMAND");
     expect(r.entities[0].periods.cum.perDay.reason ?? "").not.toMatch(/ECO 08/);
   });
   it("el perfil Consulta puede leer; sin sesión (actor inexistente) no", async () => {

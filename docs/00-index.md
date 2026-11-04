@@ -12,7 +12,7 @@ Estado de la regla: **Confirmado** = decidido por Dennis; **Propuesto** = parám
 | Cuatro vistas, Administración, ámbitos | [Alcance](producto/alcance.md) | — | Confirmado |
 | Grupo Cliente, Cliente, personal, usuarios | [Maestros](producto/maestros.md) | MST 01-08, USR 01-05 | Mixto (aprobar reapertura de años en USR 03; exclusión por arranque en MST 04 pendiente) |
 | Administración, pesos y configuración | [Administración](producto/administracion.md) | ADM 01-15 | Mixto (umbrales de Calidad y backlog propuestos; pesos iguales confirmados; configuración implementada en CSAPP-07) |
-| Comparativa | [Contrato de vista](producto/comparativa.md) | ECO 01-08 | Mixto (Silver en ECO 08 propuesto); implementada en CSAPP-06 |
+| Comparativa | [Contrato de vista](producto/comparativa.md) | ECO 01-08 | Confirmado; ECO 08 retirado como veto por HOTFIX-03 (Silver On Demand usa la imputación anual prorrateada); implementada en CSAPP-06 |
 | Análisis Cliente | [Contrato de vista](producto/analisis-cliente.md) | — | Confirmado; implementado en CSAPP-06 |
 | Pulse Rent | [Contrato de vista](producto/pulse-rent.md) | PUL 01-05 | Confirmado (bandas del Excel); implementado en CSAPP-07 |
 | Seis indicadores de Calidad | [Calidad](producto/calidad.md) | QLT 01-19, QHL 01-03 | Mixto (color de Incidentes y problemas, mapeo de Health y global: propuestas hasta elección del Administrador) |
@@ -63,6 +63,8 @@ Estado de la regla: **Confirmado** = decidido por Dennis; **Propuesto** = parám
 | Guía de actualización de HOTFIX-01 para Windows | [Guía](plan/guia-powershell-hotfix01.md) | — | Escrita, sin probar en Windows |
 | HOTFIX-02: enlace automático, servicio y cobertura | [Arquitectura](arquitectura/hotfix02-enlace-automatico.md) | IMP, PRE | Implementado; probado en Linux |
 | HOTFIX-02: validación y guía de actualización | [Validación](validacion/hotfix-02.md) · [Guía Windows](plan/guia-powershell-hotfix02.md) | — | Registro; guía sin probar en Windows |
+| HOTFIX-03: maestros en tabla, estado comercial, cálculos utilizables, bandas, Calidad Por usuario/Total y perfil inicial | [Arquitectura](arquitectura/hotfix03-gestion-estado-calculos-calidad.md) | IMP, ECO 08, QLT | Implementado; probado en Linux con datos sintéticos |
+| HOTFIX-03: validación y guía de actualización | [Validación](validacion/hotfix-03.md) · [Guía Windows](plan/guia-powershell-hotfix03.md) | — | Registro; guía sin probar en Windows |
 | Guía PowerShell y recorrido de CSAPP-08 | [Guía PowerShell](plan/guia-powershell-csapp08.md) | — | Escrita, sin probar en Windows |
 | Guía breve de Calidad | [Guía de Calidad](plan/guia-calidad-csapp08.md) | — | Referencia |
 | Resultados de validación de CSAPP-08 | [Validación](validacion/csapp-08.md) | — | Registro |

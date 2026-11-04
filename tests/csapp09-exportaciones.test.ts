@@ -8,7 +8,7 @@ import { prisma } from "@/lib/db";
 import { STANDARD_CAUSE } from "@/domain/zendesk";
 import { cancelExport, createExport, getExport, listMyExports, retryExport, authorizeDownload, superviseExports } from "@/server/exports/service";
 import { claimNextExport, exportFilePath, expireExports, processExport, runExportOnce, sweepExportOrphans } from "@/server/exports/run";
-import { resetDatabase, makeUsers } from "./helpers";
+import { resetDatabase, makeUsers, useUncalibratedQuality } from "./helpers";
 import { addClient, addGroup, addZd, seedFinance, setUsers } from "./economia-helpers";
 import { batchOf, seedBugLink, seedPap, seedTicket } from "./calidad-helpers";
 
@@ -23,6 +23,7 @@ const WK = "trabajador-prueba";
 beforeEach(async () => {
   await resetDatabase();
   ({ admin, reader } = await makeUsers());
+  await useUncalibratedQuality(admin.id);
   dir = await mkdtemp(path.join(tmpdir(), "csapp09-exp-"));
   process.env.CSAPP_EXPORT_DIR = dir;
   delete process.env.CSAPP_EXPORT_PART_ROWS;

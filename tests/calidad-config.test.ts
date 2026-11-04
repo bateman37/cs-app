@@ -2,7 +2,7 @@ import { beforeEach, describe, expect, it } from "vitest";
 import { prisma } from "@/lib/db";
 import { Dec } from "@/domain/finance";
 import {
-  INDICATOR_KEYS, PROPOSED_SEVERITY, defaultQualityConfig, effectiveWeights, evaluateGlobal, evaluateRule, healthColor, isAged, parsePercentCents, validateAgeBands,
+  INDICATOR_KEYS, PROPOSED_SEVERITY, uncalibratedQualityConfig as defaultQualityConfig, effectiveWeights, evaluateGlobal, evaluateRule, healthColor, isAged, parsePercentCents, validateAgeBands,
   validateQualityConfig, validateRule, weightUnits, worstSignal, backlogStockRate, flowRate, percentileAt,
   type Availability, type Color, type IndicatorKey, type QualityConfig, type ThresholdRule, type GlobalTemplate,
 } from "@/domain/quality-config";
@@ -100,8 +100,10 @@ describe("reglas de umbral deterministas", () => {
     expect(validateRule(rule({ method: "PERCENTILE", a: "10", b: "101", referenceId: "x" }))[0]).toMatch(/\[0, 100\]/);
     expect(validateRule(rule({ method: "PERCENTILE", a: "10", b: "20", referenceId: null }))[0]).toMatch(/referencia explícita/);
     const same = evaluateRule(p, D(5), [5, 5, 5, 5].map(D));
-    expect(same.cuts).toEqual({ a: "5", b: "5" }); // cortes iguales: sin epsilon
-    expect(same.color).toBe("green");
+    expect(same.cuts).toMatchObject({ a: "5", b: "5" }); // cortes iguales: sin epsilon
+    // HOTFIX-03 §12: todos los valores iguales y positivos → amarillo relativo (no un verde colectivo por caer justo en P25); todo cero confirmado → verde.
+    expect(same.color).toBe("yellow");
+    expect(evaluateRule(p, D(0), [0, 0, 0, 0].map(D)).color).toBe("green");
   });
   it("referencia insuficiente (muestra mínima elegida) o vacía: sin referencia, nunca verde", () => {
     const p = rule({ method: "PERCENTILE", a: "25", b: "75", referenceId: "todos", minSample: 5 });

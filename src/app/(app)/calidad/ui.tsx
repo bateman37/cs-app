@@ -11,7 +11,7 @@ export function ColorBadge({ color, alert }: { color: Color | null; alert?: bool
 }
 
 export const STATUS_TEXT: Record<string, string> = {
-  OK: "calculado", SIN_CALIBRAR: "sin calibrar", SIN_REGLA: "sin regla", SIN_REFERENCIA: "sin referencia", DATO_INVALIDO: "no calculable", REGLA_INVALIDA: "regla no aplicable",
+  OK: "calculado", SIN_CALIBRAR: "sin calibrar", SIN_REGLA: "sin regla", SIN_REFERENCIA: "muestra insuficiente", DATO_INVALIDO: "no calculable", REGLA_INVALIDA: "regla no aplicable",
   BLANCO: "sin feedback", CATEGORIA: "categoría", SIN_DATO: "sin dato", PARCIAL: "parcial", INCOMPLETO: "incompleto", COMPOSICION_SIN_ELEGIR: "composición sin elegir",
 };
 

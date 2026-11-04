@@ -69,7 +69,7 @@ export const DEFAULT_QUERY = (now: Date = new Date()): AnalysisQuery => ({
   hosting: [],
   complexity: [],
   product: "",
-  status: "todos",
+  status: "activos",
   coverage: "todas",
   sort: "name",
   dir: "asc",
@@ -184,7 +184,7 @@ export function cohortParams(q: AnalysisQuery, now: Date = new Date()): Record<s
 }
 
 export const hasCohortFilters = (q: AnalysisQuery): boolean =>
-  q.q !== "" || q.support.length > 0 || q.hosting.length > 0 || q.complexity.length > 0 || q.product !== "" || q.status !== "todos" || q.coverage !== "todas";
+  q.q !== "" || q.support.length > 0 || q.hosting.length > 0 || q.complexity.length > 0 || q.product !== "" || q.status !== "activos" || q.coverage !== "todas";
 
 /** Identificador de entidad acotado (cuid / uuid): evita valores forjados antes de llegar a SQL. */
 export const ID_PATTERN = /^[A-Za-z0-9_-]{8,40}$/;

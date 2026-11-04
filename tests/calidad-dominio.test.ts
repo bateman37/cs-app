@@ -1,7 +1,7 @@
 import { describe, expect, it } from "vitest";
 import { Dec } from "@/domain/finance";
 import {
-  INDICATOR_KEYS, adaptQualityV1, ageDays, backlogStockRate, defaultQualityConfig, diagnosisFamily, effectiveWeights, evaluateEntity, evaluateRule, healthOutcome, isAged, readQualityPayload,
+  INDICATOR_KEYS, adaptQualityV1, ageDays, backlogStockRate, uncalibratedQualityConfig as defaultQualityConfig, diagnosisFamily, effectiveWeights, evaluateEntity, evaluateRule, healthOutcome, isAged, readQualityPayload,
   validateQualityConfig, weightUnits, qualityConfigV1Schema,
   type Availability, type EntityInput, type IndicatorKey, type QualityConfig, type QualityConfigV1, type ThresholdRule, type ComponentInput,
 } from "@/domain/quality-config";
@@ -114,7 +114,7 @@ describe("Compatibilidad: v1 se lee mediante adaptador sin recalibrarse", () => 
     expect(qualityConfigV1Schema.safeParse(raw).success).toBe(true);
   });
   it("una unidad v1 incompatible con la métrica queda visible y la regla no se aplica", () => {
-    const v1 = v1Config({}, { PAP_CORRECTIVE: { unit: "x", normalization: "POR_USUARIO_MES", scope: "GRUPO", rule: { ...v1Rule(), a: "1", b: "2", calibration: "CALIBRADO" } } });
+    const v1 = v1Config({}, { PAP_CORRECTIVE: { unit: "x", normalization: "ANUAL_EQUIVALENTE", scope: "GRUPO", rule: { ...v1Rule(), a: "1", b: "2", calibration: "CALIBRADO" } } });
     const cfg = adaptQualityV1(v1);
     expect(cfg.adapter?.notes.join(" ")).toMatch(/incompatibilidad visible/);
     expect(validateQualityConfig(cfg).map((i) => i.message).join(" ")).toMatch(/PAP correctivos/);
@@ -122,12 +122,12 @@ describe("Compatibilidad: v1 se lee mediante adaptador sin recalibrarse", () => 
 });
 
 describe("Evaluador común: ámbitos, composición y global", () => {
-  const cal = (a: string, b: string, unit: ThresholdRule["unit"] = "PER_100_USER_MONTHS") => rule({ a, b, unit });
+  const cal = (a: string, b: string, unit: ThresholdRule["unit"] = "PER_USER_MONTH") => rule({ a, b, unit });
   function calibrated(): QualityConfig {
     const c = defaultQualityConfig();
     c.global = { template: "WEIGHTED_SEVERITY", enabled: true, severity: { green: "0", yellow: "0.5", red: "1" }, greenMax: "0.3", yellowMax: "0.6" };
     c.health.confirmed = true;
-    for (const k of ["DEDICATION", "PAP_CORRECTIVE", "N3_ESCALATIONS", "BUGS_STANDARD", "INCIDENTS_PROBLEMS"] as const) c.indicators[k].rules.GRUPO = cal("10", "20", k === "DEDICATION" ? "HOURS_PER_USER_MONTH" : "PER_100_USER_MONTHS");
+    for (const k of ["DEDICATION", "PAP_CORRECTIVE", "N3_ESCALATIONS", "BUGS_STANDARD", "INCIDENTS_PROBLEMS"] as const) c.indicators[k].rules.GRUPO = cal("10", "20", k === "DEDICATION" ? "HOURS_PER_USER_MONTH" : "PER_USER_MONTH");
     return c;
   }
   const comp = (v: number | null, extra: Partial<ComponentInput> = {}): ComponentInput => ({ value: v === null ? null : D(v), ...extra });
@@ -139,7 +139,7 @@ describe("Evaluador común: ámbitos, composición y global", () => {
     const c = calibrated();
     c.incidents.worstOfFlowAndBacklog = true;
     c.incidents.concerningDays = { incident: 30, problem: 60 };
-    for (const t of ["INCIDENT", "PROBLEM"] as const) c.incidents.backlog[t].GRUPO = cal("10", "20", "PER_100_USERS_STOCK");
+    for (const t of ["INCIDENT", "PROBLEM"] as const) c.incidents.backlog[t].GRUPO = cal("10", "20", "PER_USER_STOCK");
     // DEDICATION verde(5) · PAP amarillo(15) · N3 rojo(25) · INCIDENTS verde (todo 5) · BUGS amarillo(15)
     const r = evaluateEntity(c, input({ dedication: comp(5), pap: comp(15), n3: comp(25), bugs: comp(15) }));
     expect(INDICATOR_KEYS.map((k) => r.indicators[k].color)).toEqual([null, "green", "yellow", "red", "green", "yellow"]);
@@ -161,7 +161,7 @@ describe("Evaluador común: ámbitos, composición y global", () => {
     const c = calibrated();
     c.incidents.worstOfFlowAndBacklog = true;
     c.incidents.concerningDays = { incident: 30, problem: 60 };
-    for (const t of ["INCIDENT", "PROBLEM"] as const) c.incidents.backlog[t].GRUPO = cal("10", "20", "PER_100_USERS_STOCK");
+    for (const t of ["INCIDENT", "PROBLEM"] as const) c.incidents.backlog[t].GRUPO = cal("10", "20", "PER_USER_STOCK");
     const worst = evaluateEntity(c, input({ incidents: { flow: comp(1), backlogIncident: comp(30), backlogProblem: comp(1) } }));
     expect(worst.indicators.INCIDENTS_PROBLEMS.color).toBe("red");
     c.incidents.worstOfFlowAndBacklog = false;
@@ -187,8 +187,8 @@ describe("Evaluador común: ámbitos, composición y global", () => {
   });
   it("percentiles: la referencia usa solo valores válidos y la muestra mínima elegida", () => {
     const p = rule({ method: "PERCENTILE", a: "25", b: "75", referenceId: "todos", minSample: 4 });
-    expect(evaluateRule(p, D(1), [D(0), D(10), D(20)], "PER_100_USER_MONTHS")).toMatchObject({ status: "SIN_REFERENCIA", n: 3 });
-    expect(evaluateRule(p, D(30), [D(0), D(10), D(20), D(0)], "PER_100_USER_MONTHS").color).toBe("red");
+    expect(evaluateRule(p, D(1), [D(0), D(10), D(20)], "PER_USER_MONTH")).toMatchObject({ status: "SIN_REFERENCIA", n: 3 });
+    expect(evaluateRule(p, D(30), [D(0), D(10), D(20), D(0)], "PER_USER_MONTH").color).toBe("red");
   });
 });
 

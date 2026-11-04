@@ -4,6 +4,7 @@ import { ExportPanel } from "@/components/exports/export-panel";
 import { requirePageUser } from "@/lib/session";
 import { parseAnalysisQuery, parseEntityRef, type AnalysisQuery } from "@/domain/analytics-query";
 import { commonFiltersToParams, parseCommonFilters, type CommonFilters } from "@/domain/filtros-comunes";
+import { DEFAULT_ESTADO, ESTADO_LABEL, ESTADO_VALUES } from "@/domain/estado";
 import { lastDayOfMonth } from "@/domain/finance";
 import { todayMadrid } from "@/domain/vigencia";
 import { first, qs, sanitizeBack, type SearchParams } from "@/lib/format";
@@ -52,7 +53,7 @@ export default async function Page({ searchParams }: { searchParams: Promise<Sea
 async function Selector({ userId, nav, sp }: { userId: string; nav: Nav; sp: SearchParams }) {
   const text = first(sp.buscar).slice(0, 100);
   const bp = Math.max(1, Number(first(sp.bp)) || 1);
-  const r = await searchEntitiesView(userId, text, bp).catch(() => null);
+  const r = await searchEntitiesView(userId, text, bp, nav.filters.estado).catch(() => null);
   const keep = { ...periodParams(nav.query), ...commonFiltersToParams(nav.filters) };
   return (
     <>
@@ -63,6 +64,10 @@ async function Selector({ userId, nav, sp }: { userId: string; nav: Nav; sp: Sea
         <input id="buscar" type="search" name="buscar" defaultValue={text} maxLength={100} style={{ font: "inherit", padding: "2px 6px", border: "1px solid var(--border)", borderRadius: 4, minWidth: 240 }} />
         <button className="fc-btn" type="submit">Buscar</button>
       </form>
+      <p className="fc-seg" role="group" aria-label="Estado comercial" style={{ margin: "0 0 8px" }}>
+        <span>Estado:</span>{" "}
+        {ESTADO_VALUES.map((v) => <a key={v} href={`${BASE}${qs({ ...keep, estado: v === DEFAULT_ESTADO ? undefined : v, buscar: text || undefined })}`} aria-current={nav.filters.estado === v}>{ESTADO_LABEL[v]}</a>)}
+      </p>
       {!r ? <Notice kind="error">No se pudo leer la lista. <Link href={BASE}>Reintentar</Link></Notice> : r.total === 0 ? (
         <p className="fc-note">{text ? <>Sin coincidencias para «{text}».</> : <>Todavía no hay Grupos Cliente, Clientes ni implantaciones. Un Administrador puede crearlos en <Link href="/administracion/clientes/grupos">Administración › Clientes</Link>.</>}</p>
       ) : (

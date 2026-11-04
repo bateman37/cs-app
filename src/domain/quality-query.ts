@@ -12,6 +12,7 @@ import { DEFAULT_QUERY, parseAnalysisQuery, type AnalysisQuery, type RawParams }
 import { INDICATOR_KEYS, DIAGNOSIS_FAMILIES, type IndicatorKey } from "./quality-config";
 import { EMPTY_FILTERS, commonFiltersToParams, parseCommonFilters, type CommonFilters } from "./filtros-comunes";
 import { lastDayOfMonth, parseYmd, ymdToIso } from "./finance";
+import { DEFAULT_MEASURE, MEASURES, type Measure } from "./quality-config";
 
 export const QSCOPES = ["group", "client"] as const;
 export const QSCOPE_NAME = { group: "Grupo Cliente", client: "Cliente" } as const;
@@ -21,12 +22,14 @@ export const QUALITY_SORTS = ["name", "global", ...INDICATOR_KEYS] as readonly s
 export const QUALITY_PAGE_SIZE = 100;
 
 /** Parámetros retirados de la vista normal: se ignoran y se limpian de la URL. */
-export const OBSOLETE_PARAMS = ["q", "servicio", "alojamiento", "complejidad", "producto", "estado", "cobertura", "tam", "color", "vista", "det", "revision", "pestana", "bloques", "ref"] as const;
+export const OBSOLETE_PARAMS = ["q", "servicio", "alojamiento", "complejidad", "producto", "cobertura", "tam", "color", "vista", "det", "revision", "pestana", "bloques", "ref"] as const;
 
 export type QualityQuery = {
   base: AnalysisQuery;
   /** Segmentadores comunes Soporte/Servidor. */
   filters: CommonFilters;
+  /** HOTFIX-03 §11: «Por usuario» (predeterminado) o «Total». Viaja en la URL, en los seis KPI, la ficha, la evolución y el CSV. */
+  measure: Measure;
   scope: (typeof QSCOPES)[number];
   /** Apartado de indicador abierto («» = Resumen de clientes). */
   kpi: IndicatorKey | "";
@@ -49,7 +52,7 @@ const ID = /^[A-Za-z0-9_-]{1,40}$/;
 
 export const DEFAULT_QUALITY_QUERY = (now: Date = new Date()): QualityQuery => {
   const base = { ...DEFAULT_QUERY(now), pageSize: QUALITY_PAGE_SIZE };
-  return { base, filters: EMPTY_FILTERS, scope: "group", kpi: "", sel: "", sort: "name", year: Number(base.date.slice(0, 4)), qrev: null, prev: null, sim: "", fam: "" };
+  return { base, filters: EMPTY_FILTERS, measure: DEFAULT_MEASURE, scope: "group", kpi: "", sel: "", sort: "name", year: Number(base.date.slice(0, 4)), qrev: null, prev: null, sim: "", fam: "" };
 };
 
 /** `mes` (AAAA-MM) + modo → fecha de análisis. Mes completo: cualquier día del mes; a fecha de hoy: el día de hoy (o su equivalente acotado al mes elegido). */
@@ -71,10 +74,12 @@ export function parseQualityQuery(raw: RawParams, now: Date = new Date()): { que
   const monthDate = one(raw.fecha) === "" && one(raw.mes) !== "" ? monthToDate(one(raw.mes), modeRaw === "FULL_MONTH" ? "FULL_MONTH" : "CUTOFF", today) : null;
   const { query: base0, invalid } = parseAnalysisQuery({ fecha: monthDate ?? raw.fecha, modo: raw.modo, dir: raw.dir, pagina: raw.pagina }, now);
   const d = DEFAULT_QUALITY_QUERY(now);
-  const base: AnalysisQuery = { ...base0, service: "SOPORTE", q: "", support: [], hosting: [], complexity: [], product: "", status: "todos", coverage: "todas", sort: "name", pageSize: QUALITY_PAGE_SIZE };
+  const base: AnalysisQuery = { ...base0, service: "SOPORTE", q: "", support: [], hosting: [], complexity: [], product: "", status: "activos", coverage: "todas", sort: "name", pageSize: QUALITY_PAGE_SIZE };
   const flag = (n: string, bad: boolean) => bad && invalid.push(n);
   if (one(raw.mes) !== "" && monthDate === null && one(raw.fecha) === "") invalid.push("mes");
   const scope = pick(QSCOPES, one(raw.ambito), d.scope);
+  const measure = pick(MEASURES, one(raw.medida), d.measure);
+  flag("medida", measure.bad);
   const sort = pick(QUALITY_SORTS, one(raw.orden), d.sort);
   flag("ambito", scope.bad); flag("orden", sort.bad);
   // Enlaces anteriores `vista=` (Análisis Cliente) llegan al apartado equivalente; no filtran nada.
@@ -96,14 +101,15 @@ export function parseQualityQuery(raw: RawParams, now: Date = new Date()): { que
   const year = yr === "" ? Number(base.date.slice(0, 4)) : /^\d{4}$/.test(yr) && Number(yr) >= 2000 && Number(yr) <= 2100 ? Number(yr) : (invalid.push("anio"), Number(base.date.slice(0, 4)));
   const fam = one(raw.fam);
   flag("fam", fam !== "" && !(DIAGNOSIS_FAMILIES as readonly string[]).includes(fam));
-  const rawFilters = { soporte: raw.soporte, servidor: raw.servidor };
+  const rawFilters = { soporte: raw.soporte, servidor: raw.servidor, estado: raw.estado };
   const filters = parseCommonFilters(rawFilters);
+  base.status = filters.estado;
   const wanted = (v: string | string[] | undefined) => (Array.isArray(v) ? v : [v ?? ""]).flatMap((x) => x.split(",")).map((x) => x.trim()).filter(Boolean).length;
   flag("soporte", wanted(raw.soporte) !== filters.soporte.length);
   flag("servidor", wanted(raw.servidor) !== filters.servidor.length);
   return {
     query: {
-      base, filters, scope: scope.v, kpi, sel: ID.test(sel) ? sel : "", sort: sort.v, year, qrev: rev("rcalidad"), prev: rev("rpulse"),
+      base, filters, measure: measure.v, scope: scope.v, kpi, sel: ID.test(sel) ? sel : "", sort: sort.v, year, qrev: rev("rcalidad"), prev: rev("rpulse"),
       sim: one(raw.sim) === "borrador" ? "borrador" : "", fam: (DIAGNOSIS_FAMILIES as readonly string[]).includes(fam) ? fam : "",
     },
     invalid,
@@ -120,7 +126,7 @@ export function qualityToParams(q: QualityQuery, now: Date = new Date()): Record
   set("fecha", b.date, d.base.date); set("modo", b.mode, d.base.mode);
   Object.assign(out, commonFiltersToParams(q.filters ?? EMPTY_FILTERS));
   set("dir", b.dir, d.base.dir); set("pagina", b.page, 1);
-  set("ambito", q.scope, d.scope); set("kpi", q.kpi); set("sel", q.sel); set("orden", q.sort, d.sort);
+  set("medida", q.measure ?? DEFAULT_MEASURE, DEFAULT_MEASURE); set("ambito", q.scope, d.scope); set("kpi", q.kpi); set("sel", q.sel); set("orden", q.sort, d.sort);
   set("anio", q.year, d.year); set("rcalidad", q.qrev); set("rpulse", q.prev); set("sim", q.sim); set("fam", q.fam);
   return out;
 }

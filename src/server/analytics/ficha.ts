@@ -1,6 +1,7 @@
 import { Prisma } from "@/generated/prisma/client";
 import { Dec, effectiveCut } from "@/domain/finance";
 import { likePattern, type AnalysisQuery } from "@/domain/analytics-query";
+import type { Estado } from "@/domain/estado";
 import { economicsInTx, PERIOD_KEYS, type EconomicResult, type EntityResult, type PeriodSeries } from "@/server/economics/engine";
 import { alignMonths, annualPoints, cell, cellsOf, cumulativeCells, MEASURES, trimEmptyYears, type AnnualPoint, type Cell, type MeasureKey, type MonthRow, type MonthSrc } from "@/domain/ficha-series";
 import { equipoTable, problemTable, ticketTable, type DedMap, type EquipoTable, type ProblemTable, type TicketTable } from "@/domain/ficha-dedicacion";
@@ -18,24 +19,31 @@ import { readSnapshot, snapshotPoint, type Tx } from "./snapshot";
 
 export type EntityHit = { type: EntityRef["type"]; id: string; name: string; parent: string | null; isActive: boolean };
 
-export async function searchEntities(tx: Tx, q: string, page: number, pageSize = 25): Promise<{ rows: EntityHit[]; total: number }> {
+/**
+ * Búsqueda del selector. `estado` (HOTFIX-03 §7) usa el estado EFECTIVO: Grupo = propio activo y, con Clientes externos, al menos uno activo; Cliente = propio y su Grupo;
+ * implantación = propia y su Cliente efectivo. Un enlace directo a un objeto inactivo sigue abriendo su ficha (este filtro solo gobierna la lista).
+ */
+export async function searchEntities(tx: Tx, q: string, page: number, pageSize = 25, estado: Estado = "todos"): Promise<{ rows: EntityHit[]; total: number }> {
   const like = likePattern(q.trim());
+  const gEff = Prisma.sql`(g."isActive" AND (NOT EXISTS (SELECT 1 FROM "Client" k WHERE k."groupId" = g.id AND NOT k."isInternal") OR EXISTS (SELECT 1 FROM "Client" k WHERE k."groupId" = g.id AND NOT k."isInternal" AND k."isActive")))`;
+  const cEff = Prisma.sql`(c."isActive" AND COALESCE(g."isActive", true))`;
   const base = Prisma.sql`
-    SELECT 'group'::text AS type, g.id, g.name, NULL::text AS parent, g."isActive" AS active FROM "ClientGroup" g WHERE g.name ILIKE ${like} ESCAPE '\\' OR g."bcDenomination" ILIKE ${like} ESCAPE '\\'
+    SELECT 'group'::text AS type, g.id, g.name, NULL::text AS parent, ${gEff} AS active FROM "ClientGroup" g WHERE g.name ILIKE ${like} ESCAPE '\\' OR g."bcDenomination" ILIKE ${like} ESCAPE '\\'
     UNION ALL
-    SELECT 'client', c.id, c.name, g.name, c."isActive" FROM "Client" c LEFT JOIN "ClientGroup" g ON g.id = c."groupId" WHERE c.name ILIKE ${like} ESCAPE '\\'
+    SELECT 'client', c.id, c.name, g.name, ${cEff} FROM "Client" c LEFT JOIN "ClientGroup" g ON g.id = c."groupId" WHERE c.name ILIKE ${like} ESCAPE '\\'
     UNION ALL
-    SELECT 'implementation', i.id, i.name, c.name, i."isActive" FROM "Implementation" i JOIN "Client" c ON c.id = i."clientId" WHERE i.name ILIKE ${like} ESCAPE '\\'`;
+    SELECT 'implementation', i.id, i.name, c.name, (i."isActive" AND ${cEff}) FROM "Implementation" i JOIN "Client" c ON c.id = i."clientId" LEFT JOIN "ClientGroup" g ON g.id = c."groupId" WHERE i.name ILIKE ${like} ESCAPE '\\'`;
+  const where = estado === "todos" ? Prisma.empty : estado === "activos" ? Prisma.sql`WHERE x.active` : Prisma.sql`WHERE NOT x.active`;
   const [rows, tot] = await Promise.all([
     tx.$queryRaw<{ type: EntityHit["type"]; id: string; name: string; parent: string | null; active: boolean }[]>(Prisma.sql`
-      SELECT * FROM (${base}) x ORDER BY CASE x.type WHEN 'group' THEN 0 WHEN 'client' THEN 1 ELSE 2 END, x.name, x.id LIMIT ${pageSize} OFFSET ${(Math.max(page, 1) - 1) * pageSize}`),
-    tx.$queryRaw<{ n: bigint }[]>(Prisma.sql`SELECT count(*) AS n FROM (${base}) x`),
+      SELECT * FROM (${base}) x ${where} ORDER BY CASE x.type WHEN 'group' THEN 0 WHEN 'client' THEN 1 ELSE 2 END, x.name, x.id LIMIT ${pageSize} OFFSET ${(Math.max(page, 1) - 1) * pageSize}`),
+    tx.$queryRaw<{ n: bigint }[]>(Prisma.sql`SELECT count(*) AS n FROM (${base}) x ${where}`),
   ]);
   return { rows: rows.map((r) => ({ type: r.type, id: r.id, name: r.name, parent: r.parent, isActive: r.active })), total: Number(tot[0].n) };
 }
 
-export async function searchEntitiesView(actorId: string, q: string, page: number) {
-  return readSnapshot(actorId, (tx) => searchEntities(tx, q, page));
+export async function searchEntitiesView(actorId: string, q: string, page: number, estado: Estado = "todos") {
+  return readSnapshot(actorId, (tx) => searchEntities(tx, q, page, 25, estado));
 }
 
 // ---------------------------------------------------------------- Contexto de la entidad

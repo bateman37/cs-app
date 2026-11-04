@@ -3,6 +3,7 @@
 import type { FormState } from "@/components/form-kit";
 import { runAdminAction, withScope } from "@/app/action-utils";
 import { createGroup, setGroupActive, updateGroup } from "@/server/groups";
+import { setLinkDecision } from "@/server/master-table";
 import {
   createClient,
   createImplementation,
@@ -18,7 +19,7 @@ import { createProduct, setProductActive } from "@/server/products";
 import { DomainError } from "@/server/errors";
 
 const BASE = "/administracion/clientes";
-const PATHS = [`${BASE}/grupos`, `${BASE}/clientes`, `${BASE}/productos`];
+const PATHS = [BASE, `${BASE}/grupos`, `${BASE}/clientes`, `${BASE}/productos`];
 
 type S = FormState;
 
@@ -27,6 +28,14 @@ export async function createGroupAction(_: S, fd: FormData): Promise<S> {
     ok: "Grupo creado.",
     redirectTo: (g) => `${BASE}/grupos/${g.id}?creado=1`,
   });
+}
+/** Alta de un Grupo desde la tabla de trabajo: basta nombre (y denominación BC); aparece como fila pendiente de completar sin exigir Zendesk, Wrike ni PAP. */
+export async function createGroupInlineAction(_: S, fd: FormData): Promise<S> {
+  return runAdminAction(fd, (a, raw) => createGroup(a, raw), { ok: "Grupo creado: ya figura en la tabla como fila pendiente de completar.", paths: PATHS });
+}
+/** Decisión explícita «No aplica» de un sistema (o su retirada). */
+export async function setLinkDecisionAction(_: S, fd: FormData): Promise<S> {
+  return runAdminAction(fd, (a, raw) => setLinkDecision(a, { entity: raw.entity, id: raw.id, system: raw.system, notApplicable: raw.notApplicable === "true" }), { ok: "Decisión guardada.", paths: PATHS });
 }
 export async function updateGroupAction(_: S, fd: FormData): Promise<S> {
   return runAdminAction(fd, (a, raw) => updateGroup(a, raw.id, raw), { ok: "Cambios guardados.", paths: PATHS });

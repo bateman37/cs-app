@@ -1,6 +1,6 @@
 import Link from "next/link";
 import { INDICATOR_KEYS } from "@/domain/quality-config";
-import { KPI_ACCESS_NAME, KPI_OBSERVED_UNIT, KPI_RATE_UNIT } from "@/domain/quality-kpi";
+import { KPI_ACCESS_NAME, KPI_OBSERVED_UNIT, rateUnit } from "@/domain/quality-kpi";
 import { qualityToParams, type QualityQuery } from "@/domain/quality-query";
 import { qs } from "@/lib/format";
 import type { QualityRow } from "@/server/quality/engine";
@@ -12,7 +12,7 @@ export const kpiHref = (q: QualityQuery, basePath: string, kpi: (typeof INDICATO
 function KpiCell({ r, k, q, basePath }: { r: QualityRow; k: (typeof INDICATOR_KEYS)[number]; q: QualityQuery; basePath: string }) {
   const i = r.evaluation.indicators[k];
   const c = cellInfo(i, r.explain[k].observed);
-  const unit = KPI_RATE_UNIT[k];
+  const unit = rateUnit(k, i.unit);
   const href = kpiHref(q, basePath, k, r.id);
   const state = c.kind === "COLOR" && c.color ? "" : c.kind === "BLANK" ? "sin feedback" : c.label;
   const aria = `${r.name}: ${KPI_ACCESS_NAME[k]}, ${c.main === null ? "sin valor" : `${num(c.main)} ${unit}`}${c.color ? `, ${c.color === "red" ? "rojo" : c.color === "yellow" ? "amarillo" : "verde"}` : state ? `, ${state}` : ""}${i.value === null || c.kind === "PARTIAL" || c.kind === "UNCALIBRATED" ? `. ${reasonOf(i)}` : ""}. Abrir detalle`;
@@ -63,7 +63,7 @@ export function Portfolio({ rows, q, basePath }: { rows: QualityRow[]; q: Qualit
                   <Link href={kpiHref(q, basePath, "", r.id)} prefetch={false} aria-label={`${r.name}: resultado global ${g.color ? `${g.color === "red" ? "rojo" : g.color === "yellow" ? "amarillo" : "verde"}, índice ${num(g.score, 2)}` : `${g.status === "SIN_METODO" ? "sin calibrar" : "incompleto"}, cobertura calculable ${num(r.coveragePercent, 0)} %`}. ${g.reason} Abrir ficha`} title={g.color ? undefined : g.reason}>
                     {g.color ? <><span className="ql-v">{num(g.score, 2)}</span> <StateTag color={g.color} /></> : (
                       <>
-                        <NeutralTag>{g.status === "SIN_METODO" ? "Sin calibrar" : "Incompleto"}</NeutralTag>
+                        <NeutralTag>{g.status === "SIN_METODO" ? "Sin método del global" : "Parcial"}</NeutralTag>
                         {g.partialAlerts.length ? <StateTag color="red" text="Alerta parcial" /> : null}
                         <span className="ql-obs">cob. {num(r.coveragePercent, 0)} %</span>
                       </>

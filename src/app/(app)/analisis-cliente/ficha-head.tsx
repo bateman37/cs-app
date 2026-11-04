@@ -100,7 +100,7 @@ export function Head({ f, nav, hasBack }: { f: FichaView; nav: Nav; hasBack: boo
         <span>Servidor: <b>{label(srv.v)}</b>{srv.fromGroup ? <small title="Dato del Grupo: este objeto no tiene el suyo informado"> (Grupo)</small> : null}</span>
         <span>Usuarios al corte: <b>{users.value === null ? <Na reason="Usuarios sin informar para el mes del corte." align="left" /> : users.value}</b></span>
         <span>{MONTH_SHORT[Number(f.cut.slice(5, 7)) - 1]} {f.cut.slice(0, 4)} · {f.query.mode === "FULL_MONTH" ? "mes completo" : `corte ${dmy(f.cut)}`}{prov ? <span className="fc-prov" title="Mes en curso: las cifras se prorratean hasta el corte">Provisional</span> : null}</span>
-        {!c.isActive ? <span className="fc-tag fc-tag-warn">inactivo</span> : null}
+        {!c.isActive ? <span className="fc-tag fc-tag-warn" title="Estado comercial actual: no se muestra en las listas de Activos. Sus datos históricos se conservan.">Inactivo · <Link href={`${BASE}?estado=inactivos`}>volver a la selección de inactivos</Link></span> : null}
       </div>
       <span className="fc-spacer" />
       <PeriodBar f={f} nav={nav} />
@@ -129,9 +129,9 @@ function SumRow({ f, nav, e, k, title, titleAttr, ctx, withEco }: { f: FichaView
   return (
     <tr className={ctx ? "fc-ctx" : undefined}>
       <th scope="row" title={titleAttr}>{title}{k === "month" && p.provisional && !ctx ? <span className="fc-prov">Provisional</span> : null}</th>
-      <td>{hasEco ? <Amt f={p.perDay} /> : <Na reason={p.perDay.reason} />}</td>
+      <td>{hasEco ? <Amt f={p.perDay} band={{ target: f.economics.settings.targetEurosPerDay, factors: f.economics.settings.bandFactors }} /> : <Na reason={p.perDay.reason} />}</td>
       <td>{hasEco ? <Dev f={p.deviationVsTarget} /> : <Na reason={p.deviationVsTarget.reason} />}</td>
-      <td>{hasEco ? <Amt f={prevPerDay} /> : <Na reason={prevPerDay?.reason ?? p.perDay.reason} />}</td>
+      <td>{hasEco ? <Amt f={prevPerDay} band={{ target: f.economics.settings.targetEurosPerDay, factors: f.economics.settings.bandFactors }} /> : <Na reason={prevPerDay?.reason ?? p.perDay.reason} />}</td>
       <td>{ctx ? num(p.hours.inPerimeter, 2) : <Link href={hours} title="Detalle de las actividades que componen las horas">{num(p.hours.inPerimeter, 2)}</Link>}</td>
       <td>{hasEco ? <Amt f={p.targetHours} /> : <Na reason={p.targetHours.reason} />}</td>
       <td>{hasEco ? <Dev f={p.deviationHours} /> : <Na reason={p.deviationHours.reason} />}</td>

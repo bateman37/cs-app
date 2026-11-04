@@ -4,7 +4,8 @@ import { requirePageUser } from "@/lib/session";
 import { listCatalog, listPeople } from "@/server/personal";
 import { first, qs, type SearchParams } from "@/lib/format";
 import { isIsoDate, todayMadrid } from "@/domain/vigencia";
-import { Pager, SortHeader, StatusBadge } from "@/components/list";
+import { Pager, StatusBadge } from "@/components/list";
+import "../clientes/tabla.css";
 
 export const metadata: Metadata = { title: "Personal" };
 const BASE = "/administracion/personal";
@@ -95,34 +96,36 @@ export default async function PersonalPage({ searchParams }: { searchParams: Pro
         </div>
       ) : (
         <>
-          <div className="table-wrap">
-            <table>
-              <caption className="skip">Personal</caption>
+          <div className="mt-scroll" tabIndex={0} role="region" aria-label="Tabla de Personal, desplazable">
+            <table className="mt-table" style={{ minWidth: 1100 }}>
+              <caption className="visually-hidden">Personal: una persona canónica por fila</caption>
               <thead>
                 <tr>
-                  <SortHeader base={BASE} params={keep} col="name" label="Nombre canónico" />
-                  <th>Alias</th>
-                  <th>Equipo</th>
-                  <th>PMO</th>
-                  <th>Rol PMO</th>
-                  <th>Estado</th>
-                  <SortHeader base={BASE} params={keep} col="updated" label="Última modificación" />
+                  <th scope="col" className="mt-sticky">Nombre</th>
+                  <th scope="col">Alias PAP</th><th scope="col">Alias Zendesk</th><th scope="col">Alias Wrike</th>
+                  <th scope="col">Equipo</th><th scope="col">Nivel</th><th scope="col">PMO</th><th scope="col">Rol PMO</th><th scope="col">Activo</th><th scope="col">Enlaces</th>
                 </tr>
               </thead>
               <tbody>
                 {result.rows.map((p) => {
                   const team = p.terms.find((t) => t.attribute === "TEAM")?.catalogItem?.name;
+                  const level = p.terms.find((t) => t.attribute === "LEVEL")?.catalogItem?.name;
                   const pmo = p.terms.find((t) => t.attribute === "PMO_MEMBER");
                   const role = p.terms.find((t) => t.attribute === "PMO_ROLE")?.catalogItem?.name;
+                  const al = (sys: "PAP" | "ZENDESK" | "WRIKE") => [...new Set(p.aliases.filter((a) => a.system === sys).map((a) => a.rawValue))];
+                  const lists = (sys: "PAP" | "ZENDESK" | "WRIKE") => { const v = al(sys); return v.length === 0 ? <span className="mt-none">—</span> : <ul className="mt-list">{v.map((x) => <li key={x} title={x}>{x}</li>)}</ul>; };
+                  // Una cuenta ausente en un sistema NO es un fallo (no se exige Wrike a toda la plantilla): solo se señalan equipo, nivel y pertenencia PMO sin informar.
+                  const missing = [!team ? "equipo" : null, !level ? "nivel" : null, !pmo ? "PMO" : null, pmo?.flag && !role ? "rol PMO" : null, p.aliases.length === 0 ? "alias" : null].filter(Boolean) as string[];
                   return (
-                    <tr key={p.id} className={p.isActive ? undefined : "inactive-row"}>
-                      <td><Link href={`${BASE}/${p.id}?volver=${encodeURIComponent(back)}`}>{p.name}</Link></td>
-                      <td>{p._count.aliases}</td>
-                      <td>{team ?? <span className="muted">—</span>}</td>
-                      <td>{pmo ? (pmo.flag ? "Sí" : "No") : <span className="muted">—</span>}</td>
-                      <td>{pmo?.flag ? (role ?? <span className="muted">—</span>) : <span className="muted">—</span>}</td>
+                    <tr key={p.id} className={`mt-client${p.isActive ? "" : " mt-off"}`}>
+                      <th scope="row" className="mt-sticky" style={{ paddingLeft: "0.5rem" }}><Link href={`${BASE}/${p.id}?volver=${encodeURIComponent(back)}`} title="Abrir la ficha: alias múltiples, vigencias de equipo, nivel, PMO y rol">{p.name}</Link></th>
+                      <td>{lists("PAP")}</td><td>{lists("ZENDESK")}</td><td>{lists("WRIKE")}</td>
+                      <td>{team ?? <span className="mt-none">Sin informar</span>}</td>
+                      <td>{level ?? <span className="mt-none">Sin informar</span>}</td>
+                      <td>{pmo ? (pmo.flag ? "Sí" : "No") : <span className="mt-none">Sin informar</span>}</td>
+                      <td>{pmo?.flag ? (role ?? <span className="mt-none">Sin informar</span>) : <span className="mt-none">—</span>}</td>
                       <td><StatusBadge active={p.isActive} /></td>
-                      <td>{p.updatedAt.toLocaleDateString("es-ES", { timeZone: "Europe/Madrid" })}</td>
+                      <td className="mt-links">{missing.length === 0 ? <span className="mt-chip mt-ok"><span aria-hidden="true">✓ </span>Completo</span> : <Link className="mt-chip mt-miss" href={`${BASE}/${p.id}?volver=${encodeURIComponent(back)}`} title={`Pendiente: ${missing.join(", ")}`}><span aria-hidden="true">○ </span>Falta: {missing.join(", ")}</Link>}</td>
                     </tr>
                   );
                 })}

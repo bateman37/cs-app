@@ -50,7 +50,19 @@ const HEADERS: Record<SheetKind, string[][]> = {
   PMO: [["persona"], ["perfil"]],
 };
 
-export type SheetMatch = { kind: SheetKind; extras: string[] } | { kind: null; message: string };
+/**
+ * HOTFIX-03 §5: formatos de GESTIÓN nuevos, admitidos junto a los anteriores. CLIENTES de 8 columnas (GRUPO CLIENTE VINCLE · organization_wrike · organization_id_zendesk ·
+ * Organization_name_zendesk · Nivel_Servicio_acutal · SERVIDOR · Organization_name_PAP · TIPO) y PERSONAL de 6 (Persona PAP · Persona Zendesk · Nivel · Equipo · PMO · Persona Wrike),
+ * con una columna opcional inequívoca «Rol PMO» / «Perfil PMO» (nunca confundida con la antigua «Persona Zendesk» duplicada). Se detectan por cabeceras, no por el nombre del archivo ni de la pestaña.
+ */
+export type SheetLayout = "v1" | "v2";
+const HEADERS_V2: Partial<Record<SheetKind, string[][]>> = {
+  CLIENTES: [["grupo cliente vincle"], ["organization_wrike"], ["organization_id_zendesk"], ["organization_name_zendesk"], ["nivel_servicio_acutal", "nivel_servicio_actual"], ["servidor"], ["organization_name_pap"], ["tipo"]],
+  PERSONAL: [["persona pap"], ["persona zendesk"], ["nivel"], ["equipo"], ["pmo"], ["persona wrike"]],
+};
+export const ROLE_PMO_HEADERS = ["rol pmo", "perfil pmo"];
+
+export type SheetMatch = { kind: SheetKind; extras: string[]; layout: SheetLayout; roleCol: number | null } | { kind: null; message: string };
 
 /** Identifica la hoja por su fila de cabecera (posiciones y textos), no por el nombre de la pestaña. */
 export function detectSheet(headerRow: string[]): SheetMatch {
@@ -61,14 +73,22 @@ export function detectSheet(headerRow: string[]): SheetMatch {
     if (h.length < expected.length) continue;
     if (expected.every((alts, i) => alts.includes(h[i]))) {
       const extras = h.slice(expected.length).filter(Boolean);
-      return { kind, extras };
+      return { kind, extras, layout: "v1", roleCol: null };
+    }
+  }
+  for (const kind of ["CLIENTES", "PERSONAL"] as SheetKind[]) {
+    const expected = HEADERS_V2[kind] as string[][];
+    if (h.length >= expected.length && expected.every((alts, i) => alts.includes(h[i]))) {
+      const roleCol = kind === "PERSONAL" && ROLE_PMO_HEADERS.includes(h[expected.length]) ? expected.length : null;
+      const extras = h.slice(expected.length).filter((x, i) => Boolean(x) && expected.length + i !== roleCol);
+      return { kind, extras, layout: "v2", roleCol };
     }
   }
   return {
     kind: null,
     message:
-      "El libro no corresponde a la precarga de maestros: cada hoja debe ser CLIENTES (11 columnas: organization_wrike, grupo, organization_id_zendesk, organization_name_zendesk, nivel de servicio, grupo, servidor, nivel de servicio, organization_name_pap, grupo, tipo), " +
-      "PERSONAL (Persona PAP, Persona Zendesk, Nivel, Equipo, PMO, Persona Wrike, Persona Zendesk) o PERSONAL PMO (Persona, Perfil), con las cabeceras en ese orden.",
+      "El libro no corresponde a la precarga de maestros: cada hoja debe ser CLIENTES de gestión (8 columnas: grupo cliente, organization_wrike, organization_id_zendesk, organization_name_zendesk, nivel de servicio, servidor, organization_name_pap, tipo) o CLIENTES anterior (11 columnas: organization_wrike, grupo, organization_id_zendesk, organization_name_zendesk, nivel de servicio, grupo, servidor, nivel de servicio, organization_name_pap, grupo, tipo), " +
+      "PERSONAL de seis columnas (Persona PAP, Persona Zendesk, Nivel, Equipo, PMO, Persona Wrike; admite «Rol PMO» al final), PERSONAL anterior de siete (con Persona Zendesk repetida) o PERSONAL PMO (Persona, Perfil), con las cabeceras en ese orden.",
   };
 }
 
@@ -141,6 +161,8 @@ export type PersonalTyped = {
   /** El valor viene de una fórmula (no se evalúa; se usa el valor almacenado). */
   pmoFormula: boolean;
   wrike: S; zdName2: S;
+  /** Rol PMO opcional del formato de seis columnas (columna «Rol PMO»/«Perfil PMO»). */
+  rolePmo?: S;
 };
 export type PmoTyped = { hoja: "PERSONAL PMO"; persona: S; perfil: S };
 export type RowTyped = ClienteTyped | PersonalTyped | PmoTyped;
@@ -302,6 +324,7 @@ export function buildPlan(rows: PlanRow[]): Plan {
     } else if (t.hoja === "PERSONAL") {
       counts.filasPersonal++;
       personRows.push({ row, t });
+      if (t.rolePmo && t.wrike) roleRows.push({ row, t: { hoja: "PERSONAL PMO", persona: t.wrike, perfil: t.rolePmo } });
     } else {
       counts.filasPmo++;
       roleRows.push({ row, t });

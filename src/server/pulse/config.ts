@@ -24,7 +24,7 @@ export type Revision<F extends ConfigFamily> = {
   revisionNo: number;
   payload: PayloadOf[F];
   reason: string | null;
-  kind: "INITIAL" | "ACTIVATION" | "ROLLBACK";
+  kind: "INITIAL" | "ACTIVATION" | "ROLLBACK" | "SYSTEM_INITIAL";
   restoredFromRevisionNo: number | null;
   activatedAt: string | null;
   activatedByEmail: string | null;
@@ -54,7 +54,7 @@ function shape<F extends ConfigFamily>(family: F, r: Row): Revision<F> {
   if (!parsed.ok) throw new DomainError(`La revisión ${r.revisionNo} de ${FAMILY_NAME[family]} no cumple el contrato vigente.`);
   return { family, revisionNo: r.revisionNo, payload: parsed.payload, reason: r.reason, kind: r.kind as Revision<F>["kind"], restoredFromRevisionNo: r.restoredFromRevisionNo, activatedAt: r.activatedAt.toISOString(), activatedByEmail: r.activatedBy?.email ?? null, persisted: true };
 }
-const virtualInitial = <F extends ConfigFamily>(family: F): Revision<F> => ({ family, revisionNo: 1, payload: defaultPayload(family), reason: "Configuración inicial (sin activaciones): pesos iguales confirmados; el resto sin calibrar o propuesto.", kind: "INITIAL", restoredFromRevisionNo: null, activatedAt: null, activatedByEmail: null, persisted: false });
+const virtualInitial = <F extends ConfigFamily>(family: F): Revision<F> => ({ family, revisionNo: 1, payload: defaultPayload(family), reason: family === "QUALITY" ? "Configuración inicial HOTFIX-03 (sin activaciones manuales): perfil operativo editable; percentiles P25/P75, muestra mínima 5, pesos iguales y global 0,25/0,50." : "Configuración inicial (sin activaciones): el resto sin calibrar o propuesto.", kind: "INITIAL", restoredFromRevisionNo: null, activatedAt: null, activatedByEmail: null, persisted: false });
 
 /** Revisión activa (la de mayor número) o la indicada. Solo lectura. */
 export async function getActive<F extends ConfigFamily>(db: Db, family: F, revisionNo?: number): Promise<Revision<F>> {

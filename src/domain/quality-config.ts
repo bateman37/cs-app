@@ -148,7 +148,18 @@ export const QSCOPE_LABEL: Record<QScope, string> = { GRUPO: "Grupo Cliente", CL
  * Unidad de cada magnitud. Una regla declara SU unidad: solo se aplica a una métrica de la misma unidad (sin cambios de escala ocultos).
  * Stock de backlog: envejecidos × 100 / usuarios al corte (BACK 06); la unidad por usuario de v1 solo existe para adaptar reglas antiguas.
  */
-export type MetricUnit = "HOURS_PER_USER_MONTH" | "PER_USER_MONTH" | "PER_100_USER_MONTHS" | "PER_USER_STOCK" | "PER_100_USERS_STOCK" | "ANNUAL_EQUIVALENT" | "CATEGORY";
+export type MetricUnit = "HOURS_PER_USER_MONTH" | "PER_USER_MONTH" | "PER_100_USER_MONTHS" | "PER_USER_STOCK" | "PER_100_USERS_STOCK" | "ANNUAL_EQUIVALENT" | "CATEGORY" | "TOTAL_HOURS" | "TOTAL_COUNT" | "RELATIVE";
+
+/**
+ * HOTFIX-03 §11: modo de medida de Calidad. «usuario» (predeterminado) divide cada numerador por la exposición de usuarios (por UN usuario, no por 100);
+ * «total» usa el numerador observado sin denominador. Las referencias por percentiles se calculan SIEMPRE con los valores del modo elegido.
+ */
+export const MEASURES = ["usuario", "total"] as const;
+export type Measure = (typeof MEASURES)[number];
+export const MEASURE_LABEL: Record<Measure, string> = { usuario: "Por usuario", total: "Total" };
+export const DEFAULT_MEASURE: Measure = "usuario";
+/** Referencia propia de Calidad (HOTFIX-03 §12): entidades externas activas del mismo ámbito con valor válido; no depende de Pulse Rent. */
+export const QUALITY_COHORT_REFERENCE = "QUALITY_COHORT";
 export const UNIT_LABEL: Record<MetricUnit, string> = {
   HOURS_PER_USER_MONTH: "horas por usuario y mes",
   PER_USER_MONTH: "eventos por usuario y mes",
@@ -157,6 +168,9 @@ export const UNIT_LABEL: Record<MetricUnit, string> = {
   PER_100_USERS_STOCK: "por 100 usuarios (stock al corte)",
   ANNUAL_EQUIVALENT: "equivalente anual",
   CATEGORY: "categoría",
+  TOTAL_HOURS: "horas totales del periodo",
+  TOTAL_COUNT: "total del periodo (unidades)",
+  RELATIVE: "relativa a la referencia (percentiles; sin unidad propia)",
 };
 /** Unidad canónica de cada indicador y del componente de backlog. */
 export const METRIC_UNIT: Record<IndicatorKey, MetricUnit> = {
@@ -169,6 +183,14 @@ export const METRIC_UNIT: Record<IndicatorKey, MetricUnit> = {
 };
 export const BACKLOG_UNIT: MetricUnit = "PER_100_USERS_STOCK";
 export const BACKLOG_FACTOR = 100;
+
+/** Unidad de la métrica de un indicador en el modo elegido (HOTFIX-03 §11): por un usuario o total observado. */
+export const metricUnitFor = (key: IndicatorKey, measure: Measure): MetricUnit =>
+  key === "HEALTH" ? "CATEGORY" : measure === "total" ? (key === "DEDICATION" ? "TOTAL_HOURS" : "TOTAL_COUNT") : key === "DEDICATION" ? "HOURS_PER_USER_MONTH" : "PER_USER_MONTH";
+export const backlogUnitFor = (measure: Measure): MetricUnit => (measure === "total" ? "TOTAL_COUNT" : "PER_USER_STOCK");
+/** Unidades que una regla puede declarar para un indicador (la canónica heredada por 100, la por usuario y la relativa de los percentiles). */
+const acceptedUnits = (key: IndicatorKey): MetricUnit[] => [METRIC_UNIT[key], metricUnitFor(key, "usuario"), metricUnitFor(key, "total"), "RELATIVE"];
+const acceptedBacklogUnits: MetricUnit[] = [BACKLOG_UNIT, "PER_USER_STOCK", "TOTAL_COUNT", "RELATIVE"];
 
 // ---------------------------------------------------------------- Reglas de umbral
 
@@ -196,9 +218,13 @@ export type RuleOutcome = {
   color: Color | null;
   status: "OK" | "SIN_CALIBRAR" | "SIN_REGLA" | "SIN_REFERENCIA" | "DATO_INVALIDO" | "REGLA_INVALIDA";
   reason: string;
-  cuts?: { a: string; b: string };
+  cuts?: { a: string; b: string; p10?: string; p90?: string };
   /** Tamaño de la muestra de referencia usada (percentiles). */
   n?: number;
+  /** HOTFIX-03 §12: intensidad dentro del mismo color (más favorable hasta P10, más desfavorable por encima de P90); no añade colores al global. */
+  intensity?: "FAVORABLE" | "DESFAVORABLE";
+  /** Conversión explícita de unidad aplicada a una regla absoluta heredada. */
+  converted?: string;
 };
 
 /** Valida una regla numérica. Devuelve los problemas (vacío = utilizable). */
@@ -242,28 +268,53 @@ export function evaluateRule(rule: ThresholdRule | null, value: Dec | null, refe
   if (rule.calibration !== "CALIBRADO") return { color: null, status: "SIN_CALIBRAR", reason: "Umbrales sin calibrar: no se asigna color." };
   const problems = validateRule(rule);
   if (problems.length > 0) return { color: null, status: "REGLA_INVALIDA", reason: problems[0] };
-  if (metricUnit !== undefined && rule.unit !== metricUnit) {
-    return { color: null, status: "REGLA_INVALIDA", reason: `La regla está expresada en «${UNIT_LABEL[rule.unit]}» y la métrica en «${UNIT_LABEL[metricUnit]}»: reconfigure la regla (no se convierte la escala en silencio).` };
+  let converted: string | undefined;
+  let scale: Dec | null = null;
+  if (metricUnit !== undefined && rule.unit !== metricUnit && rule.unit !== "RELATIVE") {
+    // Conversión EXPLÍCITA y solo donde es equivalente: una regla absoluta «por 100 usuarios» pasa a «por usuario» dividiendo sus límites entre 100.
+    const per100 = (rule.unit === "PER_100_USER_MONTHS" && metricUnit === "PER_USER_MONTH") || (rule.unit === "PER_100_USERS_STOCK" && metricUnit === "PER_USER_STOCK");
+    if (per100) {
+      if (rule.method === "ABSOLUTE") {
+        scale = Dec.int(100);
+        converted = `Límites convertidos de «${UNIT_LABEL[rule.unit]}» a «${UNIT_LABEL[metricUnit]}» (÷100).`;
+      }
+    } else {
+      return { color: null, status: "REGLA_INVALIDA", reason: `La regla está expresada en «${UNIT_LABEL[rule.unit]}» y la métrica en «${UNIT_LABEL[metricUnit]}»: reconfigure la regla (no se convierte la escala en silencio).` };
+    }
   }
   if (value === null) return { color: null, status: "DATO_INVALIDO", reason: "Dato ausente o no calculable." };
   let a = Dec.parse((rule.a as string).replace(",", ".")) as Dec;
   let b = Dec.parse((rule.b as string).replace(",", ".")) as Dec;
+  if (scale !== null) { a = a.div(scale); b = b.div(scale); }
   let n: number | undefined;
+  let p10: Dec | null = null;
+  let p90: Dec | null = null;
   if (rule.method === "PERCENTILE") {
     const ref = referenceValues ?? [];
     n = ref.length;
-    if (ref.length === 0) return { color: null, status: "SIN_REFERENCIA", reason: "Referencia sin entidades válidas.", n };
-    if (rule.minSample !== null && ref.length < rule.minSample) return { color: null, status: "SIN_REFERENCIA", reason: `Referencia insuficiente: ${ref.length} < ${rule.minSample} entidades.`, n };
+    if (ref.length === 0) return { color: null, status: "SIN_REFERENCIA", reason: "Muestra insuficiente: la referencia no tiene entidades con valor válido.", n };
+    if (rule.minSample !== null && ref.length < rule.minSample) return { color: null, status: "SIN_REFERENCIA", reason: `Muestra insuficiente: ${ref.length} < ${rule.minSample} entidades válidas.`, n };
     a = percentileAt(ref, rule.a as string) as Dec;
     b = percentileAt(ref, rule.b as string) as Dec;
+    p10 = percentileAt(ref, "10");
+    p90 = percentileAt(ref, "90");
+    // HOTFIX-03 §12: muestra constante. Todos iguales y cero confirmado → verde; todos iguales y positivos → amarillo relativo (no un verde colectivo por caer justo en P25).
+    const constant = ref.every((x) => x.cmp(ref[0]) === 0);
+    if (constant && rule.direction === "LOWER_BETTER" && value.cmp(ref[0]) === 0) {
+      const color: Color = ref[0].isZero() ? "green" : "yellow";
+      return { color, status: "OK", reason: ref[0].isZero() ? "Todos los valores de la referencia son cero confirmado: verde." : "Todos los valores de la referencia son iguales y positivos: amarillo relativo (sin verde colectivo).", cuts: { a: a.toString(), b: b.toString(), p10: p10?.toString(), p90: p90?.toString() }, n };
+    }
   }
-  const cuts = { a: a.toString(), b: b.toString() };
+  const cuts = { a: a.toString(), b: b.toString(), ...(p10 && p90 ? { p10: p10.toString(), p90: p90.toString() } : {}) };
+  const intensity = (c: Color): RuleOutcome["intensity"] =>
+    p10 && p90 && rule.direction === "LOWER_BETTER" ? (c === "green" && value.cmp(p10) <= 0 ? "FAVORABLE" : c === "red" && value.cmp(p90) > 0 ? "DESFAVORABLE" : undefined) : undefined;
   if (rule.direction === "LOWER_BETTER") {
+    // Valores iguales dan SIEMPRE el mismo resultado; con P25=P75 no hay amarillo y nada se reparte por orden o identificador.
     const color: Color = value.cmp(a) <= 0 ? "green" : value.cmp(b) <= 0 ? "yellow" : "red";
-    return { color, status: "OK", reason: "menor mejor: verde x≤a · amarillo a<x≤b · rojo x>b", cuts, n };
+    return { color, status: "OK", reason: "menor mejor: verde x≤a · amarillo a<x≤b · rojo x>b", cuts, n, intensity: intensity(color), converted };
   }
   const color: Color = value.cmp(a) < 0 ? "red" : value.cmp(b) < 0 ? "yellow" : "green";
-  return { color, status: "OK", reason: "mayor mejor: rojo x<a · amarillo a≤x<b · verde x≥b", cuts, n };
+  return { color, status: "OK", reason: "mayor mejor: rojo x<a · amarillo a≤x<b · verde x≥b", cuts, n, converted };
 }
 
 // ---------------------------------------------------------------- Client Health (categórico)
@@ -340,6 +391,11 @@ export function backlogStockRate(count: number, usersAtCut: number | null): Dec 
 export function flowRate(altas: number, userMonths: Dec | null): Dec | null {
   if (userMonths === null || userMonths.sign() <= 0) return null;
   return Dec.int(altas).mulInt(100).div(userMonths);
+}
+/** Por UN usuario (HOTFIX-03 §11): conteo (o stock) ÷ exposición de usuarios. Sin exposición o con exposición cero no se divide ni se inventa un cero: null. Dos PAP con 10 usuarios·mes → 0,2. */
+export function perUserRate(count: number | Dec, userExposure: Dec | null): Dec | null {
+  if (userExposure === null || userExposure.sign() <= 0) return null;
+  return (typeof count === "number" ? Dec.int(count) : count).div(userExposure);
 }
 /** Tasa por 100 usuarios·mes de un conteo de eventos (PAP, escalados, bugs). */
 export const ratePer100UserMonths = flowRate;
@@ -478,7 +534,7 @@ export function diagnosisFamily(cause: string | null, hosting: "CLOUD" | "OP" | 
 // ---------------------------------------------------------------- Carga útil tipada de la configuración de Calidad
 
 const colorZ = z.enum(["green", "yellow", "red"]);
-const unitZ = z.enum(["HOURS_PER_USER_MONTH", "PER_USER_MONTH", "PER_100_USER_MONTHS", "PER_USER_STOCK", "PER_100_USERS_STOCK", "ANNUAL_EQUIVALENT", "CATEGORY"]);
+const unitZ = z.enum(["HOURS_PER_USER_MONTH", "PER_USER_MONTH", "PER_100_USER_MONTHS", "PER_USER_STOCK", "PER_100_USERS_STOCK", "ANNUAL_EQUIVALENT", "CATEGORY", "TOTAL_HOURS", "TOTAL_COUNT", "RELATIVE"]);
 const ruleV1Z = z.object({
   method: z.enum(["ABSOLUTE", "PERCENTILE", "CATEGORICAL"]),
   direction: z.enum(["LOWER_BETTER", "HIGHER_BETTER"]),
@@ -548,9 +604,28 @@ export type QualityConfig = z.infer<typeof qualityConfigSchema>;
 export const emptyRule = (direction: RuleDirection, unit: MetricUnit): ThresholdRule => ({ method: "ABSOLUTE", direction, a: null, b: null, referenceId: null, minSample: null, calibration: "SIN_CALIBRAR", unit });
 const emptyRuleSet = (direction: RuleDirection, unit: MetricUnit) => ({ GRUPO: emptyRule(direction, unit), CLIENTE: emptyRule(direction, unit) });
 
-/** Configuración inicial: pesos iguales CONFIRMADOS; todo lo demás sin calibrar / propuesta desactivada. */
+/** Referencias propias de Calidad (HOTFIX-03 §12): cohorte activa (inicial) o todas las entidades externas; ambas independientes de Pulse Rent. */
+export const QUALITY_COHORT_REFERENCE_ALL = "QUALITY_COHORT_ALL";
+export const QUALITY_REFERENCES = [
+  { id: QUALITY_COHORT_REFERENCE, label: "Entidades externas activas del mismo ámbito (inicial)" },
+  { id: QUALITY_COHORT_REFERENCE_ALL, label: "Todas las entidades externas del mismo ámbito (activas e inactivas)" },
+] as const;
+
+/** Etiqueta de procedencia de la configuración inicial HOTFIX-03 (no es un benchmark científico ni garantía de ausencia de fallos). */
+export const INITIAL_PROFILE_NOTE = "Configuración inicial HOTFIX-03: criterio operativo inicial para comparar clientes (percentiles P25/P75 sobre la cohorte de entidades externas activas, muestra mínima 5). Editable y versionada; no es un benchmark científico ni una garantía de ausencia de fallos.";
+
+const initialRule = (direction: RuleDirection): ThresholdRule => ({ method: "PERCENTILE", direction, a: "25", b: "75", referenceId: QUALITY_COHORT_REFERENCE, minSample: 5, calibration: "CALIBRADO", unit: "RELATIVE" });
+const initialRuleSet = () => ({ GRUPO: initialRule("LOWER_BETTER"), CLIENTE: initialRule("LOWER_BETTER") });
+
+/**
+ * Configuración inicial HOTFIX-03 (§12): perfil operativo, editable y versionado. Ya no se entrega «sin calibrar»:
+ *  - Dedicación: CS N1, CS N2 y mantenimiento PMO N3; menor carga es mejor en los cinco KPI técnicos.
+ *  - Percentiles inclusivos P25/P75 sobre la cohorte propia de Calidad (entidades externas activas del ámbito), muestra mínima 5: verde x≤P25, amarillo P25<x≤P75, rojo x>P75.
+ *  - Client Health: Positivo→verde, Mixto→amarillo, Negativo→rojo; pesos iguales exactos; severidad 0 / 0,5 / 1; global verde ≤0,25, amarillo ≤0,50, rojo >0,50.
+ *  - Incidentes y problemas: peor señal entre flujo y backlog envejecido; edad preocupante > 7 días (incidente) y > 30 (problema); fotografía anterior al corte con ≤ 7 días.
+ */
 export function defaultQualityConfig(): QualityConfig {
-  const ind = (key: IndicatorKey, unit: string) => ({ unit, rules: emptyRuleSet(key === "HEALTH" ? "HIGHER_BETTER" : "LOWER_BETTER", METRIC_UNIT[key]) });
+  const ind = (key: IndicatorKey, unit: string) => ({ unit, rules: key === "HEALTH" ? emptyRuleSet("HIGHER_BETTER", METRIC_UNIT[key]) : initialRuleSet() });
   const health = ind("HEALTH", "categoría");
   for (const sc of QUALITY_SCOPES) health.rules[sc] = { ...health.rules[sc], method: "CATEGORICAL" };
   return {
@@ -558,19 +633,47 @@ export function defaultQualityConfig(): QualityConfig {
     weights: { mode: "EQUAL", custom: Object.fromEntries(INDICATOR_KEYS.map((k) => [k, ""])) as Record<IndicatorKey, string> },
     indicators: {
       HEALTH: health,
-      DEDICATION: ind("DEDICATION", UNIT_LABEL.HOURS_PER_USER_MONTH),
-      PAP_CORRECTIVE: ind("PAP_CORRECTIVE", `PAP correctivos ${UNIT_LABEL.PER_100_USER_MONTHS}`),
-      N3_ESCALATIONS: ind("N3_ESCALATIONS", `tickets escalados a N3 ${UNIT_LABEL.PER_100_USER_MONTHS}`),
-      INCIDENTS_PROBLEMS: ind("INCIDENTS_PROBLEMS", `flujo de altas ${UNIT_LABEL.PER_100_USER_MONTHS}`),
-      BUGS_STANDARD: ind("BUGS_STANDARD", `problemas vinculados ${UNIT_LABEL.PER_100_USER_MONTHS}`),
+      DEDICATION: ind("DEDICATION", "horas (por usuario y mes o total del periodo, según el modo)"),
+      PAP_CORRECTIVE: ind("PAP_CORRECTIVE", "PAP correctivos (por usuario y mes o total del periodo)"),
+      N3_ESCALATIONS: ind("N3_ESCALATIONS", "tickets escalados a N3 (por usuario y mes o total del periodo)"),
+      INCIDENTS_PROBLEMS: ind("INCIDENTS_PROBLEMS", "flujo de altas (por usuario y mes o total del periodo)"),
+      BUGS_STANDARD: ind("BUGS_STANDARD", "problemas vinculados (por usuario y mes o total del periodo)"),
     },
-    health: { mapping: { ...PROPOSED_HEALTH_MAPPING }, confirmed: false },
-    dedication: { profiles: [], selectionConfirmed: false },
-    incidents: { backlog: { INCIDENT: emptyRuleSet("LOWER_BETTER", BACKLOG_UNIT), PROBLEM: emptyRuleSet("LOWER_BETTER", BACKLOG_UNIT) }, ageBands: [], concerningDays: { incident: null, problem: null }, worstOfFlowAndBacklog: false },
-    snapshotPolicy: { mode: "EXACT", maxDays: null },
+    health: { mapping: { ...PROPOSED_HEALTH_MAPPING }, confirmed: true },
+    dedication: { profiles: ["CS_N1", "CS_N2", "PMO_N3"], selectionConfirmed: true },
+    incidents: {
+      backlog: { INCIDENT: initialRuleSet(), PROBLEM: initialRuleSet() },
+      ageBands: [{ from: 0, to: 7 }, { from: 8, to: 30 }, { from: 31, to: null }],
+      concerningDays: { incident: 7, problem: 30 },
+      worstOfFlowAndBacklog: true,
+    },
+    snapshotPolicy: { mode: "LATEST_BEFORE", maxDays: 7 },
     diagnosis: { mappings: CONFIRMED_DIAGNOSIS_MAPPINGS.map((m) => ({ ...m })) },
-    global: { template: "WEIGHTED_SEVERITY", enabled: false, severity: { ...PROPOSED_SEVERITY }, greenMax: null, yellowMax: null },
+    global: { template: "WEIGHTED_SEVERITY", enabled: true, severity: { ...PROPOSED_SEVERITY }, greenMax: "0.25", yellowMax: "0.5" },
   };
+}
+
+/**
+ * Configuración «de fábrica» anterior a HOTFIX-03: todo sin calibrar y la composición/global sin elegir. Ya NO es la configuración por defecto: sirve para reconocer una revisión
+ * inicial que nadie calibró (`isLegacyUncalibrated`) y para probar el comportamiento «sin calibrar» del evaluador.
+ */
+export function uncalibratedQualityConfig(): QualityConfig {
+  const cfg = defaultQualityConfig();
+  for (const k of INDICATOR_KEYS) for (const sc of QUALITY_SCOPES) cfg.indicators[k].rules[sc] = { ...emptyRule(k === "HEALTH" ? "HIGHER_BETTER" : "LOWER_BETTER", METRIC_UNIT[k]), ...(k === "HEALTH" ? { method: "CATEGORICAL" as const } : {}) };
+  cfg.incidents.backlog = { INCIDENT: emptyRuleSet("LOWER_BETTER", BACKLOG_UNIT), PROBLEM: emptyRuleSet("LOWER_BETTER", BACKLOG_UNIT) };
+  cfg.incidents.ageBands = [];
+  cfg.incidents.concerningDays = { incident: null, problem: null };
+  cfg.incidents.worstOfFlowAndBacklog = false;
+  cfg.snapshotPolicy = { mode: "EXACT", maxDays: null };
+  cfg.health = { mapping: { ...PROPOSED_HEALTH_MAPPING }, confirmed: false };
+  cfg.dedication = { profiles: [], selectionConfirmed: false };
+  cfg.global = { template: "WEIGHTED_SEVERITY", enabled: false, severity: { ...PROPOSED_SEVERITY }, greenMax: null, yellowMax: null };
+  return cfg;
+}
+
+export function isLegacyUncalibrated(cfg: QualityConfig): boolean {
+  const rules = [...INDICATOR_KEYS.filter((k) => k !== "HEALTH").flatMap((k) => QUALITY_SCOPES.map((sc) => cfg.indicators[k].rules[sc])), ...(["INCIDENT", "PROBLEM"] as const).flatMap((t) => QUALITY_SCOPES.map((sc) => cfg.incidents.backlog[t][sc]))];
+  return rules.every((r) => r.calibration === "SIN_CALIBRAR") && !cfg.global.enabled && !cfg.dedication.selectionConfirmed && !cfg.health.confirmed && cfg.incidents.concerningDays.incident === null && cfg.incidents.concerningDays.problem === null && cfg.snapshotPolicy.mode === "EXACT" && !cfg.incidents.worstOfFlowAndBacklog;
 }
 
 // ---------------------------------------------------------------- Adaptador v1 → v2
@@ -655,10 +758,10 @@ export function readQualityPayload(raw: unknown): { ok: true; payload: QualityCo
 }
 
 /** Todas las reglas numéricas de una configuración, con su ruta (para validar y mostrar). */
-function allRules(cfg: QualityConfig): { path: string; label: string; rule: ThresholdRule; metricUnit: MetricUnit }[] {
-  const out: { path: string; label: string; rule: ThresholdRule; metricUnit: MetricUnit }[] = [];
-  for (const k of INDICATOR_KEYS) for (const sc of QUALITY_SCOPES) out.push({ path: `indicators.${k}.${sc}`, label: `${INDICATOR_NAME[k]} · ${QSCOPE_LABEL[sc]}`, rule: cfg.indicators[k].rules[sc], metricUnit: METRIC_UNIT[k] });
-  for (const t of ["INCIDENT", "PROBLEM"] as const) for (const sc of QUALITY_SCOPES) out.push({ path: `incidents.backlog.${t}.${sc}`, label: `Backlog ${t === "INCIDENT" ? "incidentes" : "problemas"} · ${QSCOPE_LABEL[sc]}`, rule: cfg.incidents.backlog[t][sc], metricUnit: BACKLOG_UNIT });
+function allRules(cfg: QualityConfig): { path: string; label: string; rule: ThresholdRule; accepted: MetricUnit[] }[] {
+  const out: { path: string; label: string; rule: ThresholdRule; accepted: MetricUnit[] }[] = [];
+  for (const k of INDICATOR_KEYS) for (const sc of QUALITY_SCOPES) out.push({ path: `indicators.${k}.${sc}`, label: `${INDICATOR_NAME[k]} · ${QSCOPE_LABEL[sc]}`, rule: cfg.indicators[k].rules[sc], accepted: acceptedUnits(k) });
+  for (const t of ["INCIDENT", "PROBLEM"] as const) for (const sc of QUALITY_SCOPES) out.push({ path: `incidents.backlog.${t}.${sc}`, label: `Backlog ${t === "INCIDENT" ? "incidentes" : "problemas"} · ${QSCOPE_LABEL[sc]}`, rule: cfg.incidents.backlog[t][sc], accepted: acceptedBacklogUnits });
   return out;
 }
 
@@ -666,11 +769,11 @@ function allRules(cfg: QualityConfig): { path: string; label: string; rule: Thre
 export function validateQualityConfig(cfg: QualityConfig): ConfigIssue[] {
   const issues: ConfigIssue[] = [];
   for (const i of weightUnits({ mode: cfg.weights.mode, custom: cfg.weights.custom as Record<IndicatorKey, string> }).issues) issues.push({ path: `weights.${i.key}`, message: i.message });
-  for (const { path, label, rule, metricUnit } of allRules(cfg)) {
+  for (const { path, label, rule, accepted } of allRules(cfg)) {
     if (rule.method === "CATEGORICAL") continue;
     const partial = rule.calibration === "CALIBRADO" || (rule.a !== null && rule.b !== null && rule.a !== "" && rule.b !== "");
     if (partial) for (const m of validateRule(rule)) issues.push({ path, message: `${label}: ${m}` });
-    if (rule.calibration === "CALIBRADO" && rule.unit !== metricUnit) issues.push({ path, message: `${label}: la regla está en «${UNIT_LABEL[rule.unit]}» y la métrica en «${UNIT_LABEL[metricUnit]}».` });
+    if (rule.calibration === "CALIBRADO" && !accepted.includes(rule.unit)) issues.push({ path, message: `${label}: la regla está en «${UNIT_LABEL[rule.unit]}», que no corresponde a esta métrica.` });
   }
   if (cfg.incidents.ageBands.length > 0) for (const m of validateAgeBands(cfg.incidents.ageBands)) issues.push({ path: "incidents.ageBands", message: m });
   if (cfg.incidents.worstOfFlowAndBacklog) {
@@ -713,7 +816,7 @@ export type EntityInput = {
   incidents: { flow: ComponentInput; backlogIncident: ComponentInput; backlogProblem: ComponentInput };
 };
 
-export type ComponentOutcome = { id: string; label: string; unit: MetricUnit; value: string | null; color: Color | null; status: RuleOutcome["status"]; reason: string; cuts?: { a: string; b: string }; n?: number };
+export type ComponentOutcome = { id: string; label: string; unit: MetricUnit; value: string | null; color: Color | null; status: RuleOutcome["status"]; reason: string; cuts?: RuleOutcome["cuts"]; n?: number; intensity?: RuleOutcome["intensity"]; converted?: string };
 export type IndicatorOutcome = {
   key: IndicatorKey;
   name: string;
@@ -725,8 +828,10 @@ export type IndicatorOutcome = {
   reason: string;
   value: string | null;
   unit: MetricUnit;
-  cuts?: { a: string; b: string };
+  cuts?: RuleOutcome["cuts"];
   n?: number;
+  intensity?: RuleOutcome["intensity"];
+  converted?: string;
   components?: ComponentOutcome[];
 };
 export type EntityEvaluation = { scope: QScope; weights: EffectiveWeights | null; weightIssues: WeightIssue[]; indicators: Record<IndicatorKey, IndicatorOutcome>; global: GlobalOutcome; configIssues: ConfigIssue[] };
@@ -740,7 +845,7 @@ function evalComponent(id: string, label: string, rule: ThresholdRule, unit: Met
     const red = o.color === "red" && rule.direction === "LOWER_BETTER";
     return { ...base, color: red ? "red" : null, status: red ? "OK" : "DATO_INVALIDO", reason: red ? `Valor parcial (cota inferior) ya en rojo. ${c.reason ?? ""}`.trim() : `Valor parcial: no se colorea. ${c.reason ?? ""}`.trim(), cuts: o.cuts, n: o.n };
   }
-  return { ...base, color: o.color, status: o.status, reason: o.reason, cuts: o.cuts, n: o.n };
+  return { ...base, color: o.color, status: o.status, reason: o.reason, cuts: o.cuts, n: o.n, intensity: o.intensity, converted: o.converted };
 }
 
 /**
@@ -748,14 +853,15 @@ function evalComponent(id: string, label: string, rule: ThresholdRule, unit: Met
  * Incidentes y problemas conserva un solo peso: con la composición «peor señal» elegida evalúa flujo y backlog de incidentes y de problemas;
  * sin ella NO hay color de KPI (un flujo verde no es un color completo) y el flujo se ofrece solo como componente.
  */
-export function evaluateEntity(cfg: QualityConfig, input: EntityInput): EntityEvaluation {
+export function evaluateEntity(cfg: QualityConfig, input: EntityInput, measure: Measure = DEFAULT_MEASURE): EntityEvaluation {
   const sc = input.scope;
+  const bUnit = backlogUnitFor(measure);
   const wu = weightUnits({ mode: cfg.weights.mode, custom: cfg.weights.custom as Record<IndicatorKey, string> });
   const indicators = {} as Record<IndicatorKey, IndicatorOutcome>;
   const colors = {} as Record<IndicatorKey, Color | null>;
   const availability = {} as Record<IndicatorKey, Availability>;
   const mk = (key: IndicatorKey, extra: Partial<IndicatorOutcome> & Pick<IndicatorOutcome, "availability" | "status" | "reason">): IndicatorOutcome => ({
-    key, name: INDICATOR_NAME[key], color: null, alert: false, value: null, unit: METRIC_UNIT[key], ...extra,
+    key, name: INDICATOR_NAME[key], color: null, alert: false, value: null, unit: metricUnitFor(key, measure), ...extra,
   });
 
   // Client Health
@@ -777,7 +883,7 @@ export function evaluateEntity(cfg: QualityConfig, input: EntityInput): EntityEv
   // Indicadores numéricos con una sola magnitud.
   const numeric: [Exclude<IndicatorKey, "HEALTH" | "INCIDENTS_PROBLEMS">, ComponentInput][] = [["DEDICATION", input.dedication], ["PAP_CORRECTIVE", input.pap], ["N3_ESCALATIONS", input.n3], ["BUGS_STANDARD", input.bugs]];
   for (const [k, comp] of numeric) {
-    const c = evalComponent(k, INDICATOR_NAME[k], cfg.indicators[k].rules[sc], METRIC_UNIT[k], comp);
+    const c = evalComponent(k, INDICATOR_NAME[k], cfg.indicators[k].rules[sc], metricUnitFor(k, measure), comp);
     const known = comp.value !== null && !comp.partial;
     indicators[k] = mk(k, {
       availability: known ? "AVAILABLE" : "MISSING",
@@ -788,13 +894,15 @@ export function evaluateEntity(cfg: QualityConfig, input: EntityInput): EntityEv
       value: c.value,
       cuts: c.cuts,
       n: c.n,
+      intensity: c.intensity,
+      converted: c.converted,
     });
   }
 
   // Incidentes y problemas: flujo + backlog por tipo.
-  const flow = evalComponent("flow", "Flujo de altas (incidentes y problemas)", cfg.indicators.INCIDENTS_PROBLEMS.rules[sc], METRIC_UNIT.INCIDENTS_PROBLEMS, input.incidents.flow);
-  const bi = evalComponent("backlog_incident", "Backlog envejecido de incidentes", cfg.incidents.backlog.INCIDENT[sc], BACKLOG_UNIT, input.incidents.backlogIncident);
-  const bp = evalComponent("backlog_problem", "Backlog envejecido de problemas", cfg.incidents.backlog.PROBLEM[sc], BACKLOG_UNIT, input.incidents.backlogProblem);
+  const flow = evalComponent("flow", "Flujo de altas (incidentes y problemas)", cfg.indicators.INCIDENTS_PROBLEMS.rules[sc], metricUnitFor("INCIDENTS_PROBLEMS", measure), input.incidents.flow);
+  const bi = evalComponent("backlog_incident", "Backlog envejecido de incidentes", cfg.incidents.backlog.INCIDENT[sc], bUnit, input.incidents.backlogIncident);
+  const bp = evalComponent("backlog_problem", "Backlog envejecido de problemas", cfg.incidents.backlog.PROBLEM[sc], bUnit, input.incidents.backlogProblem);
   const comps = [flow, bi, bp];
   const allKnown = [input.incidents.flow, input.incidents.backlogIncident, input.incidents.backlogProblem].every((c) => c.value !== null && !c.partial);
   const alertI = comps.some((c) => c.color === "red");

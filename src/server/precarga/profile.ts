@@ -28,7 +28,7 @@ import { activatePrecarga } from "./apply";
 import { loadPlan } from "./rows";
 
 type Tx = Prisma.TransactionClient;
-type Ctx = { kind: SheetKind };
+type Ctx = { kind: SheetKind; layout: "v1" | "v2"; roleCol: number | null };
 
 const err = (code: string, message: string, column?: string): Issue => ({ severity: "error", code, message, column });
 const warn = (code: string, message: string, column?: string): Issue => ({ severity: "warning", code, message, column });
@@ -44,7 +44,16 @@ function matchHeaders(row: string[]): HeaderMatch {
   const m = detectSheet(row);
   if (m.kind === null) return { ok: false, message: m.message };
   const notes = m.extras.length > 0 ? [`Hoja ${m.kind}: columnas adicionales conservadas y no utilizadas: ${m.extras.join(", ")}.`] : [];
-  return { ok: true, schemaVersion: "v1-hojas-de-carga", context: { kind: m.kind } satisfies Ctx, notes };
+  const layoutNote = m.layout === "v2" ? [`Hoja ${m.kind}: formato de gestión ${m.kind === "CLIENTES" ? "de 8 columnas" : "de 6 columnas"}${m.roleCol !== null ? " con Rol PMO" : ""}.`] : [];
+  return { ok: true, schemaVersion: m.layout === "v2" ? "v2-tablas-de-gestion" : "v1-hojas-de-carga", context: { kind: m.kind, layout: m.layout, roleCol: m.roleCol } satisfies Ctx, notes: [...layoutNote, ...notes] };
+}
+
+/** Formato de gestión de 8 columnas → las mismas filas tipadas que el antiguo: el Grupo de la fila (A) es común a las relaciones Wrike, Zendesk y PAP de esa fila. */
+function parseClientesV2(cells: Cell[]): ParsedRow {
+  const base = parseClientes([cells[1], cells[0], cells[2], cells[3], cells[4], cells[0], cells[5], { v: "" } as Cell, cells[6], cells[0], cells[7]]);
+  // Las referencias de columna de los avisos se reetiquetan a las del archivo de ocho columnas.
+  const relabel: Record<string, string> = { E: "E", G: "F", K: "H", H: "E" };
+  return { ...base, issues: base.issues.map((i) => (i.column && relabel[i.column] ? { ...i, column: relabel[i.column] } : i)) };
 }
 
 function parseClientes(cells: Cell[]): ParsedRow {
@@ -91,8 +100,9 @@ function parseClientes(cells: Cell[]): ParsedRow {
   return { typed: t, issues };
 }
 
-function parsePersonal(cells: Cell[]): ParsedRow {
+function parsePersonal(cells: Cell[], ctx?: Ctx): ParsedRow {
   const issues: Issue[] = [];
+  const v2 = ctx?.layout === "v2";
   const pmoCell = cells[4];
   const rawPmo = cleanText(pmoCell?.v ?? "");
   let pmo: 0 | 1 | null = null;
@@ -108,7 +118,8 @@ function parsePersonal(cells: Cell[]): ParsedRow {
     pmo,
     pmoFormula: pmoCell?.f === true,
     wrike: text(cells, 5),
-    zdName2: text(cells, 6),
+    zdName2: v2 ? null : text(cells, 6),
+    ...(v2 && ctx?.roleCol != null ? { rolePmo: text(cells, ctx.roleCol) } : {}),
   };
   const reason = nonEmployeeReason(t);
   if (reason) return { typed: t, issues: [], exclude: reason };
@@ -134,8 +145,8 @@ function parsePmo(cells: Cell[]): ParsedRow {
 }
 
 function parseRow(cells: Cell[], context?: unknown): ParsedRow {
-  const { kind } = context as Ctx;
-  return kind === "CLIENTES" ? parseClientes(cells) : kind === "PERSONAL" ? parsePersonal(cells) : parsePmo(cells);
+  const ctx = context as Ctx;
+  return ctx.kind === "CLIENTES" ? (ctx.layout === "v2" ? parseClientesV2(cells) : parseClientes(cells)) : ctx.kind === "PERSONAL" ? parsePersonal(cells, ctx) : parsePmo(cells);
 }
 
 // ---------------------------------------------------------------- Posproceso: contradicciones entre filas y avisos de revisión

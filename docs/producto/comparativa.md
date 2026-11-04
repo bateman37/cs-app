@@ -56,3 +56,6 @@ Ruta `/comparativa`, lectura ADMIN y Consulta. Detalle técnico en [analítica C
 | Información técnica | Sello, método, revisión de configuración, objetivo/jornada, cobertura financiera, reproceso pendiente y causas de cifras incompletas viven en Administración › Conciliación › «Diagnóstico de datos» (`#diagnostico`) y en el detalle «Ver cálculo» de la ficha |
 
 Pendientes que NO se aceptan aquí: ZDT 11-13, ZTM 06-08, lista de origen PAP, estados de bugs, convención de «Diferencia» y propuestas de Silver (ver [pendientes](../decisiones/pendientes.md)). IDs ECO 01-08 sin cambios.
+
+
+**HOTFIX-03.** Se añade el filtro Estado (Activos/Inactivos/Todos), la ordenación de todas las columnas, las bandas de color de rentabilidad respecto al objetivo, el ratio provisional con perímetro observado y la media filtrada con subconjunto comparable; el veto ECO 08 sobre Silver On Demand queda retirado. Ver [HOTFIX-03](../arquitectura/hotfix03-gestion-estado-calculos-calidad.md).

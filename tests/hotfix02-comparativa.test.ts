@@ -52,12 +52,13 @@ describe("URL de la vista normal: parámetros antiguos no filtran ni se propagan
   it("ignora cualquier clave heredada y solo conserva periodo, Soporte, Servidor, orden y página", () => {
     const raw = { fecha: "2026-06-30", modo: "FULL_MONTH", soporte: "gold,NOPE", servidor: "op", q: "alfa", servicio: "TOTAL", complejidad: "BASIC", producto: "X", estado: "inactivos", cobertura: "parcial", revision: "3", tam: "200", bloques: "mes", ref: "cum", pestana: "datos", alojamiento: "CLOUD", orden: "cum.revenue", dir: "desc", pagina: "2" };
     const { query, filters } = parseComparativaQuery(raw, NOW);
-    expect(filters).toEqual({ soporte: ["GOLD"], servidor: ["OP"] });
-    expect(query).toMatchObject({ service: "SOPORTE", revision: null, q: "", complexity: [], product: "", status: "todos", coverage: "todas", pageSize: COMPARATIVA_PAGE_SIZE, ref: "mes", tab: "resumen", support: ["GOLD"], hosting: ["OP"], sort: "cum.revenue", dir: "desc", page: 2 });
+    // HOTFIX-03 §7: `estado` es ahora un parámetro explícito y válido (ya no se ignora); el resto de claves heredadas siguen ignorándose.
+    expect(filters).toEqual({ soporte: ["GOLD"], servidor: ["OP"], estado: "inactivos" });
+    expect(query).toMatchObject({ service: "SOPORTE", revision: null, q: "", complexity: [], product: "", status: "inactivos", coverage: "todas", pageSize: COMPARATIVA_PAGE_SIZE, ref: "mes", tab: "resumen", support: ["GOLD"], hosting: ["OP"], sort: "cum.revenue", dir: "desc", page: 2 });
     expect(query.blocks).toHaveLength(5);
     const out = comparativaParams(query, NOW);
-    expect(Object.keys(out).sort()).toEqual(["dir", "fecha", "modo", "orden", "pagina", "servidor", "soporte"]);
-    for (const k of ["q", "servicio", "complejidad", "producto", "estado", "cobertura", "revision", "tam", "bloques", "ref", "pestana", "alojamiento"]) expect(out).not.toHaveProperty(k);
+    expect(Object.keys(out).sort()).toEqual(["dir", "estado", "fecha", "modo", "orden", "pagina", "servidor", "soporte"]);
+    for (const k of ["q", "servicio", "complejidad", "producto", "cobertura", "revision", "tam", "bloques", "ref", "pestana", "alojamiento"]) expect(out).not.toHaveProperty(k);
   });
   it("un orden no permitido vuelve a «name»; sin parámetros solo queda el periodo por defecto", () => {
     expect(parseComparativaQuery({ orden: "name; DROP" }, NOW).query.sort).toBe("name");
@@ -149,7 +150,7 @@ describe("CSV = pantalla", () => {
   });
   it("las claves antiguas de la URL no recortan el CSV de la vista normal", async () => {
     await world();
-    const csv = await portfolioCsv(admin.id, parseComparativaQuery({ fecha: "2026-06-30", modo: "FULL_MONTH", q: "alfa", estado: "inactivos", producto: "X" }, NOW).query);
-    expect(csv.rows).toBe(3);
+    const csv = await portfolioCsv(admin.id, parseComparativaQuery({ fecha: "2026-06-30", modo: "FULL_MONTH", q: "alfa", estado: "todos", producto: "X" }, NOW).query);
+    expect(csv.rows).toBe(3); // `q` y `producto` siguen ignorados; `estado=todos` es explícito y válido
   });
 });

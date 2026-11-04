@@ -208,6 +208,7 @@ Niveles: diseñado, documentado, implementado, probado, aceptado. Un criterio de
 | CSAPP-10 | Sí | Sí | Sí (PR apilada sin fusionar) | Sí en Linux con datos sintéticos; Windows, proxy y datos reales sin ejecutar | No |
 | CSAPP-HOTFIX-01 | Sí | Sí | Sí (PR apilada sin fusionar) | Sí en Linux con datos sintéticos y ensayo con los libros reales en bases aisladas; Windows y datos de Dennis sin probar | No |
 | CSAPP-HOTFIX-02 | Sí | Sí | Sí (PR sin fusionar) | Sí en Linux con datos sintéticos y el maestro real en base aislada; Windows y datos de Dennis sin probar | No |
+| CSAPP-HOTFIX-03 | Sí | Sí | Sí (PR sin fusionar) | Sí en Linux con datos sintéticos, los dos archivos de gestión reales en base aislada y una actualización sobre una copia de una base de HOTFIX-02; Windows y datos de Dennis sin probar | No |
 | Cargas reales | — | Política en [precarga y pruebas](precarga-y-pruebas.md) | No | No | No; las probará Dennis |
 
 Las diez entregas están implementadas. Siguen pendientes, y **no** están cerradas por este trabajo: la aceptación funcional con los archivos reales de Dennis, la prueba en Windows, las decisiones listadas en [pendientes](../decisiones/pendientes.md) y el despliegue en un destino autorizado por IT. No existe CSAPP-11.
@@ -217,3 +218,17 @@ Las diez entregas están implementadas. Siguen pendientes, y **no** están cerra
 Tickets con ocho campos/status, sexto indicador aprobado, PR aclarado, bugs VFS/VSW separados, backlog dentro de Incidentes y problemas. Parámetros por calibrar: ver [pendientes](../decisiones/pendientes.md). problem_id y fechas de resolución son enriquecimientos futuros, no campos existentes. No volver a pedir las decisiones resueltas.
 
 No se han ejecutado cargas reales ni precargas. Las conciliaciones y medidas de CSAPP-03 y CSAPP-04 son de archivos sintéticos; no equivalen a conciliar con los datos reales de Dennis.
+
+## Resultado de CSAPP-HOTFIX-03 (maestros en tablas, estado comercial, cálculos utilizables, Calidad por usuario / total)
+
+| Dato | Valor |
+| --- | --- |
+| Rama | claude/new-session-omvsmd (designada por la sesión; reiniciada desde `main` `2c7a8d4`, merge de la PR 14, porque la rama anterior solo contenía historia ya fusionada) |
+| PR | sin fusionar ni desplegar (ver el enlace en la descripción de la entrega) |
+| Prompt | [CSAPP-HOTFIX-03-v1](../../prompts/CSAPP-HOTFIX-03-v1.md), archivado literal antes de cambiar código |
+| Implementado | Administración panorámica con menú **Clientes · Personal · Usuarios · Cargas · Configuración**; tabla de trabajo de Clientes y Grupos (estados Configurado / Sin informar / No aplica / En conflicto, decisión explícita «No aplica»); tabla de Personal; Comprobación de datos como tabla problema · afectados · motivo · acción en Configuración › Herramientas técnicas; formatos de gestión de 8 (Clientes) y 6 (Personal, con «Rol PMO» opcional) columnas junto a los anteriores; filtro Estado Activos/Inactivos/Todos (predeterminado Activos) en Comparativa, Calidad, Pulse, selector de Análisis Cliente y maestro; ECO 08 retirado como veto (Silver On Demand y planes mixtos con la imputación anual prorrateada); ratio **provisional** con el perímetro observado; media filtrada sobre el subconjunto comparable; bandas económicas editables ligadas al objetivo (550 = verde); orden verificado en todas las columnas; Calidad **Por usuario / Total**, referencia propia P25/P75 con muestra mínima 5 y configuración inicial operativa (`npm run hotfix03:preparar`) |
+| Cambios de criterio respecto a propuestas anteriores | ECO 08/Silver On Demand (ya no pendiente de método para el ratio) y Calidad (el perfil inicial deja de ser «por calibrar»); ver [pendientes](../decisiones/pendientes.md) |
+| Probado | Ver [validación](../validacion/hotfix-03.md) |
+| No probado / no hecho | Windows/PowerShell; la base operativa de Dennis; edición **en la propia celda** de las tablas (la edición de alias múltiples, vigencias y equipo/nivel/rol se hace en la ficha de cada fila; en la tabla de Clientes están el alta de Grupo, «+ Cliente», «No aplica», activar/desactivar y filtros); abrir desde una celda «—» de Comparativa directamente su caso concreto (la celda explica la causa y «Datos pendientes» lleva a la Comprobación de datos); `ECONOMIC_ENGINE_VERSION` sigue en `eco-v2` (el método cambia, el identificador no); medición de consultas/tiempos con el volumen representativo |
+
+Documentación: [arquitectura de HOTFIX-03](../arquitectura/hotfix03-gestion-estado-calculos-calidad.md), [guía de actualización para Windows](guia-powershell-hotfix03.md).

@@ -1,12 +1,12 @@
 import { beforeEach, describe, expect, it } from "vitest";
 import { prisma } from "@/lib/db";
 import { parseQualityQuery } from "@/domain/quality-query";
-import { defaultQualityConfig, type QualityConfig } from "@/domain/quality-config";
+import { uncalibratedQualityConfig as defaultQualityConfig, type QualityConfig } from "@/domain/quality-config";
 import { activateDraft, saveDraft } from "@/server/pulse/config";
 import { computeQuality } from "@/server/quality/engine";
 import { readSnapshot } from "@/server/analytics/snapshot";
 import { runEconomics } from "@/server/economics/engine";
-import { resetDatabase, makeUsers } from "./helpers";
+import { resetDatabase, makeUsers, useUncalibratedQuality } from "./helpers";
 import { addClient, addGroup, addTicket, addZd, fakeBatch, seedFinance, serviceAssignment, setUsers } from "./economia-helpers";
 import { batchOf, declare, seedTicket } from "./calidad-helpers";
 
@@ -19,6 +19,7 @@ let admin: { id: string };
 beforeEach(async () => {
   await resetDatabase();
   ({ admin } = await makeUsers());
+  await useUncalibratedQuality(admin.id);
 });
 const Q = (extra: Record<string, string> = {}) => parseQualityQuery({ fecha: "2026-10-31", modo: "FULL_MONTH", ...extra }, NOW).query;
 const quality = (extra: Record<string, string>, cfg?: QualityConfig) => readSnapshot(admin.id, (tx) => computeQuality(tx, Q(extra), { now: NOW, configOverride: cfg ?? null }));
@@ -66,7 +67,7 @@ describe("backlog y flujo de Calidad (casos 4, 7 y 10)", () => {
     const e = row.explain.INCIDENTS_PROBLEMS;
     expect(e.breakdown["stock incidentes activos"]).toBe("3");
     expect(e.breakdown["stock incidentes envejecidos"]).toBe("2");
-    expect(row.evaluation.indicators.INCIDENTS_PROBLEMS.components?.find((c) => c.id === "backlog_incident")?.value).toBe("20"); // 2 × 100 ÷ 10
+    expect(row.evaluation.indicators.INCIDENTS_PROBLEMS.components?.find((c) => c.id === "backlog_incident")?.value).toBe("0.2"); // 2 ÷ 10 usuarios al corte (por un usuario)
     expect(e.breakdown.incidentes).toBe("1"); // flujo de octubre: solo A3 (los antiguos no son altas del mes)
     expect(v.backlog).toMatchObject({ exact: true, observedOn: "2026-10-31" });
   });

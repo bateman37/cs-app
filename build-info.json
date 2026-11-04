@@ -1,8 +1,8 @@
 {
   "version": "0.1.0",
-  "sha": "54955223f30acad47e98c6a0872f6f5a000f02c2",
-  "dirty": false,
-  "builtAt": "2026-11-04T07:41:18.211Z",
+  "sha": "ac3a8e9068045fb8521e6d15b415312ae765da04",
+  "dirty": true,
+  "builtAt": "2026-11-04T12:39:53.516Z",
   "node": "v22.22.0",
   "migrations": [
     "20261029200318_base_acceso_y_maestros",
@@ -17,6 +17,7 @@
     "20261106090000_hotfix01_ultima_carga",
     "20261107090000_hotfix01_precarga_maestros",
     "20261108090000_hotfix01_historico_usuarios",
-    "20261110090000_hotfix02_enlace_automatico"
+    "20261110090000_hotfix02_enlace_automatico",
+    "20261111090000_hotfix03_bandas_economicas"
   ]
 }

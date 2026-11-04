@@ -1,3 +1,4 @@
+import { clientEffectiveActive, matchesEstado } from "@/domain/estado";
 import { Prisma } from "@/generated/prisma/client";
 import { Dec, effectiveCut, deviationPortfolioParts } from "@/domain/finance";
 import { aggregatePortfolio, type PortfolioPeriodResult } from "@/domain/portfolio";
@@ -252,6 +253,8 @@ function fromFormula(c: Cell, f: { value: string | null; numerator: string | nul
     return c;
   }
   c.reason = f.reason ?? scopeNote ?? null;
+  // HOTFIX-03 §8: un ratio provisional (perímetro observado con actividad pendiente) se muestra como Parcial con su cifra, sin colorearse como completo.
+  if (f.value !== null && f.status === "PARTIAL") { c.value = f.value; c.raw = f.value; }
   if (f.status === "PARTIAL") c.state = "PARTIAL";
   else if (f.code === "NOT_GROUP_LEVEL" || f.code === "SILVER_ON_DEMAND" || f.code === "PLAN_MIXED") c.state = "NA";
   else c.state = "NO_DATA";
@@ -529,9 +532,12 @@ export async function computePulse(tx: Tx, q: PulseQuery, opts: PulseOptions = {
   // 2. Entidades del ámbito: filas visibles (filtros de presentación) y poblaciones de referencia.
   const all = await loadScopeEntities(tx, q.scope, groups);
   const needle = fold(base.q);
-  const visibleGroups = new Set(filterGroups(groups, { ...base, q: "" }).map((g) => g.id));
+  // HOTFIX-03 §7: el estado comercial es efectivo (Grupo según sus Clientes externos; Cliente con su Grupo). En ámbito Cliente el estado se evalúa por Cliente.
+  const groupById = new Map(groups.map((g) => [g.id, g]));
+  const visibleGroups = new Set(filterGroups(groups, { ...base, q: "", status: q.scope === "group" ? base.status : "todos" }).map((g) => g.id));
   const visible = all.filter((e) => {
-    if (base.status !== "todos" && (base.status === "activos") !== e.isActive) return false;
+    const effective = q.scope === "group" ? (groupById.get(e.id)?.effectiveActive ?? e.isActive) : clientEffectiveActive(e, e.groupId ? { isActive: groupById.get(e.groupId)?.isActive ?? true } : null);
+    if (!matchesEstado(effective, base.status)) return false;
     if (needle !== "" && !fold(e.name).includes(needle) && !fold(e.parent ?? "").includes(needle)) return false;
     if (q.scope === "group") return visibleGroups.has(e.id);
     const filtersOn = base.support.length + base.hosting.length + base.complexity.length > 0 || base.product !== "" || base.coverage !== "todas";

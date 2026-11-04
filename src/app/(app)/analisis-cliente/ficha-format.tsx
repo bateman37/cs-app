@@ -1,3 +1,4 @@
+import { BAND_LABEL, economicBand, type BandFactors } from "@/domain/economic-bands";
 import type { ReactNode } from "react";
 import { Dec, type Formula } from "@/domain/finance";
 import { CMP_TEXT, type Cell, type Cmp, type Measure, type MonthRow } from "@/domain/ficha-series";
@@ -33,9 +34,13 @@ export function Dev({ f, d = 1 }: { f: Pick<Formula, "value" | "reason"> | null 
   return <span className={s > 0 ? "fc-bad" : s < 0 ? "fc-good" : undefined} title={s > 0 ? "Positivo = por debajo del objetivo / por encima de las horas objetivo" : undefined}>{sPct(f.value, d)}</span>;
 }
 
-export function Amt({ f, d = 2 }: { f: Pick<Formula, "value" | "reason"> | null | undefined; d?: number }): ReactNode {
+/** `band` (HOTFIX-03 §9): la misma escala económica que Comparativa para el €/jornada; provisional con asterisco y texto accesible. */
+export function Amt({ f, d = 2, band }: { f: Pick<Formula, "value" | "reason"> & Partial<Pick<Formula, "provisional" | "imputed">> | null | undefined; d?: number; band?: { target: string; factors: BandFactors } }): ReactNode {
   if (!f || f.value === null) return <Na reason={f?.reason} />;
-  return <>{formatDecimalEs(f.value, d)}</>;
+  const b = band ? economicBand(f.value, band.target, band.factors) : null;
+  const label = [b ? BAND_LABEL[b] : null, f.provisional ? `Cifra provisional: ${f.reason ?? ""}` : null, f.imputed ? "Imputación económica anual prorrateada" : null].filter(Boolean).join(". ");
+  if (!b && !f.provisional) return <>{formatDecimalEs(f.value, d)}</>;
+  return <span className={`${b ? `band band-${b}` : ""}${f.provisional ? " prov-val" : ""}`.trim()} title={label} aria-label={`${formatDecimalEs(f.value, d)}. ${label}`}>{formatDecimalEs(f.value, d)}{f.provisional ? "*" : ""}</span>;
 }
 
 export function cmpDiffText(m: Measure, c: Cmp | null): string {

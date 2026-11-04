@@ -2,7 +2,7 @@ import { beforeEach, describe, expect, it } from "vitest";
 import { parse } from "csv-parse/sync";
 import { prisma } from "@/lib/db";
 import { parseQualityQuery } from "@/domain/quality-query";
-import { defaultQualityConfig } from "@/domain/quality-config";
+import { uncalibratedQualityConfig as defaultQualityConfig } from "@/domain/quality-config";
 import { STANDARD_CAUSE } from "@/domain/zendesk";
 import { activateDraft, saveDraft } from "@/server/pulse/config";
 import { diagnosisTickets, getBacklog, getDiagnosis, evolutionIn } from "@/server/quality/detail";
@@ -11,7 +11,7 @@ import { addQualityNote, listQualityNotes } from "@/server/quality/notes";
 import { saveHealthCell } from "@/server/quality/health";
 import { getQuality } from "@/server/quality/engine";
 import { readSnapshot } from "@/server/analytics/snapshot";
-import { resetDatabase, makeUsers } from "./helpers";
+import { resetDatabase, makeUsers, useUncalibratedQuality } from "./helpers";
 import { addClient, addGroup, setUsers } from "./economia-helpers";
 import { batchOf, declare, seedBugLink, seedTicket } from "./calidad-helpers";
 
@@ -23,6 +23,7 @@ const Q = (extra: Record<string, string> = {}) => parseQualityQuery({ fecha: "20
 beforeEach(async () => {
   await resetDatabase();
   ({ admin, reader } = await makeUsers());
+  await useUncalibratedQuality(admin.id);
 });
 
 async function world() {
@@ -137,7 +138,7 @@ describe("CSV, notas y seguridad", () => {
     const csv = await qualityCsv(admin.id, Q({ pagina: "1" }), "cartera", { now: NOW });
     const rows = parse(csv.body.replace(/^﻿/, ""), { delimiter: ";", columns: true, skip_empty_lines: true }) as Record<string, string>[];
     expect(rows.map((r) => r.entidad)).toEqual(["Atlas", "Boreal"]);
-    expect(rows[0]).toMatchObject({ ambito: "Grupo Cliente", corte_efectivo: "2026-10-31", estado_periodo: "cerrado", revision_calidad: "1 (inicial)", global_color: "sin color", HEALTH_color: "sin color" });
+    expect(rows[0]).toMatchObject({ ambito: "Grupo Cliente", corte_efectivo: "2026-10-31", estado_periodo: "cerrado", revision_calidad: "1", global_color: "sin color", HEALTH_color: "sin color" });
     expect(rows[0].HEALTH_valor).toBe("Positivo"); // categoría visible aunque el mapeo no esté confirmado
     expect(rows[0].HEALTH_peso_configurado_pct).toBe("16,66666666666666666667");
     const health = await qualityCsv(admin.id, Q({ anio: "2026" }), "health", { now: NOW });

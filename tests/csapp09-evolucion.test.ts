@@ -1,12 +1,12 @@
 import { beforeEach, describe, expect, it } from "vitest";
 import { prisma } from "@/lib/db";
 import { parseQualityQuery } from "@/domain/quality-query";
-import { defaultQualityConfig } from "@/domain/quality-config";
+import { uncalibratedQualityConfig as defaultQualityConfig } from "@/domain/quality-config";
 import { activateDraft, saveDraft } from "@/server/pulse/config";
 import { computeQuality } from "@/server/quality/engine";
 import { evolutionIn } from "@/server/quality/detail";
 import { readSnapshot } from "@/server/analytics/snapshot";
-import { resetDatabase, makeUsers } from "./helpers";
+import { resetDatabase, makeUsers, useUncalibratedQuality } from "./helpers";
 import { addClient, addGroup, setUsers } from "./economia-helpers";
 import { batchOf, declare, seedTicket } from "./calidad-helpers";
 
@@ -22,6 +22,7 @@ let admin: { id: string };
 beforeEach(async () => {
   await resetDatabase();
   ({ admin } = await makeUsers());
+  await useUncalibratedQuality(admin.id);
 });
 
 describe("evolución de Calidad por cohorte propia de cada mes", () => {
@@ -47,9 +48,9 @@ describe("evolución de Calidad por cohorte propia de cada mes", () => {
     const ev = await readSnapshot(admin.id, (tx) => evolutionIn(tx, Q({ sel: g3.id }), g3.id, cfg, "2026-11-02"));
     const jan = ev.points[0].indicators.N3_ESCALATIONS;
     const oct = ev.points[9].indicators.N3_ESCALATIONS;
-    expect(jan).toMatchObject({ value: "2", color: "yellow", sampleN: 6, numerator: "2" });
-    expect(Number(jan.cuts?.a)).toBeCloseTo(1.25, 10);
-    expect(Number(jan.cuts?.b)).toBeCloseTo(3.75, 10);
+    expect(jan).toMatchObject({ value: "0.02", color: "yellow", sampleN: 6, numerator: "2" }); // 2 / 100 usuarios·mes
+    expect(Number(jan.cuts?.a)).toBeCloseTo(0.0125, 10);
+    expect(Number(jan.cuts?.b)).toBeCloseTo(0.0375, 10);
     expect(oct).toMatchObject({ value: "0", color: "green", sampleN: 6 });
     expect(Number(oct.cuts?.a)).toBe(0);
     expect(Number(oct.cuts?.b)).toBe(0);

@@ -163,7 +163,7 @@ export type EconomicResult = {
 const ZERO = Dec.ZERO;
 const H = (minutes: Dec) => minutes.divInt(60).toString();
 
-type FormulaExtra = Partial<Pick<Formula, "code" | "operands" | "expression" | "validated">>;
+type FormulaExtra = Partial<Pick<Formula, "code" | "operands" | "expression" | "validated" | "provisional" | "imputed">>;
 function formula(value: Dec | null, num: Dec | null, den: Dec | null, unit: string, status: ResultStatus, reason: string | null, extra: FormulaExtra = {}): Formula {
   return { value: value?.toString() ?? null, numerator: num?.toString() ?? null, denominator: den?.toString() ?? null, unit, status, reason, ...extra };
 }
@@ -371,36 +371,33 @@ async function compute(tx: Tx, input: EconomicInput, date: string, mode: CutMode
       estimatedMonths,
     };
 
-    // Plan del PERIODO valorado (no el actual): un cambio de plan posterior no habilita retrospectivamente otro método.
+    // Plan del PERIODO valorado (no el actual). HOTFIX-03 §8: ECO 08 ya no es un veto; Silver On Demand usa la misma imputación anual prorrateada
+    // (anual/12 × días/días del mes) y solo se rotula como imputación económica, no como facturación mensual real.
     const planSet = e.type === "group" ? plans.valuesIn(e.id, p.from, p.to) : new Set<string>();
     const hasSod = planSet.has("SILVER_ON_DEMAND");
-    const mixedPlan = hasSod && planSet.size > 1;
-    const monthlyMetric = kind === "monthly" || key === "month" || key === "prevMonth";
-    const eco08 = monthlyMetric && hasSod;
-    const eco08Reason = mixedPlan
-      ? "El periodo mezcla tramos de plan Silver On Demand y otro plan, sin método aprobado: ECO 08 pendiente; se informa el límite y se muestran ingreso y horas conocidos."
-      : "ECO 08 pendiente: la rentabilidad mensual recurrente de Silver On Demand no está activada; use el análisis anual o CUM. Ingreso y horas conocidos se muestran.";
+    const imputed = hasSod;
+    const imputedNote = "Imputación económica anual prorrateada (anual/12 × días/días del mes), no facturación mensual real de Silver On Demand.";
 
-    // Ratios (la falta de usuarios NO impide €/jornada).
+    // Ratios (la falta de usuarios NO impide €/jornada). Con actividad pendiente se publica el ratio del conjunto OBSERVADO como provisional.
     let perDay: Formula;
     const unit = "€/jornada";
     const minutesPerimeter = perimeter;
     const uncertain = input.service !== "TOTAL" && unknownService.sign() > 0;
     const uncertainPending = pending.sign() > 0;
+    const pendingNote = [uncertain ? `${H(unknownService)} h elegibles sin servicio o en conflicto` : null, uncertainPending ? `${H(pending)} h con elegibilidad pendiente (PMO desconocido)` : null].filter(Boolean).join(" y ");
+    const provisionalReason = `Cifra provisional: ratio del conjunto observado (${H(minutesPerimeter)} h). Quedan fuera del denominador ${pendingNote}; podrían cambiar el perímetro.`;
+    const withImputed = (f: Formula): Formula => (imputed ? { ...f, imputed: true, reason: [f.reason, imputedNote].filter(Boolean).join(" ") } : f);
     if (e.type !== "group") perDay = na(unit, "NOT_COMPUTABLE", "Ingreso agrupado en Grupo Cliente: el ratio se calcula al nivel del grupo.", "NOT_GROUP_LEVEL");
     else if (partialFilter) perDay = na(unit, "NOT_COMPUTABLE", "El filtro recorta solo las horas: sin el ingreso de ese subconjunto no hay rentabilidad; se usa el perímetro económico completo.", "HOURS_FILTER");
-    else if (eco08) perDay = na(unit, "NOT_COMPUTABLE", eco08Reason, mixedPlan ? "PLAN_MIXED" : "SILVER_ON_DEMAND");
     else if (revenue.value === null) perDay = na(unit, revenue.status, revenue.reason ?? "Sin ingreso.", "INCOME_UNKNOWN");
-    else if (uncertain) {
-      perDay = formula(null, Dec.parse(revenue.value), minutesPerimeter.divInt(60), unit, "PARTIAL", `Hay ${H(unknownService)} h elegibles sin servicio o con servicios en conflicto en este ámbito y periodo: podrían cambiar el perímetro; no se presenta el ratio como completo.`, { code: "PERIMETER_PARTIAL" });
-    } else if (uncertainPending) {
-      perDay = formula(null, Dec.parse(revenue.value), minutesPerimeter.divInt(60), unit, "PARTIAL", `Hay ${H(pending)} h con elegibilidad pendiente (PMO desconocido) que podrían entrar en el perímetro.`, { code: "PERIMETER_PARTIAL" });
-    } else {
+    else {
       const r = Dec.parse(revenue.value) as Dec;
       const ed = eurosPerDay(r, minutesPerimeter, dayHours);
       if (ed.ratio === null) {
-        perDay = formula(null, r, ed.hours, unit, "NOT_COMPUTABLE", r.sign() > 0 ? "Ingreso positivo con cero horas: no hay ratio (nunca infinito). El ingreso permanece en la cartera." : "Sin horas en el periodo: ratio no calculable.", { code: r.sign() > 0 ? "ZERO_HOURS" : "NO_HOURS" });
-      } else perDay = formula(ed.ratio, r, ed.hours, unit, "AVAILABLE", null, { expression: "R / H × jornada" });
+        if (uncertain || uncertainPending) perDay = formula(null, r, ed.hours, unit, "PARTIAL", `Sin horas observadas del perímetro: ${pendingNote} impiden identificarlo.`, { code: "PERIMETER_PARTIAL" });
+        else perDay = formula(null, r, ed.hours, unit, "NOT_COMPUTABLE", r.sign() > 0 ? "Ingreso positivo con cero horas: no hay ratio (nunca infinito). El ingreso permanece en la cartera." : "Sin horas en el periodo: ratio no calculable.", { code: r.sign() > 0 ? "ZERO_HOURS" : "NO_HOURS" });
+      } else if (uncertain || uncertainPending) perDay = withImputed(formula(ed.ratio, r, ed.hours, unit, "PARTIAL", provisionalReason, { code: "PERIMETER_PARTIAL", provisional: true, expression: "R / H observadas × jornada" }));
+      else perDay = withImputed(formula(ed.ratio, r, ed.hours, unit, "AVAILABLE", null, { expression: "R / H × jornada" }));
     }
     const th: Formula =
       revenue.value !== null && e.type === "group"
@@ -409,18 +406,19 @@ async function compute(tx: Tx, input: EconomicInput, date: string, mode: CutMode
     let dev: Formula;
     if (perDay.value !== null) {
       const d = deviationTargetParts(target, Dec.parse(perDay.value) as Dec);
-      dev = formula(d.value, d.numerator, d.denominator, "fracción", "AVAILABLE", "Positivo = rendimiento por debajo del objetivo.", { operands: { objetivo: target.toString(), ratio: perDay.value }, expression: "(objetivo − ratio) / objetivo" });
+      dev = formula(d.value, d.numerator, d.denominator, "fracción", perDay.provisional ? "PARTIAL" : "AVAILABLE", perDay.provisional ? `Provisional: ${perDay.reason ?? ""} Positivo = rendimiento por debajo del objetivo.` : "Positivo = rendimiento por debajo del objetivo.", { operands: { objetivo: target.toString(), ratio: perDay.value }, expression: "(objetivo − ratio) / objetivo", provisional: perDay.provisional, code: perDay.provisional ? "PERIMETER_PARTIAL" : undefined });
     } else dev = { ...na("fracción", perDay.status, perDay.reason ?? "Sin ratio.", perDay.code ?? "NO_RATIO"), operands: { objetivo: target.toString(), ratio: null } };
     // Desviación de horas: (reales − objetivo) / objetivo; depende del mismo perímetro y de las mismas restricciones que el ratio.
     let devHours: Formula;
     const realH = minutesPerimeter.divInt(60);
     if (th.value === null) devHours = na("fracción", th.status, th.reason ?? "Sin horas objetivo.", th.code ?? "NO_TARGET_HOURS");
-    else if (partialFilter || eco08 || uncertain || uncertainPending) {
-      devHours = { ...formula(null, null, Dec.parse(th.value), "fracción", "PARTIAL", partialFilter ? "El filtro recorta solo las horas: no es comparable con las horas objetivo del ingreso completo." : eco08 ? eco08Reason : "Perímetro de horas incompleto (servicio sin clasificar, en conflicto o elegibilidad pendiente).", { code: partialFilter ? "HOURS_FILTER" : eco08 ? (mixedPlan ? "PLAN_MIXED" : "SILVER_ON_DEMAND") : "PERIMETER_PARTIAL" }), operands: { horasReales: realH.toString(), horasObjetivo: th.value } };
+    else if (partialFilter) {
+      devHours = { ...formula(null, null, Dec.parse(th.value), "fracción", "PARTIAL", "El filtro recorta solo las horas: no es comparable con las horas objetivo del ingreso completo.", { code: "HOURS_FILTER" }), operands: { horasReales: realH.toString(), horasObjetivo: th.value } };
     } else {
       const d = deviationHoursParts(realH, Dec.parse(th.value) as Dec);
+      const prov = uncertain || uncertainPending;
       devHours = d
-        ? formula(d.value, d.numerator, d.denominator, "fracción", "AVAILABLE", "Positivo = más horas que las objetivo (por encima de lo que el ingreso sostiene).", { operands: { horasReales: realH.toString(), horasObjetivo: th.value }, expression: "(horas reales − horas objetivo) / horas objetivo" })
+        ? formula(d.value, d.numerator, d.denominator, "fracción", prov ? "PARTIAL" : "AVAILABLE", prov ? `Provisional: horas observadas del perímetro; ${pendingNote} no están incluidas.` : "Positivo = más horas que las objetivo (por encima de lo que el ingreso sostiene).", { operands: { horasReales: realH.toString(), horasObjetivo: th.value }, expression: "(horas reales − horas objetivo) / horas objetivo", provisional: prov, code: prov ? "PERIMETER_PARTIAL" : undefined })
         : { ...na("fracción", "NOT_COMPUTABLE", "Las horas objetivo son cero (ingreso cero): la desviación relativa no se calcula.", "ZERO_TARGET_HOURS"), operands: { horasReales: realH.toString(), horasObjetivo: th.value } };
     }
     // Tarifa anual por usuario (TAR RUN) = 12 × R_periodo / usuarios mes expuestos.
@@ -428,7 +426,6 @@ async function compute(tx: Tx, input: EconomicInput, date: string, mode: CutMode
     const fullYear = months.length === 12 && months.every((mo) => mo.days === mo.daysInMonth);
     if (e.type !== "group" || revenue.value === null) tariff = na("€/usuario·año", e.type !== "group" ? "NOT_COMPUTABLE" : revenue.status, e.type !== "group" ? "Sin ingreso propio en este nivel." : (revenue.reason ?? "Sin ingreso."), e.type !== "group" ? "NOT_GROUP_LEVEL" : "INCOME_UNKNOWN");
     else if (!users.complete || users.userMonths === null) tariff = na("€/usuario·año", "NOT_COMPUTABLE", "Usuarios del periodo incompletos o sin informar: la tarifa por usuario no es calculable (el ratio €/jornada sí).", "USERS_MISSING");
-    else if (hasSod && !fullYear) tariff = na("€/usuario·año", "NOT_COMPUTABLE", "ECO 08 pendiente: no se anualiza por defecto un Silver On Demand en un periodo parcial (equivalente anual no aprobado). Con doce meses completos sí se calcula.", "SILVER_ON_DEMAND");
     else {
       const t = tariffRun(Dec.parse(revenue.value) as Dec, Dec.parse(users.userMonths) as Dec);
       tariff = t
@@ -502,7 +499,7 @@ async function compute(tx: Tx, input: EconomicInput, date: string, mode: CutMode
       portfolio[k] = aggregatePortfolio(
         results.map((r) => {
           const p = r.periods[k];
-          return { id: r.id, revenue: p.revenue.value === null ? null : (Dec.parse(p.revenue.value) as Dec), minutes: Dec.parse(p.hours.perimeterMinutes) as Dec, status: p.perDay.status, code: p.perDay.code ?? null };
+          return { id: r.id, revenue: p.revenue.value === null ? null : (Dec.parse(p.revenue.value) as Dec), minutes: Dec.parse(p.hours.perimeterMinutes) as Dec, status: p.perDay.status, code: p.perDay.code ?? null, provisional: p.perDay.provisional === true };
         }),
         target,
         dayHours,
@@ -516,7 +513,7 @@ async function compute(tx: Tx, input: EconomicInput, date: string, mode: CutMode
         if (pr.value && own.value) {
           const d = deviationPortfolioParts(Dec.parse(pr.value) as Dec, Dec.parse(own.value) as Dec);
           r.periods[k].deviationVsPortfolio = d
-            ? dv(formula(d.value, d.numerator, d.denominator, "fracción", "AVAILABLE", "Positivo = por debajo de la cartera filtrada.", { operands: { cartera: pr.value, grupo: own.value }, expression: "(cartera − grupo) / cartera" }))
+            ? dv(formula(d.value, d.numerator, d.denominator, "fracción", own.provisional ? "PARTIAL" : "AVAILABLE", own.provisional ? "Provisional: ratio del grupo con perímetro observado. Positivo = por debajo de la media filtrada." : "Positivo = por debajo de la cartera filtrada.", { provisional: own.provisional, operands: { cartera: pr.value, grupo: own.value }, expression: "(cartera − grupo) / cartera" }))
             : dv({ ...na("fracción", "NOT_COMPUTABLE", "La cartera tiene ratio cero: no se divide.", "ZERO_PORTFOLIO"), operands: { cartera: pr.value, grupo: own.value } });
         } else if (!pr.value) {
           r.periods[k].deviationVsPortfolio = dv({ ...na("fracción", pr.status === "AVAILABLE" ? "NOT_COMPUTABLE" : pr.status, `La cartera filtrada no se publica como completa: ${pr.reason ?? "sin ratio."}`, pr.code ?? "PORTFOLIO_PARTIAL"), operands: { cartera: null, grupo: own.value } });

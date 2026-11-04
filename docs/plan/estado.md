@@ -181,7 +181,7 @@ Documentación: [arquitectura](../arquitectura/hotfix01-ultima-carga.md), [proce
 
 | Dato | Valor |
 | --- | --- |
-| Rama / base | `feature/CSAPP-HOTFIX-02-enlace-automatico-y-vistas`, desde `main` `1abda3f` (CSAPP-01 a 10 y HOTFIX-01); PR única sin fusionar ni desplegar; sin force |
+| Rama / base | `feature/CSAPP-HOTFIX-02-enlace-automatico-y-vistas`, desde `main` `1abda3f` (CSAPP-01 a 10 y HOTFIX-01); [PR 14](https://github.com/bateman37/cs-app/pull/14) sin fusionar ni desplegar; sin force |
 | Migración | `20261110090000_hotfix02_enlace_automatico` (estado de actualización y reparación programada; no recalcula en la migración) |
 | Implementado | Reenlace automático de lo ya cargado cuando cambian los maestros (sin «Reprocesar» por lote, sin límite de 100); libro CLIENTES de una hoja; normalización única; alias ambiguos por evidencia del propio registro; clasificación de servicio `servicio-v2`; cobertura de Calidad por contrato de carga amplia; Comparativa de una línea por Grupo con filtros Soporte/Servidor; ficha de Análisis Cliente de una pantalla; Calidad «Resumen de clientes» con los seis KPI como navegación; ancho panorámico; Diagnóstico de datos en Administración |
 | Probado | Linux con datos sintéticos y el maestro real en base aislada. Ver [validación](../validacion/hotfix-02.md) |

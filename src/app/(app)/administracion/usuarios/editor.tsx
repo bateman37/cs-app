@@ -378,12 +378,12 @@ function RowTools({ r, d, busy, onApply, onCopy, onUndo }: { r: UsuariosRow; d: 
       <div className="ed-na-box">
         <label className="ed-check">Mes <select className="ed-input" value={month} onChange={(e) => setMonth(Number(e.target.value))} aria-label={`Mes desde el que aplicar en ${r.name}`}>{MONTHS.map((m) => <option key={m} value={m}>{MONTH_NAMES[m - 1]}</option>)}</select></label>
         <label className="ed-check">Usuarios <input className="ed-input ed-num" inputMode="numeric" value={value} onChange={(e) => { setValue(e.target.value); setErr(""); }} aria-label={`Valor a aplicar en ${r.name}`} /></label>
-        <button type="button" className="ed-mini" onClick={() => { const v = parseUserCount(value.trim()); if (v === null) return setErr("Entero 0 o mayor."); onApply(month, v); setValue(""); }}>Aplicar al borrador</button>
+        <button type="button" className="ed-mini" onClick={(e) => { const v = parseUserCount(value.trim()); if (v === null) return setErr("Entero 0 o mayor."); onApply(month, v); setValue(""); (e.currentTarget.closest("details") as HTMLDetailsElement | null)?.removeAttribute("open"); }}>Aplicar al borrador</button>
         {err ? <small className="mt-err">{err}</small> : null}
         <small className="muted">Cambia ese mes y los posteriores, sin pisar ajustes explícitos; lo verá en la confirmación.</small>
-        <hr />
-        <button type="button" className="ed-mini" disabled={noCopy} title={noCopy ? "Deshaga o guarde primero los cambios de esta fila" : undefined} onClick={() => onCopy("SAME_MONTH")}>Copiar base del año anterior (mes a mes)</button>
-        <button type="button" className="ed-mini" disabled={noCopy} title={noCopy ? "Deshaga o guarde primero los cambios de esta fila" : undefined} onClick={() => onCopy("DECEMBER")}>Copiar diciembre anterior</button>
+        <div style={{ borderTop: "1px solid var(--border)", margin: "2px 0" }} />
+        <button type="button" className="ed-mini" disabled={noCopy} title={noCopy ? "Deshaga o guarde primero los cambios de esta fila" : undefined} onClick={(e) => { onCopy("SAME_MONTH"); (e.currentTarget.closest("details") as HTMLDetailsElement | null)?.removeAttribute("open"); }}>Copiar base del año anterior (mes a mes)</button>
+        <button type="button" className="ed-mini" disabled={noCopy} title={noCopy ? "Deshaga o guarde primero los cambios de esta fila" : undefined} onClick={(e) => { onCopy("DECEMBER"); (e.currentTarget.closest("details") as HTMLDetailsElement | null)?.removeAttribute("open"); }}>Copiar diciembre anterior</button>
         {d ? <button type="button" className="ed-mini" onClick={onUndo}>Deshacer esta fila</button> : null}
       </div>
     </details>

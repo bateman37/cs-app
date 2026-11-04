@@ -25,6 +25,16 @@ export async function DiagnosticoDatos({ userId }: { userId: string }) {
   const pf = e.portfolio;
   const year = Number(e.input.cut.slice(0, 4));
   const fin = r.finance.filter((f) => f.year === year);
+  type Problem = { id: string; title: string; affected: string; reason: string; action: string; href: string };
+  const problems: Problem[] = [];
+  const unassignedFin = fin.reduce((a, f) => a + f.unassigned, 0);
+  if (unassignedFin > 0) problems.push({ id: "fin", title: "Filas financieras sin equivalencia BC", affected: `${unassignedFin} filas de ${year}`, reason: "El Grupo financiero no tiene equivalencia BC en los maestros: su ingreso no llega a ningún Grupo.", action: "Completar el enlace en Clientes", href: "/administracion/clientes?pendientes=1" });
+  const cumHours = (k: "SIN_CLASIFICAR" | "CONFLICTO" | "pending") => e.entities.reduce((a, x) => a + Number(k === "pending" ? x.periods.cum.hours.pendingEligibility : x.periods.cum.hours.byService[k]), 0);
+  if (cumHours("SIN_CLASIFICAR") + cumHours("CONFLICTO") > 0) problems.push({ id: "svc", title: "Horas sin servicio o con servicios en conflicto", affected: `${formatDecimalEs(String(cumHours("SIN_CLASIFICAR") + cumHours("CONFLICTO")), 2)} h (CUM)`, reason: "Ni el ticket ni el proyecto indican Soporte, Administración delegada u Otros, o dos evidencias se contradicen.", action: "Revisar excepciones de servicio", href: "/administracion/servicios" });
+  if (cumHours("pending") > 0) problems.push({ id: "pmo", title: "Horas con elegibilidad PMO pendiente", affected: `${formatDecimalEs(String(cumHours("pending")), 2)} h (CUM)`, reason: "La persona no tiene todavía equipo o pertenencia PMO a la fecha del trabajo.", action: "Completar Personal", href: "/administracion/personal" });
+  if (e.unattributed && Number(e.unattributed.eligibleHours) > 0) problems.push({ id: "grp", title: "Horas sin Grupo", affected: `${formatDecimalEs(e.unattributed.eligibleHours, 2)} h (CUM)`, reason: "El proyecto, la organización o el ticket no están enlazados a ningún Grupo (internos, conflictos o sin ticket).", action: "Completar enlaces en Clientes", href: "/administracion/clientes?pendientes=1" });
+  if (pf?.cum.groupsUnknownIncome) problems.push({ id: "inc", title: "Grupos con ingreso desconocido", affected: `${pf.cum.groupsUnknownIncome} Grupo(s)`, reason: "No hay fuente financiera de este año para ese Grupo, o su conjunto financiero está incompleto.", action: "Revisar Finanzas en Cargas", href: "/administracion/cargas" });
+  if (r.pendingRecalc.reason) problems.push({ id: "rel", title: "Relaciones pendientes de actualizar", affected: r.validation.state === "VALIDATED" ? "—" : "derivados no validados", reason: r.pendingRecalc.reason, action: "Ver estado y reintentar", href: "/administracion/cargas" });
   return (
     <section id="diagnostico" className="card" aria-labelledby="diag-h">
       <h2 id="diag-h">Diagnóstico de datos</h2>
@@ -46,20 +56,19 @@ export async function DiagnosticoDatos({ userId }: { userId: string }) {
           </table>
         </div>
       )}
-      <h3>Cartera completa: qué deja cifras incompletas</h3>
-      {pf ? (
-        <ul>
-          {(["month", "cum"] as const).map((k) => (
-            <li key={k}>
-              <strong>{k === "month" ? "Mes seleccionado" : "CUM"}:</strong> {pf[k].complete ? "completa" : "incompleta"} · {pf[k].coverage.complete} de {pf[k].coverage.groups} grupos sin restricción
-              {pf[k].affected.map((a) => <span key={a.code}> · {a.groups} grupo(s) con {a.label} (ingreso {formatDecimalEs(a.income, 2)} €)</span>)}
-              {pf[k].zeroHours.count > 0 ? <span> · {pf[k].zeroHours.count} con ingreso y sin dedicación registrada</span> : null}
-            </li>
-          ))}
-        </ul>
-      ) : <p>Sin cartera calculable.</p>}
-      {e.unattributed && Number(e.unattributed.eligibleHours) > 0 ? <p>Horas elegibles del CUM sin Grupo Cliente (internos, conflictos, sin ticket): <strong>{formatDecimalEs(e.unattributed.eligibleHours, 2)} h</strong>, conciliables y no repartidas. Resuélvalas en <Link href="/administracion/clientes">Clientes</Link> (equivalencias).</p> : null}
-      <p className="hint">Silver Recurrente y Silver On Demand son planes distintos; la rentabilidad mensual recurrente de Silver On Demand no está activada (ECO 08, propuesta pendiente). Pendientes de aceptación: ver docs/decisiones/pendientes.md.</p>
+      <h3>Qué deja cifras incompletas</h3>
+      <div className="table-wrap">
+        <table>
+          <caption className="visually-hidden">Problemas de datos: afectados, motivo y acción</caption>
+          <thead><tr><th scope="col">Problema</th><th scope="col">Registros / importe / horas afectados</th><th scope="col">Motivo</th><th scope="col">Acción</th></tr></thead>
+          <tbody>
+            {problems.length === 0 ? <tr><td colSpan={4}>Sin problemas detectados en la lectura de hoy.</td></tr> : problems.map((p) => (
+              <tr key={p.id}><th scope="row">{p.title}</th><td>{p.affected}</td><td>{p.reason}</td><td><Link href={p.href}>{p.action}</Link></td></tr>
+            ))}
+          </tbody>
+        </table>
+      </div>
+      <p className="hint">Abrir una celda «—» de Comparativa lleva aquí o a su caso concreto. Pendientes de aceptación de otras propuestas: docs/decisiones/pendientes.md.</p>
     </section>
   );
 }

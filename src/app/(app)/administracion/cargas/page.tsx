@@ -40,6 +40,8 @@ export default async function CargasPage({ searchParams }: { searchParams: Promi
         resúmenes y avisos están en la ficha de cada lote.
       </p>
 
+      <p className="hint"><Link href="/administracion/exportaciones">Descargas y exportaciones</Link> · archivos grandes de Comparativa, Análisis Cliente y Calidad: estado, propiedad, cancelar y descargar.</p>
+
       <section className="card" aria-labelledby="sec-relaciones">
         <h2 id="sec-relaciones">Relaciones de los datos cargados</h2>
         <RelationsStatus

@@ -284,3 +284,9 @@ details.chart-table > summary { cursor: pointer; color: var(--blue); font-size: 
 .ql-table { border-collapse: separate; border-spacing: 0; width: 100%; font-size: 12px; line-height: 1.2; font-variant-numeric: tabular-nums; }
 .ql-table th, .ql-table td { padding: 0 6px; height: 27px; border-bottom: 1px solid #ececf3; white-space: nowrap; background: var(--surface); }
 .ql-table td.num { text-align: right; }
+
+/* HOTFIX-03 §3: Administración panorámica. El `main` padre ya es ancho; los formularios de credenciales y los diálogos pequeños conservan un ancho legible. */
+.admin-body { width: 100%; }
+.admin-body form:not(.toolbar):not(.mt-tools):not(.inline-form) { max-width: 64rem; }
+.admin-body .card { max-width: none; }
+.admin-body .card form { max-width: 64rem; }

@@ -46,9 +46,9 @@ describe.skipIf(!enabled)("ensayo real de las tablas de gestión (base aislada)"
     expect(createHash("sha256").update(readFileSync(PERSONAL)).digest("hex")).toBe(SHA_PERSONAL);
     const before = await snapshot();
     const c1 = await run(CLIENTES, "Tabla de Clientes.xlsx");
-    console.log("CLIENTES rowsTotal/valid/error/dup/excl:", c1.prepared.rowsTotal, c1.prepared.rowsValid, c1.prepared.rowsError, c1.prepared.rowsDuplicate, c1.prepared.rowsExcluded);
+    console.log("CLIENTES valid/error/dup/excl:", c1.prepared.rowsValid, c1.prepared.rowsError, c1.prepared.rowsDuplicate, c1.prepared.rowsExcluded);
     const p1 = await run(PERSONAL, "Tabla de Personal.xlsx");
-    console.log("PERSONAL rowsTotal/valid/error/dup/excl:", p1.prepared.rowsTotal, p1.prepared.rowsValid, p1.prepared.rowsError, p1.prepared.rowsDuplicate, p1.prepared.rowsExcluded);
+    console.log("PERSONAL valid/error/dup/excl:", p1.prepared.rowsValid, p1.prepared.rowsError, p1.prepared.rowsDuplicate, p1.prepared.rowsExcluded);
     const after = await snapshot();
     console.log("antes", JSON.stringify(before), "después", JSON.stringify(after));
     expect(after.User).toBe(before.User);

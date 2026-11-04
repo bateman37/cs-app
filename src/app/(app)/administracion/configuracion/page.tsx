@@ -5,6 +5,7 @@ import { first, type SearchParams } from "@/lib/format";
 import { EconomiaSection } from "./economia";
 import { PulseSection } from "./pulse";
 import { CalidadSection } from "./calidad";
+import { HerramientasSection } from "./herramientas";
 
 export const metadata: Metadata = { title: "Configuración" };
 export const dynamic = "force-dynamic";
@@ -13,6 +14,7 @@ const SECTIONS = [
   { id: "economia", label: "Economía" },
   { id: "pulse", label: "Pulse Rent" },
   { id: "calidad", label: "Calidad" },
+  { id: "herramientas", label: "Herramientas técnicas" },
 ] as const;
 
 export default async function ConfiguracionPage({ searchParams }: { searchParams: Promise<SearchParams> }) {
@@ -25,7 +27,7 @@ export default async function ConfiguracionPage({ searchParams }: { searchParams
     <>
       <h1>Configuración</h1>
       <p className="muted">
-        Tres familias de parámetros, cada una con <strong>revisiones inmutables</strong>, autor, motivo y fecha. Guardar un <strong>borrador</strong>, <strong>simular</strong> y{" "}
+        Tres familias de parámetros (y las herramientas técnicas), cada una con <strong>revisiones inmutables</strong>, autor, motivo y fecha. Guardar un <strong>borrador</strong>, <strong>simular</strong> y{" "}
         <strong>activar</strong> son acciones distintas: solo la activación cambia lo que usa Pulse Rent y, más adelante, Calidad. Una consulta nunca modifica parámetros.
       </p>
       {first(sp.ok) === "activada" ? <p className="notice notice-ok" role="status">Revisión activada de forma atómica y auditada. Las lecturas anteriores quedan invalidadas por la nueva referencia de datos.</p> : null}
@@ -41,6 +43,7 @@ export default async function ConfiguracionPage({ searchParams }: { searchParams
       {section === "economia" ? <EconomiaSection userId={user.id} isAdmin={isAdmin} /> : null}
       {section === "pulse" ? <PulseSection userId={user.id} isAdmin={isAdmin} sp={sp} /> : null}
       {section === "calidad" ? <CalidadSection userId={user.id} isAdmin={isAdmin} sp={sp} /> : null}
+      {section === "herramientas" ? <HerramientasSection userId={user.id} isAdmin={isAdmin} /> : null}
     </>
   );
 }

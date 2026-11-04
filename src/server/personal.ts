@@ -63,6 +63,7 @@ export async function listPeople(actorId: string, query: PersonListQuery = {}) {
       take,
       include: {
         terms: { where: validAt(date), include: { catalogItem: { select: { name: true } } } },
+        aliases: { where: { isActive: true }, select: { system: true, rawValue: true }, orderBy: [{ system: "asc" }, { rawValue: "asc" }] },
         _count: { select: { aliases: true } },
       },
     }),

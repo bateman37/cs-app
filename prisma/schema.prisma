@@ -46,6 +46,7 @@ model User {
   financeDecisions  FinanceDecision[]
   settingsRevisions EconomicSettingsRevision[]
   configRevisions   ConfigRevision[]            @relation("ConfigRevisionActivatedBy")
+  linkDecisions     MasterLinkDecision[]        @relation("MasterLinkDecisionBy")
   configDrafts      ConfigDraft[]               @relation("ConfigDraftUpdatedBy")
   healthUpdates     HealthFeedback[]            @relation("HealthUpdatedBy")
   healthEvents      HealthFeedbackEvent[]       @relation("HealthEventBy")
@@ -165,6 +166,7 @@ model ClientGroup {
   userMatrices UserMatrix[]
   healthCells  HealthFeedback[]
   qualityNotes QualityNote[]
+  linkDecisions MasterLinkDecision[]
 }
 
 /// Identidad operativa (organización Zendesk). groupId nulo = grupo no asignado.
@@ -186,6 +188,7 @@ model Client {
   userMatrices    UserMatrix[]
   healthCells     HealthFeedback[]
   qualityNotes    QualityNote[]
+  linkDecisions   MasterLinkDecision[]
 
   @@index([groupId])
 }
@@ -1757,4 +1760,23 @@ model AliasCandidate {
 
   @@unique([system, kind, searchValue, groupId])
   @@index([system, kind, searchValue])
+}
+
+/// HOTFIX-03: decisión explícita «No aplica» de un sistema (Wrike, Zendesk, PAP) o dato de servicio para un Grupo o Cliente. Nunca se crea por relleno automático de vacíos.
+model MasterLinkDecision {
+  id          String   @id @default(cuid())
+  groupId     String?
+  clientId    String?
+  system      String
+  status      String   @default("NOT_APPLICABLE")
+  note        String?
+  decidedById String
+  decidedAt   DateTime @default(now())
+
+  group     ClientGroup? @relation(fields: [groupId], references: [id], onDelete: Restrict)
+  client    Client?      @relation(fields: [clientId], references: [id], onDelete: Restrict)
+  decidedBy User         @relation("MasterLinkDecisionBy", fields: [decidedById], references: [id], onDelete: Restrict)
+
+  @@index([groupId])
+  @@index([clientId])
 }

@@ -1,17 +1,4 @@
-import { Tabs } from "@/components/nav";
-
+/** La gestión de Clientes y Grupos es una única tabla de trabajo (HOTFIX-03 §4): ya no hay submenús Grupos / Clientes / Catálogo. Las fichas siguen siendo accesibles por enlace. */
 export default function ClientesLayout({ children }: { children: React.ReactNode }) {
-  return (
-    <>
-      <Tabs
-        label="Maestros de clientes"
-        items={[
-          { href: "/administracion/clientes/grupos", label: "Grupos Cliente" },
-          { href: "/administracion/clientes/clientes", label: "Clientes" },
-          { href: "/administracion/clientes/productos", label: "Catálogo de productos" },
-        ]}
-      />
-      {children}
-    </>
-  );
+  return <>{children}</>;
 }
